@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+*.log
+/tmp/
+
+# Working references that are not part of this repo. Keep drafts, briefs and
+# design notes here while building; none of it is published with the suite.
+# Anchored to the repo root so a file that merely shares a name elsewhere in
+# the tree is not silently untracked.
+/docs/_reference/
+/docs/DESIGN-CONTEXT.md
+/docs/PHASE-1-INSTALL-BRIEF.md

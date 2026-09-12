@@ -1,0 +1,7 @@
+# Shell scripts must stay LF even when checked out on Windows.
+# A CRLF .sh fails with "bash: $'\r': command not found" and the whole
+# install silently breaks. This line is load-bearing on Windows machines.
+*.sh            text eol=lf
+*.md            text eol=lf
+*.yml           text eol=lf
+kit-version.txt text eol=lf

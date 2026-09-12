@@ -1,0 +1,77 @@
+# targets.yml - the only file in this kit that knows anything tool-specific.
+# Adding support for a tool is a block here, never a code change.
+#
+# This file lives inside the skill rather than at the repo root because the
+# skills CLI copies only the skill directory into a project. A targets.yml at
+# the repo root would be unreachable from an installed skill.
+#
+# PROVENANCE
+# `skills_dir` values were read out of the `skills` CLI agent registry
+# (npm `skills` v1.5.25, dist/cli.mjs) rather than from documentation, because
+# that registry is what actually decides where files land. Instruction files
+# were checked against each tool's own docs. Verified 2026-09-11.
+#
+# THE BIG FINDING
+# `.agents/skills` is the convergent location: 22 of the 79 agents in that
+# registry install there, including Codex, Cursor, Gemini CLI, Antigravity,
+# GitHub Copilot and OpenCode. Claude Code is the only outlier among the
+# tools this kit targets. So this table has two skills_dir values, not six.
+#
+# Tools fully covered by the `agents-md` entry below (same instruction file,
+# same skills dir, so a separate block would be a duplicate row):
+#   codex, cursor, antigravity, antigravity-cli, amp, opencode, github-copilot,
+#   droid, kilo, roo, openhands, goose, continue, qwen-code, trae, zencoder
+#
+# INSTALL NOTE (not read by any script, but the reason this kit works on
+# Windows): `npx skills add` symlinks agent directories to `.agents/skills`
+# by default. Git for Windows does not create symlinks unless the user has
+# Developer Mode on, so a fresh clone gets text stubs instead of skills.
+# Install with `--copy`.
+
+version: 1
+
+defaults:
+  universal_skills_dir: .agents/skills
+  canonical_instruction_file: AGENTS.md
+
+targets:
+
+  agents-md:
+    display: "AGENTS.md (cross-tool canonical)"
+    instruction_file: AGENTS.md
+    pointer_style: block
+    skills_dir: .agents/skills
+    detect: "AGENTS.md,.agents/skills,.agents"
+    always: "true"
+    confidence: high
+    verified: "2026-09-11 skills CLI v1.5.25 registry; AGENTS.md is the de-facto cross-tool standard"
+
+  claude-code:
+    display: "Claude Code"
+    instruction_file: CLAUDE.md
+    pointer_style: import
+    skills_dir: .claude/skills
+    detect: "CLAUDE.md,.claude"
+    confidence: high
+    notes: "Claude Code reads CLAUDE.md and does NOT read AGENTS.md. Its docs name an @AGENTS.md import as the bridge, and specifically recommend the import over a symlink on Windows."
+    verified: "2026-09-11 code.claude.com/docs/en/memory"
+
+  gemini-cli:
+    display: "Gemini CLI"
+    instruction_file: GEMINI.md
+    pointer_style: block
+    skills_dir: .agents/skills
+    detect: "GEMINI.md,.gemini"
+    confidence: medium
+    notes: "Reads GEMINI.md. AGENTS.md support is an open request upstream, so the pointer is written out in full here rather than imported."
+    verified: "2026-09-11 skills CLI registry for skills_dir; GEMINI.md from gemini-cli docs"
+
+  github-copilot:
+    display: "GitHub Copilot"
+    instruction_file: .github/copilot-instructions.md
+    pointer_style: block
+    skills_dir: .agents/skills
+    detect: ".github/copilot-instructions.md"
+    confidence: medium
+    notes: "Only detected when the instructions file already exists. This kit does not create a Copilot config in a project that has none."
+    verified: "2026-09-11 skills CLI registry for skills_dir"

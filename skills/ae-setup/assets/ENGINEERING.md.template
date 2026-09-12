@@ -1,0 +1,40 @@
+---
+# Machine-readable state. The structure gate and the doctor script read this.
+operator_mode: engineer          # engineer | director
+kit_version: __KIT_VERSION__
+allowed_root_files: []           # populated by init; empty means the gate is off
+scratch_retention_days: 7
+slop_patterns: ["*_v2.*", "*_final.*", "temp*", "Untitled*", "*.bak"]
+evidence_retention: {L0: none, L1: none, L2: task_close, L3: permanent}
+---
+
+<!-- This file is human-owned. No workflow in this kit ever rewrites it.
+     It ships as structural placeholders on purpose: a template with real
+     invariants baked in invites copy-paste into a project where none of them
+     are true, and a wrong invariant is worse than a missing one because every
+     workflow treats this file as unquestionable. Fill sections in as you
+     learn the answers. Blank is an honest state. -->
+
+## Quality budgets
+
+<!-- Concrete numbers only. p95 latency, bundle size, cost per AI call, the
+     a11y level you actually hold yourself to. Leave blank until measured. -->
+
+## Approval policy
+
+<!-- Which actions need your explicit sign-off beyond the built-in hard stops
+     (sending to real users, moving real money, publishing, deleting or
+     migrating production data, adding a paid service). -->
+
+## Ratchet rule
+
+New code meets the standard. Touched code is brought to the standard within the
+boundary of the change. Untouched code is grandfathered and listed in `DEBT.md`.
+
+This is what keeps declared standards from failing on day one against
+pre-existing violations, which is how gates get disabled within a week.
+
+## UX principles
+
+<!-- Density, primary anchors, patterns that are prohibited in this product.
+     Blank until decided. -->

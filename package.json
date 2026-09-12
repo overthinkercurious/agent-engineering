@@ -1,0 +1,30 @@
+{
+  "name": "agent-engineering",
+  "version": "0.1.0",
+  "description": "A development workflow suite of agent skills, installable into any project and portable across AI coding tools.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overthinkercurious/agent-engineering.git"
+  },
+  "keywords": [
+    "agent-skills",
+    "skill",
+    "agents-md",
+    "claude-code",
+    "codex",
+    "workflow"
+  ],
+  "files": [
+    "skills/",
+    "VERSION",
+    "README.md",
+    "LICENSE"
+  ],
+  "private": false,
+  "scripts": {
+    "sync-version": "bash scripts/sync-version.sh",
+    "validate": "bash scripts/validate-suite.sh",
+    "test": "bash scripts/validate-suite.sh && bash scripts/test-install.sh && bash scripts/test-analyze.sh"
+  }
+}
