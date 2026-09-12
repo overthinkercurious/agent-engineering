@@ -2,6 +2,9 @@
 # A CRLF .sh fails with "bash: $'\r': command not found" and the whole
 # install silently breaks. This line is load-bearing on Windows machines.
 *.sh            text eol=lf
+# Same reasoning for the Node stage owners: they carry a shebang, and a CRLF
+# shebang fails the moment anyone runs one directly instead of via `node`.
+*.mjs           text eol=lf
 *.md            text eol=lf
 *.yml           text eol=lf
 kit-version.txt text eol=lf
