@@ -8,15 +8,8 @@
 .claude/skills/ae-*/
 .agents/skills/ae-*/
 
-# Generated runtime copy of the kit. Rewritten every time setup runs.
-.dev/kit/
-
-# Working zones: the contents are disposable, the directories are structure.
-# Ignoring the directory outright would drop its .gitkeep and a fresh clone
-# would fail its own install check.
-.dev/scratch/*
+# Raw analysis dump: large, machine-only, and regenerated on every run. The
+# documents derived from it in .dev/knowledge/ and .dev/rules/ ARE committed -
+# they are the point of this tool.
 .dev/context/*
-.dev/evidence/*
-!.dev/scratch/.gitkeep
 !.dev/context/.gitkeep
-!.dev/evidence/.gitkeep

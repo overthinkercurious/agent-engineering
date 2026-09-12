@@ -8,7 +8,7 @@
 
 set -uo pipefail
 KIT="$(cd -P "$(dirname "$0")/.." && pwd)"
-ANALYZE="$KIT/skills/ae-setup/scripts/analyze.mjs"
+ANALYZE="$KIT/skills/ae-init/scripts/analyze.mjs"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ae-an.XXXXXX")"
 # Git Bash on Windows: node is a native Windows binary, so MSYS translates a
 # path passed as a whole argument but NOT one embedded inside a `node -e`
@@ -178,8 +178,8 @@ check "walk still finds files"       "[ \$(node -e \"const d=require('$WORK/ng.j
 check "walk still parses code"       "[ \$(node -e \"const d=require('$WORK/ng.json');process.stdout.write(String(d.coverage.code_files))\") -ge 1 ]"
 
 # ---------------------------------------------------------------------------
-KNOW="$KIT/skills/ae-setup/scripts/knowledge.mjs"
-RULES="$KIT/skills/ae-setup/scripts/rules.mjs"
+KNOW="$KIT/skills/ae-init/scripts/knowledge.mjs"
+RULES="$KIT/skills/ae-init/scripts/rules.mjs"
 
 head_ "stage 3: knowledge base"
 node "$KNOW" --root "$P" --in "$J" --out "$WORK/kb" --quiet >/dev/null 2>&1; rc=$?

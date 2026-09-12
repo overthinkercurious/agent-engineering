@@ -1,7 +1,6 @@
 {
   "name": "agent-engineering",
-  "version": "0.1.0",
-  "description": "A development workflow suite of agent skills, installable into any project and portable across AI coding tools.",
+  "description": "A project-indexing skill for AI coding agents: reads a codebase once and writes the knowledge base and rules later sessions load.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,18 +12,16 @@
     "agents-md",
     "claude-code",
     "codex",
-    "workflow"
+    "codebase-analysis"
   ],
   "files": [
     "skills/",
-    "VERSION",
     "README.md",
     "LICENSE"
   ],
   "private": false,
   "scripts": {
-    "sync-version": "bash scripts/sync-version.sh",
     "validate": "bash scripts/validate-suite.sh",
-    "test": "bash scripts/validate-suite.sh && bash scripts/test-install.sh && bash scripts/test-analyze.sh"
+    "test": "bash scripts/validate-suite.sh && bash scripts/test-scaffold.sh && bash scripts/test-artifacts.sh"
   }
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # doctor.sh - report whether the agent-engineering install is actually healthy.
 #
-# Exits non-zero when something is missing or stale. That exit code is the
-# whole value of this script: it is the one part of the install story that can
-# be checked without a model, so it is the part that gets trusted.
+# Exits non-zero when something is missing. That exit code is the whole value
+# of this script: it is the one part of the install story that can be checked
+# without a model, so it is the part that gets trusted.
 #
 # Warnings do not fail the run. Failures do.
 
@@ -14,7 +14,6 @@ AE_SELF="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$AE_SELF/lib.sh"
 
 AE_KIT_ROOT="$(cd -P "$AE_SELF/.." && pwd)"
-INSTALLED_VERSION="$(cat "$AE_SELF/kit-version.txt" 2>/dev/null || echo unknown)"
 
 ROOT="${1:-}"
 if [ -n "$ROOT" ]; then
@@ -38,63 +37,46 @@ warn() { ae_warn "$*"; WARNS=$((WARNS + 1)); }
 
 printf '\nagent-engineering doctor\n'
 printf 'project: %s\n' "$ROOT"
-printf 'kit:     v%s (running from %s)\n' "$INSTALLED_VERSION" "$AE_SELF"
+printf 'kit:     %s\n' "$AE_KIT_ROOT"
 
 # ------------------------------------------------------------- .dev/ --------
+# Severity splits on lifecycle. knowledge/ and rules/ are the committed record
+# and their absence means init has not run, or its output was lost. context/
+# holds only regenerable analysis, so a missing one is a note.
 
-ae_head "runtime directories"
-# Severity splits on lifecycle, not on tidiness. tasks/, decisions/, knowledge/
-# and rules/ are the durable record and are committed, so their absence means
-# something was lost. scratch/, context/ and evidence/ hold nothing that
-# survives by design, so a missing one is a note: setup recreates it for free.
+ae_head "directories"
 missing_durable=""
-for d in tasks decisions knowledge rules; do
+for d in knowledge rules; do
   [ -d "$ROOT/.dev/$d" ] || missing_durable="$missing_durable .dev/$d"
-done
-missing_work=""
-for d in context scratch evidence; do
-  [ -d "$ROOT/.dev/$d" ] || missing_work="$missing_work .dev/$d"
 done
 
 if [ -n "$missing_durable" ]; then
-  fail "missing committed directories:$missing_durable - these hold the durable record; re-run setup"
+  fail "missing committed directories:$missing_durable - re-run ae-init"
 else
-  ae_ok ".dev/tasks, .dev/decisions, .dev/knowledge and .dev/rules present (the committed record)"
+  ae_ok ".dev/knowledge and .dev/rules present (the committed record)"
 fi
-if [ -n "$missing_work" ]; then
-  warn "missing working directories:$missing_work - disposable by design; re-run setup to recreate"
+if [ -d "$ROOT/.dev/context" ]; then
+  ae_ok ".dev/context present"
 else
-  ae_ok ".dev/scratch, .dev/context and .dev/evidence present"
-fi
-
-if [ -d "$ROOT/.dev/kit/scripts" ]; then
-  ae_ok ".dev/kit/scripts present"
-else
-  fail ".dev/kit/scripts missing - the pointer block tells operators to run doctor from there"
+  warn "missing .dev/context - regenerable by design; re-run ae-init to recreate"
 fi
 
-# -------------------------------------------------- ENGINEERING.md ----------
+# ---------------------------------------------------------- artifacts -------
+# The directories existing proves scaffold ran. These prove init finished.
 
-ae_head "ENGINEERING.md"
-ENG="$ROOT/ENGINEERING.md"
-if [ ! -f "$ENG" ]; then
-  fail "ENGINEERING.md missing - re-run setup"
+ae_head "artifacts"
+if [ -s "$ROOT/.dev/knowledge/00-index.md" ]; then
+  n="$(find "$ROOT/.dev/knowledge" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+  ae_ok "knowledge base present ($n document(s))"
+  todo="$(grep -rl 'TODO (judgment)' "$ROOT/.dev/knowledge" 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$todo" != "0" ] && warn "$todo knowledge document(s) still have unanswered judgment slots"
 else
-  fm="$(awk 'NR==1 && $0=="---" { inb=1; next } inb && $0=="---" { exit } inb { print }' "$ENG")"
-  if [ -z "$fm" ]; then
-    fail "ENGINEERING.md has no YAML frontmatter - the structure gate reads its keys from there"
-  else
-    miss=""
-    for k in operator_mode kit_version allowed_root_files scratch_retention_days; do
-      printf '%s\n' "$fm" | grep -q "^${k}:" || miss="$miss $k"
-    done
-    if [ -n "$miss" ]; then
-      fail "ENGINEERING.md frontmatter is missing required key(s):$miss"
-    else
-      mode="$(printf '%s\n' "$fm" | awk -F': *' '/^operator_mode:/ { print $2; exit }' | awk '{ print $1 }')"
-      ae_ok "ENGINEERING.md parseable (operator_mode: ${mode:-unset})"
-    fi
-  fi
+  warn "no knowledge base yet - run ae-init stages 2 and 3"
+fi
+if [ -s "$ROOT/.dev/rules/00-index.md" ]; then
+  ae_ok "rules index present"
+else
+  warn "no rules yet - run ae-init stage 4"
 fi
 
 # ------------------------------------------------- instruction files --------
@@ -116,7 +98,7 @@ for id in $(ae_target_ids "$TSV"); do
   if ae_block_present "$ROOT/$ifile"; then
     ae_ok "$ifile has the managed block ($disp)"
   else
-    fail "$disp detected but $ifile has no agent-engineering block - re-run setup"
+    fail "$disp detected but $ifile has no agent-engineering block - re-run ae-init"
   fi
 
   # Skills present where this tool looks for them?
@@ -147,36 +129,36 @@ done
 ae_head ".gitignore"
 GI="$ROOT/.gitignore"
 if [ ! -f "$GI" ]; then
-  fail ".gitignore missing - the suite and every working zone would be committed"
+  fail ".gitignore missing - the suite and the analysis dump would be committed"
 else
   miss=""
-  for e in ".claude/skills/ae-*/" ".agents/skills/ae-*/" ".dev/kit/"; do
+  for e in ".claude/skills/ae-*/" ".agents/skills/ae-*/"; do
     grep -qF "$e" "$GI" || miss="$miss $e"
   done
   if [ -n "$miss" ]; then
-    fail ".gitignore is missing suite entries:$miss - re-run setup"
+    fail ".gitignore is missing suite entries:$miss - re-run ae-init"
   else
-    ae_ok ".gitignore excludes the installed suite (.claude, .agents, .dev/kit)"
+    ae_ok ".gitignore excludes the installed suite"
   fi
-
-  miss=""
-  for e in ".dev/scratch/" ".dev/context/" ".dev/evidence/"; do
-    grep -qF "$e" "$GI" || miss="$miss $e"
+  if grep -qF ".dev/context/" "$GI"; then
+    ae_ok ".gitignore excludes the regenerable analysis"
+  else
+    fail ".gitignore does not exclude .dev/context/ - analysis.json would be committed"
+  fi
+  # knowledge/ and rules/ are the deliverable. If a future edit ever ignores
+  # them the suite silently stops being useful to anyone but this machine.
+  for e in ".dev/knowledge" ".dev/rules"; do
+    grep -qE "^${e}" "$GI" && fail "$e is gitignored, but it is the committed record this tool exists to produce"
   done
-  if [ -n "$miss" ]; then
-    fail ".gitignore is missing working-zone entries:$miss"
-  else
-    ae_ok ".gitignore covers scratch, context and evidence"
-  fi
 fi
 
 # The suite is a dependency. If a project committed it under an earlier install
 # (or before these ignore rules existed), the ignore rules alone will not undo
 # that: git keeps tracking a file it already knows about. Say so, with the fix.
 if (cd "$ROOT" && git rev-parse --git-dir >/dev/null 2>&1); then
-  tracked="$(cd "$ROOT" && git ls-files '.claude/skills/ae-*' '.agents/skills/ae-*' '.dev/kit' 2>/dev/null | head -1)"
+  tracked="$(cd "$ROOT" && git ls-files '.claude/skills/ae-*' '.agents/skills/ae-*' 2>/dev/null | head -1)"
   if [ -n "$tracked" ]; then
-    warn "the suite is still tracked by git (e.g. $tracked). Ignore rules do not untrack existing files. Run: git rm -r --cached .claude/skills/ae-* .agents/skills/ae-* .dev/kit"
+    warn "the suite is still tracked by git (e.g. $tracked). Ignore rules do not untrack existing files. Run: git rm -r --cached .claude/skills/ae-* .agents/skills/ae-*"
   else
     ae_ok "the suite is not tracked by git"
   fi
@@ -190,33 +172,11 @@ else
   warn "no skills-lock.json - without it there is no record of which suite version this project expects. It is written by 'npx skills add'."
 fi
 
-# ------------------------------------------------------- staleness ----------
-
-ae_head "version"
-PINNED="$(cat "$ROOT/.dev/kit-version" 2>/dev/null || echo "")"
-if [ -z "$PINNED" ]; then
-  fail ".dev/kit-version missing - re-run setup"
-else
-  # The available version is whatever the skills CLI last placed in a skills dir.
-  AVAIL=""
-  for sd in .agents/skills .claude/skills; do
-    f="$(find "$ROOT/$sd" -maxdepth 3 -name kit-version.txt 2>/dev/null | head -1)"
-    [ -n "$f" ] && { AVAIL="$(cat "$f")"; break; }
-  done
-  if [ -z "$AVAIL" ]; then
-    ae_info "scaffolded from v$PINNED (no installed skill copy found to compare against)"
-  elif [ "$AVAIL" = "$PINNED" ]; then
-    ae_ok "v$PINNED, matches the installed skill"
-  else
-    fail "stale: project scaffolded from v$PINNED, installed skill is v$AVAIL - re-run setup"
-  fi
-fi
-
 # ------------------------------------------------------- line endings -------
 
 ae_head "line endings"
 crlf=0
-for f in "$ROOT"/.dev/kit/scripts/*.sh; do
+for f in "$AE_SELF"/*.sh; do
   [ -f "$f" ] || continue
   if head -c 4000 "$f" | grep -q $'\r'; then
     fail "$(basename "$f") has CRLF line endings and will not run. Add '*.sh text eol=lf' to .gitattributes and re-checkout."

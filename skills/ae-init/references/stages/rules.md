@@ -75,5 +75,5 @@ enforces is exactly the failure this stage exists to prevent.
   the analysis found in this project.
 - Do not write a rule you cannot name the enforcing command for, even a good one.
 - Do not apply rules retroactively. That is what the ratchet is for.
-- Do not edit `ENGINEERING.md`. It is human-owned; if a rule belongs there,
-  tell the user and let them write it.
+- Do not edit anything outside `.dev/rules/`. A rule that implies a change to
+  the project's own configuration is a task, not a rule you may apply.

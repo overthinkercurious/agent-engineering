@@ -108,8 +108,9 @@ ae_target_ids()   { awk -F'\t' '{ if (!seen[$1]++) print $1 }' "$1"; }
 ae_target_field() { awk -F'\t' -v i="$2" -v k="$3" '$1==i && $2==k { print $3; exit }' "$1"; }
 
 # A target counts as present when any of its detect paths exists in the
-# project. Detection is filesystem evidence, not an env var, because the
-# scripts also run from `.dev/kit/` long after any agent set anything.
+# project. Detection is filesystem evidence rather than an env var, because
+# these scripts run from wherever the skill was installed, long after whatever
+# set that variable is gone.
 ae_target_detected() {
   local root="$1" detect="$2" p old_ifs
   [ -n "$detect" ] || return 1
@@ -176,6 +177,5 @@ ae_block_present() { [ -f "$1" ] && grep -qF "$AE_MARK_START" "$1"; }
 
 # Substitute the handful of placeholders templates are allowed to use.
 ae_render() {
-  sed -e "s|__KIT_VERSION__|${AE_KIT_VERSION:-unknown}|g" \
-      -e "s|__KIT_REPO__|${AE_KIT_REPO:-overthinkercurious/agent-engineering}|g" "$1"
+  sed -e "s|__KIT_REPO__|${AE_KIT_REPO:-overthinkercurious/agent-engineering}|g" "$1"
 }
