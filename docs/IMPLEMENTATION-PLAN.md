@@ -1,6 +1,6 @@
 # Agent Engineering Workflow Kit Implementation Plan
 
-Status: Implementation in progress; Phases 0a–6 complete, Phase 7 active (2026-09-13)  
+Status: Implementation in progress; Phases 0a–7 complete, Phase 8 active (2026-09-14)  
 Release target: Alpha after Phase 6; Beta after Phase 9; Stable after Phase 10 and external validation
 
 Phase 0a is closed by
@@ -21,7 +21,12 @@ Phase 6 is closed by
 [`docs/decisions/phase-6-acceptance.md`](decisions/phase-6-acceptance.md) —
 the Alpha configuration-precedence fixture now completes its full lifecycle
 through the runner, marking the Alpha release gate reached.
-Phase 7 is now active; later gates remain unopened.
+Phase 7 is closed by
+[`docs/decisions/phase-7-acceptance.md`](decisions/phase-7-acceptance.md) —
+all twelve specialists are authored against the common template, and the
+payment duplicate-charge Beta flagship passes with evidence across every
+required dimension.
+Phase 8 is now active; later gates remain unopened.
 
 ## Purpose
 

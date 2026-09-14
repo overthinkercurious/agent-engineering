@@ -1,0 +1,8 @@
+{
+  "name": "ae-beta-payment-duplicate-charge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test hidden/duplicate-charge.test.mjs"
+  }
+}
