@@ -1,0 +1,16 @@
+# agent-engineering:start
+schema: 1
+generated_at: "2026-09-13T00:00:00.000Z"
+source_revision: "1111111111111111111111111111111111111111"
+target: pr_ready_branch
+production_deployment_authorized: false
+requires:
+  - approval_digest_valid
+  - acceptance_evidence
+  - project_gates_pass
+  - independent_release_audit
+  - residual_risks_recorded
+judgment:
+  preview_command: not_required
+  rollback_or_recovery: "revert the candidate commit"
+# agent-engineering:end

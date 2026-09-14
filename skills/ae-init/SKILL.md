@@ -9,12 +9,13 @@ description: >
   codebase does or how it is structured - and also whenever agent-engineering
   is mentioned in a project that has no .dev/knowledge/ directory yet, even if
   they do not explicitly ask for it.
-owns: indexing a project and generating its knowledge base and rules
+metadata:
+  owns: "indexing a project and generating its knowledge, rules, and operating policy"
 ---
 
 # Initialize a project
 
-Four stages. Each has one owner, reads what the previous stage wrote, and
+Five stages. Each has one owner, reads what the previous stage wrote, and
 produces exactly one artifact.
 
 | # | Stage | Owner | Artifact |
@@ -23,11 +24,13 @@ produces exactly one artifact.
 | 2 | Analyze | `scripts/analyze.mjs` | `.dev/context/analysis.json` |
 | 3 | Knowledge | `scripts/knowledge.mjs` + you | `.dev/knowledge/*.md` |
 | 4 | Rules | `scripts/rules.mjs` + you | `.dev/rules/*.md` |
+| 5 | Policy | `scripts/policy.mjs` + you | `.dev/policy/*.yml` |
 | — | Verify | `scripts/doctor.sh` | an exit code |
 
 Stages 1 and 2 are fully deterministic — no judgment, so do not add any.
-Stages 3 and 4 are half deterministic: a script writes the facts, you write the
-judgment into the slots it leaves. **Never edit the facts.**
+Stages 3 through 5 are half deterministic: a script writes the evidence-backed
+defaults, you write the judgment into the slots it leaves. **Never edit the
+facts.**
 
 If `.dev/knowledge/` already exists, this is a re-run. Every stage is
 idempotent, so say what changed rather than announcing a fresh install.
@@ -105,6 +108,20 @@ This derives the rules whose enforcement already exists in the project. Then
 read `references/stages/rules.md` and add the stack-specific ones, under a
 single admission test: **a rule is admitted only if it names a command that
 fails when the rule is broken.**
+
+## Stage 5 — Policy
+
+```bash
+node "$AE/scripts/policy.mjs"
+```
+
+This derives conservative authority boundaries, executable quality gates,
+routing signals, and release requirements from the analysis. Then read
+`references/stages/policy.md` and fill only its `TODO (judgment)` values. The
+policy is the committed operating contract that `ae-forge` reads on every run.
+Show the unresolved decisions to the user. If they explicitly accept the safe
+defaults instead of providing project-specific answers, run `policy.mjs` again
+with `--confirm-conservative`. Never apply that confirmation flag implicitly.
 
 ## Verify
 

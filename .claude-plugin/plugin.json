@@ -1,0 +1,19 @@
+{
+  "name": "agent-engineering",
+  "version": "0.2.0",
+  "description": "Project-scoped product discovery and specialist engineering workflows for independently verified software delivery.",
+  "author": {
+    "name": "overthinkercurious"
+  },
+  "homepage": "https://github.com/overthinkercurious/agent-engineering",
+  "repository": "https://github.com/overthinkercurious/agent-engineering",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "skills",
+    "product-development",
+    "software-engineering",
+    "code-review"
+  ],
+  "skills": "./skills/"
+}

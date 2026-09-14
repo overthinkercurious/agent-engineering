@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-engineering.dev/schemas/approval-receipt.schema.json",
+  "title": "Digest-bound approval receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "contract_version", "run_id", "feature_id", "approved_at", "approved_by", "authority_event", "base_commit", "policy_digest", "artifacts"],
+  "properties": {
+    "schema": {"const": 2},
+    "contract_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"},
+    "feature_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"},
+    "approved_at": {"type": "string", "format": "date-time"},
+    "approved_by": {"type": "string", "minLength": 1},
+    "authority_event": {"const": "explicit_user_approval"},
+    "base_commit": {"type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"},
+    "policy_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

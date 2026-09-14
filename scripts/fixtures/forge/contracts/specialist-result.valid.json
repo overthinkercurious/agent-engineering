@@ -1,0 +1,41 @@
+{
+  "schema": 2,
+  "run_id": "alpha-config",
+  "dispatch_id": "probe-verify-1",
+  "specialist": "probe",
+  "status": "complete",
+  "outcome": "The candidate satisfies AC-config-explicit-wins for both callers",
+  "summary": "Fresh behavioral evidence covers precedence, omission, and explicit false.",
+  "evidence": [
+    {
+      "id": "receipt:config-regression",
+      "class": "MEASURED",
+      "claim": "The focused regression passed on the candidate"
+    }
+  ],
+  "assumptions": [],
+  "unknowns": [],
+  "confidence": {
+    "level": "high",
+    "basis": "The runner receipt covers direct and wrapper behavior on the candidate"
+  },
+  "artifact_changes": [
+    {
+      "path": "verification/probe.json",
+      "action": "none",
+      "sha256": null
+    }
+  ],
+  "findings": [],
+  "needs_specialist": [],
+  "usage": {
+    "schema": 1,
+    "calls": 1,
+    "input_tokens": {"value": null, "provenance": "unavailable"},
+    "output_tokens": {"value": null, "provenance": "unavailable"},
+    "reasoning_tokens": {"value": null, "provenance": "unavailable"},
+    "cached_tokens": {"value": null, "provenance": "unavailable"},
+    "charge_usd": {"value": null, "provenance": "unavailable"},
+    "wall_time_ms": 1200
+  }
+}

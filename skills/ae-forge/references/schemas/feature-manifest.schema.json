@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-engineering.dev/schemas/feature-manifest.schema.json",
+  "title": "Agent Engineering feature manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "contract_version", "run_id", "feature_id", "supersedes_run_id", "title", "kind", "signals", "created_at", "project_root", "base_commit", "host_constraints", "run_overrides", "policy_digest", "policy_source_digests", "context_digests", "policy_reasons", "execution_tier", "budget_tier", "model_profile", "diagnosis_required", "risk_assessment_path", "risk_assessment_sha256", "release_output", "required_commands", "required_evidence", "release_requires", "selected_specialists", "selected_lenses"],
+  "properties": {
+    "schema": {"const": 2},
+    "contract_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"},
+    "supersedes_run_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"},
+    "feature_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"},
+    "title": {"type": "string", "minLength": 1},
+    "kind": {"enum": ["idea", "feature", "bug", "refactor", "performance", "security", "audit"]},
+    "signals": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "created_at": {"type": "string", "format": "date-time"},
+    "project_root": {"type": "string", "minLength": 1},
+    "base_commit": {"type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"},
+    "host_constraints": {"$ref": "host-constraints.schema.json"},
+    "run_overrides": {
+      "type": "object", "additionalProperties": false,
+      "required": ["budget_tier", "execution_tier", "model_profile", "additional_specialists", "additional_lenses", "additional_required_commands", "release_output"],
+      "properties": {
+        "budget_tier": {"type": ["string", "null"], "enum": ["small", "medium", "large", null]},
+        "execution_tier": {"type": ["string", "null"], "enum": ["light", "standard", "deep", null]},
+        "model_profile": {"type": ["string", "null"], "enum": ["smaller-model-only", "mixed", null]},
+        "additional_specialists": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "additional_lenses": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "additional_required_commands": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "release_output": {"type": ["string", "null"], "enum": ["pr_ready_branch", null]}
+      }
+    },
+    "policy_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "policy_source_digests": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "context_digests": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "policy_reasons": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "execution_tier": {"enum": ["light", "standard", "deep"]},
+    "budget_tier": {"enum": ["small", "medium", "large"]},
+    "model_profile": {"enum": ["smaller-model-only", "mixed"]},
+    "diagnosis_required": {"type": "boolean"},
+    "risk_assessment_path": {"const": "context/risk-assessment.json"},
+    "risk_assessment_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "release_output": {"const": "pr_ready_branch"},
+    "required_commands": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "required_evidence": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "release_requires": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "selected_specialists": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "selected_lenses": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+  }
+}

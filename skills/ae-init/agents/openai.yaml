@@ -1,0 +1,7 @@
+interface:
+  display_name: "AE Init"
+  short_description: "Build trusted project context and policy"
+  default_prompt: "Use $ae-init to index and configure this project."
+
+policy:
+  allow_implicit_invocation: true

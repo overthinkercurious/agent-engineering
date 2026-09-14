@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-engineering.dev/schemas/routing-policy.schema.json",
+  "title": "Project routing policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generated_at", "source_revision", "observed_filename_risk_signals", "defaults", "judgment"],
+  "properties": {
+    "schema": {"const": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "source_revision": {"type": "string", "minLength": 1},
+    "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "judgment_provenance": {"type": "object", "additionalProperties": {"enum": ["unresolved", "preserved_user_decision", "user_confirmed_conservative_default"]}},
+    "observed_filename_risk_signals": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_specialist", "final_specialist", "completed_diff_must_be_reclassified"],
+      "properties": {
+        "plan_specialist": {"const": "probe"},
+        "final_specialist": {"const": "judge"},
+        "completed_diff_must_be_reclassified": {"const": true}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_tier", "budget_tier", "model_profile", "required_specialists", "required_lenses"],
+      "properties": {
+        "execution_tier": {"enum": ["light", "standard", "deep"]},
+        "budget_tier": {"enum": ["small", "medium", "large"]},
+        "model_profile": {"enum": ["smaller-model-only", "mixed"]},
+        "required_specialists": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "required_lenses": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "judgment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["always_route", "specialist_escalations"],
+      "properties": {
+        "always_route": {"type": "string", "minLength": 1},
+        "specialist_escalations": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

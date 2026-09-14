@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-engineering.dev/schemas/effective-policy.schema.json",
+  "title": "Compiled effective project policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "contract_version", "compiled_at", "ready", "unresolved_material", "source_digests", "context_digests", "policies", "defaults", "resolved", "reasons", "provenance"],
+  "properties": {
+    "schema": {"const": 1},
+    "contract_version": {"const": 1},
+    "compiled_at": {"type": "string", "format": "date-time"},
+    "ready": {"type": "boolean"},
+    "unresolved_material": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "source_digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority.yml", "routing.yml", "quality-gates.yml", "release.yml"],
+      "properties": {
+        "authority.yml": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "routing.yml": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "quality-gates.yml": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "release.yml": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "context_digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["knowledge_index", "rules_index"],
+      "properties": {
+        "knowledge_index": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "rules_index": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "routing", "quality", "release"],
+      "properties": {
+        "authority": {"$ref": "authority-policy.schema.json"},
+        "routing": {"$ref": "routing-policy.schema.json"},
+        "quality": {"$ref": "quality-policy.schema.json"},
+        "release": {"$ref": "release-policy.schema.json"}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_tier", "model_profile", "budget_tier", "release_output"],
+      "properties": {
+        "execution_tier": {"enum": ["light", "standard", "deep"]},
+        "model_profile": {"enum": ["smaller-model-only", "mixed"]},
+        "budget_tier": {"enum": ["small", "medium", "large"]},
+        "release_output": {"const": "pr_ready_branch"}
+      }
+    },
+    "resolved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "routing", "quality", "release"],
+      "properties": {
+        "authority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed_tools", "allowed_write_roots", "network", "requires_user_approval_for"],
+          "properties": {
+            "allowed_tools": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "allowed_write_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "network": {"type": "boolean"},
+            "requires_user_approval_for": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          }
+        },
+        "routing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["execution_tier", "budget_tier", "model_profile", "required_specialists", "required_lenses"],
+          "properties": {
+            "execution_tier": {"enum": ["light", "standard", "deep"]},
+            "budget_tier": {"enum": ["small", "medium", "large"]},
+            "model_profile": {"enum": ["smaller-model-only", "mixed"]},
+            "required_specialists": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "required_lenses": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          }
+        },
+        "quality": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required_commands", "required_evidence", "evidence_rules"],
+          "properties": {
+            "required_commands": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "required_evidence": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "evidence_rules": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["bind_to_candidate_revision", "model_pass_is_advisory", "heuristics_must_be_labeled"],
+              "properties": {
+                "bind_to_candidate_revision": {"const": true},
+                "model_pass_is_advisory": {"const": true},
+                "heuristics_must_be_labeled": {"const": true}
+              }
+            }
+          }
+        },
+        "release": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["output", "production_deployment_authorized", "requires"],
+          "properties": {
+            "output": {"const": "pr_ready_branch"},
+            "production_deployment_authorized": {"const": false},
+            "requires": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          }
+        }
+      }
+    },
+    "reasons": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "provenance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "source", "source_digest", "default_reason"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1},
+          "source_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "default_reason": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

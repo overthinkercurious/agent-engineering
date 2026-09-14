@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-engineering.dev/schemas/dispatch-record.schema.json",
+  "title": "Auditable specialist dispatch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "dispatch_id", "run_id", "specialist", "stage", "status", "validation", "reason", "attempt", "retry_of", "parent_dispatch_id", "routing_chain", "packet_sha256", "brief_sha256", "dependency_key", "workflow_sha256", "candidate_identity", "host_config_sha256", "host", "started_at", "finished_at", "elapsed_ms", "budget_impact", "result_sha256", "failure"],
+  "properties": {
+    "schema": {"const": 1},
+    "dispatch_id": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$"},
+    "run_id": {"type": "string", "minLength": 1},
+    "specialist": {"type": "string", "minLength": 1},
+    "stage": {"type": "string", "minLength": 1},
+    "status": {"enum": ["acknowledged", "failed", "blocked", "needs_specialist"]},
+    "validation": {"enum": ["passed", "failed"]},
+    "reason": {"type": "string", "minLength": 1},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 2},
+    "retry_of": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9_.:-]{1,128}$"},
+    "parent_dispatch_id": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9_.:-]{1,128}$"},
+    "routing_chain": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "packet_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "brief_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "dependency_key": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "workflow_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "candidate_identity": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "host_config_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "host": {"$ref": "host-adapter.schema.json"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": "string", "format": "date-time"},
+    "elapsed_ms": {"type": "integer", "minimum": 0},
+    "budget_impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reservation", "actual", "exceeded"],
+      "properties": {
+        "reservation": {"$ref": "budget.schema.json#/$defs/counters"},
+        "actual": {"$ref": "budget.schema.json#/$defs/counters"},
+        "exceeded": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "result_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "failure": {"type": ["string", "null"], "maxLength": 4096}
+  }
+}

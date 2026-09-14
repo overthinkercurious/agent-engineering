@@ -99,9 +99,13 @@ EOF
 cat > Dockerfile <<'EOF'
 FROM node:20
 EOF
+cat > .gitignore <<'EOF'
+.dev/context/
+.dev/work/
+EOF
 git init -q . && git add -A && git -c user.email=t@t -c user.name=t commit -qm init
 
-J="$WORK/out.json"
+J="$P/.dev/context/analysis.json"
 node "$ANALYZE" --root "$P" --out "$J" >/dev/null 2>&1
 q(){ node -e "const d=require('$J'); const v=($1); process.stdout.write(String(v))" 2>/dev/null; }
 # Equality checks go through this rather than `check`, which evals its argument
@@ -159,73 +163,89 @@ check "states its caveats"           "[ \$(q 'd.coverage.caveats.length') -ge 3 
 check "pins the commit"              "[ -n \"\$(q 'd.git.head')\" ]"
 
 head_ "modes"
-rm -f "$WORK/none.json"
-node "$ANALYZE" --root "$P" --out "$WORK/none.json" --estimate >/dev/null 2>&1
-check "--estimate writes nothing"    "[ ! -f '$WORK/none.json' ]"
-node "$ANALYZE" --root "$P" --out "$WORK/full.json" --depth full >/dev/null 2>&1
-check "--depth full reads all code"  "[ \$(node -e \"const d=require('$WORK/full.json');process.stdout.write(String(d.selection.files.length===d.coverage.code_files))\") = 'true' ]"
-node "$ANALYZE" --root "$P" --out "$WORK/tiny.json" --budget-tokens 1 >/dev/null 2>&1
-check "tiny budget reports deferrals" "[ \$(node -e \"const d=require('$WORK/tiny.json');process.stdout.write(String(d.selection.deferred_high_signal.length))\") -ge 1 ]"
+rm -f "$P/.dev/context/none.json"
+node "$ANALYZE" --root "$P" --out "$P/.dev/context/none.json" --estimate >/dev/null 2>&1
+check "--estimate writes nothing"    "[ ! -f '$P/.dev/context/none.json' ]"
+node "$ANALYZE" --root "$P" --out "$P/.dev/context/full.json" --depth full >/dev/null 2>&1
+check "--depth full reads all code"  "[ \$(node -e \"const d=require('$P/.dev/context/full.json');process.stdout.write(String(d.selection.files.length===d.coverage.code_files))\") = 'true' ]"
+node "$ANALYZE" --root "$P" --out "$P/.dev/context/tiny.json" --budget-tokens 1 >/dev/null 2>&1
+check "tiny budget reports deferrals" "[ \$(node -e \"const d=require('$P/.dev/context/tiny.json');process.stdout.write(String(d.selection.deferred_high_signal.length))\") -ge 1 ]"
+node "$ANALYZE" --root "$P" --out "$WORK/escape-analysis.json" >/dev/null 2>&1
+check "analysis output cannot escape project root" "[ $? -eq 2 ] && [ ! -e '$WORK/escape-analysis.json' ]"
 
 head_ "runs outside a git repo"
 NG="$WORK/nogit"; mkdir -p "$NG/src"; cp "$P/package.json" "$NG/"; cp "$P/src/index.js" "$NG/src/"
-node "$ANALYZE" --root "$NG" --out "$WORK/ng.json" >/dev/null 2>&1
-check "still produces analysis"      "[ -f '$WORK/ng.json' ]"
-eq    "reports not-a-repo"           "d.git.is_repo" "false" "$WORK/ng.json"
+node "$ANALYZE" --root "$NG" --out "$NG/.dev/context/analysis.json" >/dev/null 2>&1
+check "still produces analysis"      "[ -f '$NG/.dev/context/analysis.json' ]"
+eq    "reports not-a-repo"           "d.git.is_repo" "false" "$NG/.dev/context/analysis.json"
 # Without this the manual directory walk can return zero files and every
 # assertion above still passes, which is how an ESM require() bug once shipped.
-check "walk still finds files"       "[ \$(node -e \"const d=require('$WORK/ng.json');process.stdout.write(String(d.inventory.total_files))\") -ge 2 ]"
-check "walk still parses code"       "[ \$(node -e \"const d=require('$WORK/ng.json');process.stdout.write(String(d.coverage.code_files))\") -ge 1 ]"
+check "walk still finds files"       "[ \$(node -e \"const d=require('$NG/.dev/context/analysis.json');process.stdout.write(String(d.inventory.total_files))\") -ge 2 ]"
+check "walk still parses code"       "[ \$(node -e \"const d=require('$NG/.dev/context/analysis.json');process.stdout.write(String(d.coverage.code_files))\") -ge 1 ]"
 
 # ---------------------------------------------------------------------------
 KNOW="$KIT/skills/ae-init/scripts/knowledge.mjs"
 RULES="$KIT/skills/ae-init/scripts/rules.mjs"
 
 head_ "stage 3: knowledge base"
-node "$KNOW" --root "$P" --in "$J" --out "$WORK/kb" --quiet >/dev/null 2>&1; rc=$?
+KB="$P/.dev/knowledge"
+node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1; rc=$?
 check "exits 0"                      "[ $rc -eq 0 ]"
-for f in 00-index 10-stack 20-commands 30-architecture 40-risks 50-conventions; do
-  check "$f.md written"              "[ -s '$WORK/kb/$f.md' ]"
+for f in 00-index 05-product 10-stack 20-commands 30-architecture 40-risks 50-conventions; do
+  check "$f.md written"              "[ -s '$KB/$f.md' ]"
 done
-check "facts: npm script table"      "grep -q 'jest' '$WORK/kb/20-commands.md'"
-check "facts: route from code"       "grep -q '/users' '$WORK/kb/30-architecture.md'"
-check "facts: NOT the README route"  "! grep -q 'from-the-readme' '$WORK/kb/30-architecture.md'"
-check "facts: auth in risks"         "grep -q 'src/auth.js' '$WORK/kb/40-risks.md'"
-check "leaves judgment slots"        "grep -q 'TODO (judgment)' '$WORK/kb/30-architecture.md'"
-check "title sits outside the block" "[ \"\$(head -1 '$WORK/kb/10-stack.md')\" = '# Stack' ]"
-check "index links every doc"        "grep -q '50-conventions.md' '$WORK/kb/00-index.md'"
-check "records its caveats"          "grep -q 'lower bound' '$WORK/kb/00-index.md'"
+check "facts: npm script table"      "grep -q 'jest' '$KB/20-commands.md'"
+check "facts: route from code"       "grep -q '/users' '$KB/30-architecture.md'"
+check "facts: NOT the README route"  "! grep -q 'from-the-readme' '$KB/30-architecture.md'"
+check "facts: auth in risks"         "grep -q 'src/auth.js' '$KB/40-risks.md'"
+check "leaves judgment slots"        "grep -q 'TODO (judgment)' '$KB/30-architecture.md'"
+check "title sits outside the block" "[ \"\$(head -1 '$KB/10-stack.md')\" = '# Stack' ]"
+check "index links every doc"        "grep -q '50-conventions.md' '$KB/00-index.md'"
+check "index links product context"  "grep -q '05-product.md' '$KB/00-index.md'"
+check "records its caveats"          "grep -q 'lower bound' '$KB/00-index.md'"
+
+node -e 'const fs=require("fs");const p=process.argv[1];const s=fs.readFileSync(p,"utf8").replace(/(<!-- agent-engineering:judgment:[a-f0-9]{16}:start -->)[\s\S]*?(<!-- agent-engineering:judgment:\w{16}:end -->)/,"$1\nProject control flow is documented from reviewed source.\n$2");fs.writeFileSync(p,s)' "$KB/30-architecture.md"
+node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1
+check "completed knowledge judgment survives regeneration" "grep -q 'Project control flow is documented' '$KB/30-architecture.md'"
 
 head_ "stage 3: re-running preserves human edits"
 printf '
 HAND-WRITTEN NOTE
-' >> "$WORK/kb/10-stack.md"
-node "$KNOW" --root "$P" --in "$J" --out "$WORK/kb" --quiet >/dev/null 2>&1
-check "note survives regeneration"   "grep -q 'HAND-WRITTEN NOTE' '$WORK/kb/10-stack.md'"
-check "facts still present"          "grep -q 'javascript' '$WORK/kb/10-stack.md'"
-B1="$(md5sum < "$WORK/kb/20-commands.md")"
-node "$KNOW" --root "$P" --in "$J" --out "$WORK/kb" --quiet >/dev/null 2>&1
-check "idempotent"                   "[ \"$B1\" = \"\$(md5sum < '$WORK/kb/20-commands.md')\" ]"
+' >> "$KB/10-stack.md"
+node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1
+check "note survives regeneration"   "grep -q 'HAND-WRITTEN NOTE' '$KB/10-stack.md'"
+check "facts still present"          "grep -q 'javascript' '$KB/10-stack.md'"
+B1="$(md5sum < "$KB/20-commands.md")"
+node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1
+check "idempotent"                   "[ \"$B1\" = \"\$(md5sum < '$KB/20-commands.md')\" ]"
+node "$KNOW" --root "$P" --in "$J" --out "$WORK/escape-knowledge" --quiet >/dev/null 2>&1
+check "knowledge output cannot escape project root" "[ $? -eq 2 ] && [ ! -e '$WORK/escape-knowledge' ]"
 
 head_ "stage 3: refuses a half-open block"
 printf '# X
 <!-- agent-engineering:start -->
 broken
-' > "$WORK/kb/10-stack.md"
-node "$KNOW" --root "$P" --in "$J" --out "$WORK/kb" --quiet >/dev/null 2>&1; rc=$?
+' > "$KB/10-stack.md"
+node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1; rc=$?
 check "exits non-zero"               "[ $rc -ne 0 ]"
-check "leaves the file untouched"    "grep -q 'broken' '$WORK/kb/10-stack.md'"
+check "leaves the file untouched"    "grep -q 'broken' '$KB/10-stack.md'"
 
 head_ "stage 4: rules"
-node "$RULES" --root "$P" --in "$J" --out "$WORK/rules" --quiet >/dev/null 2>&1; rc=$?
+RULEOUT="$P/.dev/rules"
+node "$RULES" --root "$P" --in "$J" --out "$RULEOUT" --quiet >/dev/null 2>&1; rc=$?
 check "exits 0"                      "[ $rc -eq 0 ]"
-check "index written"                "[ -s '$WORK/rules/00-index.md' ]"
-check "derives the typescript rule"  "[ -s '$WORK/rules/10-typescript.md' ]"
-check "gate names a real command"    "grep -q 'npm run test' '$WORK/rules/00-index.md'"
-check "typecheck rule cites tsc"     "grep -qE 'tsc|typecheck' '$WORK/rules/10-typescript.md'"
-check "states the admission test"    "grep -q 'names a command that fails' '$WORK/rules/00-index.md'"
-check "states the ratchet"           "grep -q 'ratchet' '$WORK/rules/00-index.md'"
-check "lists what CI runs"           "grep -q 'npm test' '$WORK/rules/00-index.md'"
+check "index written"                "[ -s '$RULEOUT/00-index.md' ]"
+check "derives the typescript rule"  "[ -s '$RULEOUT/10-typescript.md' ]"
+check "gate names a real command"    "grep -q 'npm run test' '$RULEOUT/00-index.md'"
+check "typecheck rule cites tsc"     "grep -qE 'tsc|typecheck' '$RULEOUT/10-typescript.md'"
+check "states the admission test"    "grep -q 'names a command that fails' '$RULEOUT/00-index.md'"
+check "states the ratchet"           "grep -q 'ratchet' '$RULEOUT/00-index.md'"
+check "lists what CI runs"           "grep -q 'npm test' '$RULEOUT/00-index.md'"
+node -e 'const fs=require("fs");const p=process.argv[1];const s=fs.readFileSync(p,"utf8").replace(/(<!-- agent-engineering:judgment:10-typescript:start -->)[\s\S]*?(<!-- agent-engineering:judgment:10-typescript:end -->)/,"$1\nNo additional stack-specific rule is currently justified.\n$2");fs.writeFileSync(p,s)' "$RULEOUT/10-typescript.md"
+node "$RULES" --root "$P" --in "$J" --out "$RULEOUT" --quiet >/dev/null 2>&1
+check "completed rules judgment survives regeneration" "grep -q 'No additional stack-specific rule' '$RULEOUT/10-typescript.md'"
+node "$RULES" --root "$P" --in "$J" --out "$WORK/escape-rules" --quiet >/dev/null 2>&1
+check "rules output cannot escape project root" "[ $? -eq 2 ] && [ ! -e '$WORK/escape-rules' ]"
 
 head_ "stage 4: a project with no gates says so"
 BARE="$WORK/bare"; mkdir -p "$BARE"
@@ -233,16 +253,68 @@ printf '{
   \"name\": \"bare\"
 }
 ' > "$BARE/package.json"
-node "$ANALYZE" --root "$BARE" --out "$WORK/bare.json" >/dev/null 2>&1
-node "$RULES" --root "$BARE" --in "$WORK/bare.json" --out "$WORK/bare-rules" --quiet >/dev/null 2>&1
-check "admits no rules"              "! ls '$WORK/bare-rules'/10-*.md >/dev/null 2>&1"
-check "says nothing is verifiable"   "grep -q 'No test, lint, typecheck or build command' '$WORK/bare-rules/00-index.md'"
+node "$ANALYZE" --root "$BARE" --out "$BARE/.dev/context/analysis.json" >/dev/null 2>&1
+node "$RULES" --root "$BARE" --in "$BARE/.dev/context/analysis.json" --out "$BARE/.dev/rules" --quiet >/dev/null 2>&1
+check "admits no rules"              "! ls '$BARE/.dev/rules'/10-*.md >/dev/null 2>&1"
+check "says nothing is verifiable"   "grep -q 'No test, lint, typecheck or build command' '$BARE/.dev/rules/00-index.md'"
+
+POLICY="$KIT/skills/ae-init/scripts/policy.mjs"
+head_ "stage 5: project policy"
+POLICYOUT="$P/.dev/policy"
+node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1; rc=$?
+check "exits 0"                      "[ $rc -eq 0 ]"
+for f in authority quality-gates routing release; do
+  check "$f.yml written"             "[ -s '$POLICYOUT/$f.yml' ]"
+done
+check "records a real test gate"     "grep -q 'npm run test' '$POLICYOUT/quality-gates.yml'"
+check "defaults to Probe and Judge"  "grep -q 'plan_specialist: probe' '$POLICYOUT/routing.yml' && grep -q 'final_specialist: judge' '$POLICYOUT/routing.yml'"
+check "production deploy is gated"   "grep -q 'production_deployment_authorized: false' '$POLICYOUT/release.yml'"
+check "leaves judgment explicit"     "grep -q 'TODO (judgment)' '$POLICYOUT/authority.yml'"
+check "records input digest and field provenance" "grep -q 'input_digest:' '$POLICYOUT/authority.yml' && grep -q 'judgment_provenance:' '$POLICYOUT/authority.yml'"
+
+node -e 'const fs=require("fs");const p=process.argv[1];const s=fs.readFileSync(p,"utf8").replace("project_maturity: \"TODO (judgment)\"","project_maturity: \"production\"");fs.writeFileSync(p,s)' "$POLICYOUT/authority.yml"
+node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
+check "regeneration preserves a completed user decision" "grep -q 'project_maturity:.*production' '$POLICYOUT/authority.yml' && grep -q 'project_maturity: preserved_user_decision' '$POLICYOUT/authority.yml'"
+node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --confirm-conservative --quiet >/dev/null 2>&1
+check "confirmation resolves every material policy decision" "! grep -q 'TODO (judgment)' '$POLICYOUT/'*.yml"
+P1="$(md5sum "$POLICYOUT"/*.yml)"
+node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
+check "confirmed policy regeneration is idempotent" "[ \"$P1\" = \"\$(md5sum '$POLICYOUT'/*.yml)\" ]"
+
+FORGE="$KIT/skills/ae-forge/scripts/forge.mjs"
+node "$FORGE" start --root "$P" --title "Initialized fixture" --kind bug --id init-to-forge > "$P/.dev/context/forge.json" 2>&1; rc=$?
+check "confirmed ae-init output is consumed by Forge" "[ $rc -eq 0 ] && grep -q '\"budget_tier\": \"small\"' '$P/.dev/work/init-to-forge/manifest.json' && grep -q 'npm run test' '$P/.dev/work/init-to-forge/manifest.json'"
+
+node -e 'const fs=require("fs");const p=process.argv[1];const d=JSON.parse(fs.readFileSync(p,"utf8"));d.scripts.typecheck="tsc --noEmit";fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")' "$P/package.json"
+node "$ANALYZE" --root "$P" --out "$J" >/dev/null 2>&1
+node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
+check "changed source facts refresh generated gates" "grep -q 'npm run typecheck' '$POLICYOUT/quality-gates.yml'"
+check "source refresh still preserves user policy decisions" "grep -q 'project_maturity:.*production' '$POLICYOUT/authority.yml'"
+node "$FORGE" check --root "$P" --id init-to-forge > "$P/.dev/context/forge-check.json" 2>&1
+check "source refresh invalidates the earlier effective policy" "[ $? -eq 1 ] && grep -q 'stale_effective_policy' '$P/.dev/context/forge-check.json'"
+
+cp "$POLICYOUT/authority.yml" "$P/.dev/context/authority.backup"
+printf '\n# agent-engineering:start\n' >> "$POLICYOUT/authority.yml"
+CONFLICT_HASH="$(md5sum < "$POLICYOUT/authority.yml")"
+node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
+check "conflicting policy markers fail without rewriting" "[ $? -ne 0 ] && [ \"$CONFLICT_HASH\" = \"\$(md5sum < '$POLICYOUT/authority.yml')\" ]"
+cp "$P/.dev/context/authority.backup" "$POLICYOUT/authority.yml"
+
+node "$POLICY" --root "$P" --in "$J" --out "$WORK/escape-policy" --quiet >/dev/null 2>&1
+check "policy output cannot escape project root" "[ $? -eq 2 ] && [ ! -e '$WORK/escape-policy' ]"
+
+printf '\n' >> "$J"
+DOCTOR="$KIT/skills/ae-init/scripts/doctor.sh"
+bash "$DOCTOR" "$P" > "$P/.dev/context/doctor.txt" 2>&1
+check "doctor diagnoses policy generated from stale analysis" "grep -q 'stale policy generated from an older analysis' '$P/.dev/context/doctor.txt'"
 
 head_ "stages refuse to run before analysis"
 node "$KNOW" --root "$WORK" --in "$WORK/does-not-exist.json" --quiet >/dev/null 2>&1
 check "knowledge exits non-zero"     "[ $? -ne 0 ]"
 node "$RULES" --root "$WORK" --in "$WORK/does-not-exist.json" --quiet >/dev/null 2>&1
 check "rules exits non-zero"         "[ $? -ne 0 ]"
+node "$POLICY" --root "$WORK" --in "$WORK/does-not-exist.json" --quiet >/dev/null 2>&1
+check "policy exits non-zero"        "[ $? -ne 0 ]"
 
 printf '\n'
 if [ "$FAIL" -gt 0 ]; then printf '\033[31m%d failed\033[0m, %d passed\n\n' "$FAIL" "$PASS"; exit 1; fi

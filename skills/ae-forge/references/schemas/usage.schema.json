@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-engineering.dev/schemas/usage.schema.json",
+  "title": "Measured, estimated, or unavailable model usage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "calls", "input_tokens", "output_tokens", "reasoning_tokens", "cached_tokens", "charge_usd", "wall_time_ms"],
+  "properties": {
+    "schema": {"const": 1},
+    "calls": {"type": "integer", "minimum": 0},
+    "input_tokens": {"$ref": "#/$defs/metric"},
+    "output_tokens": {"$ref": "#/$defs/metric"},
+    "reasoning_tokens": {"$ref": "#/$defs/metric"},
+    "cached_tokens": {"$ref": "#/$defs/metric"},
+    "charge_usd": {"$ref": "#/$defs/metric"},
+    "wall_time_ms": {"type": "integer", "minimum": 0}
+  },
+  "$defs": {
+    "metric": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "provenance"],
+          "properties": {
+            "value": {"type": "number", "minimum": 0},
+            "provenance": {"enum": ["measured", "estimated"]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "provenance"],
+          "properties": {
+            "value": {"const": null},
+            "provenance": {"const": "unavailable"}
+          }
+        }
+      ]
+    }
+  }
+}

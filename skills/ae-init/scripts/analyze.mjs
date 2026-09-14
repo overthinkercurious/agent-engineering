@@ -17,7 +17,7 @@
 
 import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { join, relative, extname, basename, dirname, sep } from 'node:path'
+import { join, relative, extname, basename, dirname, isAbsolute, resolve, sep } from 'node:path'
 
 // ---------------------------------------------------------------- args ------
 
@@ -31,7 +31,7 @@ const has = (name) => argv.includes(name)
 const ROOT = resolveRoot(arg('--root', process.cwd()))
 const BUDGET = parseInt(arg('--budget-tokens', '120000'), 10)
 const DEPTH = arg('--depth', 'ranked')
-const OUT = arg('--out', join(ROOT, '.dev', 'context', 'analysis.json'))
+const OUT = resolve(arg('--out', join(ROOT, '.dev', 'context', 'analysis.json')))
 const ESTIMATE_ONLY = has('--estimate')
 
 function resolveRoot(p) {
@@ -39,7 +39,13 @@ function resolveRoot(p) {
     return execFileSync('git', ['-C', p, 'rev-parse', '--show-toplevel'], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
     }).trim()
-  } catch { return p }
+  } catch { return resolve(p) }
+}
+
+const outRelative = relative(ROOT, OUT)
+if (outRelative.startsWith('..') || isAbsolute(outRelative)) {
+  process.stderr.write(`--out escapes the project root: ${OUT}\n`)
+  process.exit(2)
 }
 
 const sh = (cmd, args) => {

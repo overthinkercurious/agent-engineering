@@ -1,6 +1,6 @@
 # Stage 4 — Rules
 
-Owner of `.dev/rules/`. Runs last, after the knowledge base exists.
+Owner of `.dev/rules/`. Runs after the knowledge base and before project policy.
 
 `rules.mjs` has already derived the rules whose enforcement this project
 already has. Your job is to add the stack-specific ones — and to refuse most of
@@ -22,8 +22,8 @@ nothing at all. Three rules with exit codes behind them beat thirty without.
 | "Handlers must validate input" | reject as written; admit if a lint rule or a test asserts it |
 | "Migrations must be reversible" | admit only if a command checks it |
 
-If a rule matters but has no enforcement, do not write it as a rule. Write it
-as a task in `.dev/tasks/`: the work is to build the check.
+If a rule matters but has no enforcement, do not write it as a rule. Record the
+gap in project notes with the command or test needed to make it enforceable.
 
 ## 1. Research the stack, do not recall it
 

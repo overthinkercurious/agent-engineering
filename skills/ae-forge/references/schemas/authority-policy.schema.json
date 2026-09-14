@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-engineering.dev/schemas/authority-policy.schema.json",
+  "title": "Project authority policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generated_at", "source_revision", "agent_may", "agent_must_escalate", "judgment"],
+  "properties": {
+    "schema": {"const": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "source_revision": {"type": "string", "minLength": 1},
+    "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "judgment_provenance": {"type": "object", "additionalProperties": {"enum": ["unresolved", "preserved_user_decision", "user_confirmed_conservative_default"]}},
+    "agent_may": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "agent_must_escalate": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_tools", "allowed_write_roots", "network", "max_budget_tier", "requires_user_approval_for"],
+      "properties": {
+        "allowed_tools": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "allowed_write_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "network": {"type": "boolean"},
+        "max_budget_tier": {"enum": ["small", "medium", "large"]},
+        "requires_user_approval_for": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "judgment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_maturity", "change_tolerance", "additional_authority"],
+      "properties": {
+        "project_maturity": {"type": "string", "minLength": 1},
+        "change_tolerance": {"type": "string", "minLength": 1},
+        "additional_authority": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+interface:
+  display_name: "AE Forge"
+  short_description: "Forge intent into independently verified software"
+  default_prompt: "Use $ae-forge to turn this request into a verified product change."
+
+policy:
+  allow_implicit_invocation: true

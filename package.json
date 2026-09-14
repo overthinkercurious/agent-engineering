@@ -1,6 +1,7 @@
 {
   "name": "agent-engineering",
-  "description": "A project-indexing skill for AI coding agents: reads a codebase once and writes the knowledge base and rules later sessions load.",
+  "version": "0.2.0",
+  "description": "A project-scoped product and engineering system that turns intent into independently verified software.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -16,12 +17,15 @@
   ],
   "files": [
     "skills/",
+    ".claude-plugin/",
+    ".codex-plugin/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "kit-version.txt"
   ],
   "private": false,
   "scripts": {
     "validate": "bash scripts/validate-suite.sh",
-    "test": "bash scripts/validate-suite.sh && bash scripts/test-scaffold.sh && bash scripts/test-artifacts.sh"
+    "test": "bash scripts/validate-suite.sh && node scripts/validate-forge.mjs && node scripts/test-contracts.mjs && node scripts/test-risk.mjs && bash scripts/test-scaffold.sh && bash scripts/test-artifacts.sh && bash scripts/test-forge.sh && bash scripts/test-specialist-vault.sh && bash scripts/test-specialist-shift.sh && bash scripts/test-specialist-signal.sh && bash scripts/test-specialist-spine.sh && bash scripts/test-specialist-core.sh && bash scripts/test-specialist-judge.sh && bash scripts/test-specialist-scout.sh && bash scripts/test-specialist-pulse.sh && bash scripts/test-specialist-flow.sh && bash scripts/test-specialist-rift.sh && bash scripts/test-specialist-pixel.sh"
   }
 }

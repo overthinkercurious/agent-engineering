@@ -19,7 +19,7 @@
 #
 # Tools fully covered by the `agents-md` entry below (same instruction file,
 # same skills dir, so a separate block would be a duplicate row):
-#   codex, cursor, antigravity, antigravity-cli, amp, opencode, github-copilot,
+#   codex, cursor, antigravity-cli, amp, opencode, github-copilot,
 #   droid, kilo, roo, openhands, goose, continue, qwen-code, trae, zencoder
 #
 # INSTALL NOTE (not read by any script, but the reason this kit works on
@@ -55,6 +55,16 @@ targets:
     confidence: high
     notes: "Claude Code reads CLAUDE.md and does NOT read AGENTS.md. Its docs name an @AGENTS.md import as the bridge, and specifically recommend the import over a symlink on Windows."
     verified: "2026-09-11 code.claude.com/docs/en/memory"
+
+  antigravity:
+    display: "Google Antigravity IDE"
+    instruction_file: .agents/rules/agent-engineering.md
+    pointer_style: block
+    skills_dir: .agents/skills
+    detect: ".agents/skills,.agents/rules,.agent/skills,.agent/rules,.agents/plugins,_agents/plugins"
+    confidence: high
+    notes: "Antigravity 2.0 loads workspace skills from .agents/skills and workspace rules from .agents/rules. Both .agent paths remain backward-compatible, but new output uses the current .agents paths."
+    verified: "2026-09-12 antigravity.google/docs/skills and antigravity.google/docs/rules-workflows"
 
   gemini-cli:
     display: "Gemini CLI"

@@ -1,164 +1,194 @@
-# agent-engineering
+# Agent Engineering
 
-One skill that reads a codebase once and writes down what it found, so every
-later AI session loads the answer instead of re-deriving it badly.
+A project-scoped product and engineering team for AI coding tools. It turns a
+rough idea, feature, defect, or technical change into an approved plan and a
+verified implementation while keeping the project's context between sessions.
 
-Works across AI coding tools. Stays out of your git history.
+The kit exposes two public skills:
+
+- **`ae-init`** indexes the repository and creates its durable knowledge,
+  enforceable rules, and operating policy.
+- **`ae-forge`** receives every product and engineering request, selects the
+  smallest qualified specialist team, and governs the work through approval,
+  implementation, independent audit, and verification.
+
+Scout, Pulse, Rift, Flow, Spine, Pixel, Core, Shift, Vault, Signal, Probe, and
+Judge are internal specialist workflows. Focused lenses such as Threat,
+Tenancy, Integrity, Access, Speed, and Recover add review depth without loading
+another broad persona. They have unique ownership and communicate through
+artifacts rather than directly invoking one another.
 
 ## Install
 
+Install project-scoped skills into every compatible AI tool detected by the
+[Skills CLI](https://github.com/vercel-labs/skills):
+
 ```bash
-npx skills add overthinkercurious/agent-engineering --copy -y
+npx skills add overthinkercurious/agent-engineering --all --copy -y
 ```
 
-Then, inside your agent:
+`--copy` creates real directories. This avoids broken skill symlinks when a
+project is cloned on Windows. The installed `ae-*` directories are treated as
+dependencies and are added to `.gitignore`; `skills-lock.json` records the
+version to restore.
 
-> index this project with ae-init
+This repository also carries native plugin manifests for Codex
+(`.codex-plugin/plugin.json`) and Claude Code
+(`.claude-plugin/plugin.json` plus a local marketplace). A local Codex
+marketplace can point at this checkout and install
+`agent-engineering@<marketplace-name>`. Claude Code can add this repository as
+a marketplace and install `agent-engineering@agent-engineering`.
 
-Or type `/ae-init` in Claude Code.
+The portable path covers tools that implement Agent Skills and the instruction
+files listed in `skills/ae-init/references/targets.yml`. No package format can
+make a tool load skills when that tool exposes no skill or instruction
+interface; adding a supported tool is a data change in `targets.yml`, not a
+rewrite of the kit.
 
-**`--copy` is not optional.** By default the skills CLI symlinks each tool's
-directory to `.agents/skills/`. Git for Windows does not create symlinks unless
-Developer Mode is on, so a symlink clones back as a text stub and the skill
-silently disappears. `--copy` writes real directories.
+After installation, ask the agent:
 
-**This repository is private**, so `npx skills add` needs a GitHub credential
-that can read it — `gh auth login`, or a `GITHUB_TOKEN` in the environment.
-Without one the CLI reports the repo as not found.
+> Initialize this project with ae-init.
 
-### Supported tools
+Then use one entry point for later work:
 
-| Tool | Skills land in | Reads |
+> Use ae-forge to shape and build this feature: ...
+
+### Google Antigravity IDE
+
+Install only for Antigravity when you do not need the other agent targets:
+
+```bash
+npx skills add overthinkercurious/agent-engineering --skill '*' --agent antigravity --copy -y
+```
+
+This places `ae-init` and `ae-forge` under `.agents/skills/`, Antigravity's
+current workspace skill directory. Running `ae-init` also creates
+`.agents/rules/agent-engineering.md`, so the project's knowledge, rules, and
+policy remain discoverable in ordinary Antigravity sessions. Both skills can be
+started explicitly with `/ae-init` and `/ae-forge` or selected from their
+descriptions.
+
+## How it works
+
+`ae-init` runs five ordered stages:
+
+| Stage | Deterministic owner | Durable result |
 |---|---|---|
-| Claude Code | `.claude/skills/` | `CLAUDE.md`, which imports `AGENTS.md` |
-| Codex, Cursor, Antigravity, Copilot, Gemini CLI, OpenCode and 16 others | `.agents/skills/` | `AGENTS.md` |
+| Scaffold | `scaffold.sh` | `.dev/`, tool pointers, scoped ignore rules |
+| Analyze | `analyze.mjs` | `.dev/context/analysis.json` |
+| Knowledge | `knowledge.mjs` plus bounded judgment | `.dev/knowledge/*.md` |
+| Rules | `rules.mjs` plus bounded judgment | `.dev/rules/*.md` |
+| Policy | `policy.mjs` plus bounded judgment | `.dev/policy/*.yml` |
+| Verify | `doctor.sh` | Machine-checkable health verdict |
 
-Paths come from the skills CLI's own agent registry, not from documentation.
-See `skills/ae-init/references/targets.yml` for the table and its provenance.
+Scripts own facts and checks. The model fills explicitly marked judgment slots
+from a budgeted reading set. Unknowns stay visible. The committed policy tells
+Forge what it may decide, which commands prove quality, how risks affect
+routing, and what evidence a release needs.
 
-## What `ae-init` does
+`ae-forge` then creates one ignored workspace per request:
 
-Four stages. Each has one owner, reads what the previous stage wrote, and
-produces exactly one artifact.
-
-| # | Stage | Owner | Artifact |
-|---|---|---|---|
-| 1 | Scaffold | `scaffold.sh` | `.dev/`, pointer blocks, `.gitignore` |
-| 2 | Analyze | `analyze.mjs` | `.dev/context/analysis.json` |
-| 3 | Knowledge | `knowledge.mjs` + the model | `.dev/knowledge/*.md` |
-| 4 | Rules | `rules.mjs` + the model | `.dev/rules/*.md` |
-| — | Verify | `doctor.sh` | an exit code |
-
-Stages 1 and 2 involve no model judgment at all. Stages 3 and 4 are split down
-the middle: the script writes every fact it can extract from the analysis, and
-the model fills only the slots marked `TODO (judgment)`.
-
-**A fact in these files was never guessed** — it came out of a parser. That is
-the property that makes the output worth trusting later, and the reason the
-failure mode is a visible blank rather than a plausible fabrication.
-
-Stage 2 always offers a free `--estimate` pass first, so you see what the real
-pass would read and roughly what it costs before approving it.
-
-### The knowledge base
-
-```
-.dev/knowledge/
-├── 00-index.md          # routing table: which document answers which question
-├── 10-stack.md          # languages, dependencies, enforcement config
-├── 20-commands.md       # how to run, test, build - read from manifests and CI
-├── 30-architecture.md   # fan-in ranking, routes, schema, reading order
-├── 40-risks.md          # auth, money, data, secrets - and which lack tests
-└── 50-conventions.md    # patterns, and where they disagree with each other
+```text
+.dev/work/<feature-id>/
+├── manifest.json          # request class, project revision, selected team
+├── state.json             # legal workflow state and cost counters
+├── intent.md              # authoritative outcome and constraints
+├── discovery/             # specialist evidence and synthesis
+├── design/                # approved product and technical definition
+├── plan/                  # implementation and verification plan
+├── implementation/        # integration record
+├── reviews/               # plan, domain, and release audits
+├── verification/          # command and acceptance evidence
+└── approval.json          # hashes of the approved artifacts
 ```
 
-Later sessions load the one document they need, not the whole repository. The
-pointer block written into `AGENTS.md` is what routes them there.
+The state machine permits only:
 
-Each file has a managed block. Regenerating replaces the block and preserves
-everything outside it, so corrections you write under `## Notes` survive.
+```text
+created → classified → discovery → definition → plan review
+→ awaiting approval → approved → implementation → integration
+→ audit → verification → ready for PR → complete
 
-### The rules
+audit or verification → repair → implementation
+```
 
-`.dev/rules/` holds project rules under a single admission test:
+`awaiting specialist`, `blocked`, and `halted` preserve a validated resume
+point. `cancelled` and `complete` are terminal. Repair never jumps directly to
+verification; it returns through implementation, integration, and fresh audit.
 
-> A rule is admitted only if it names a command that fails when the rule is
-> broken.
+The runner hashes intent, definition, implementation plan, and plan review when
+the user approves them. Editing one later invalidates the approval. Probe owns
+verification design on every plan; Judge independently owns the final release
+verdict. Risk signals add specialists and lenses, while ordinary changes avoid
+their cost.
 
-A rule with no enforcement is a suggestion, and suggestions accumulate until
-nobody reads the file. `rules.mjs` derives what the project can already
-enforce; if a project has no test, lint or typecheck command, the rules index
-says so plainly instead of inventing rules nothing can check.
+## Artifact policy
 
-Rules apply to code you change, never to code that already exists. Existing
-breakages are recorded as debt with a count that may go down and must not go
-up.
-
-## What is committed, and what is not
-
-| Committed | Ignored |
+| Committed project contract | Ignored local working memory |
 |---|---|
-| `.dev/knowledge/`, `.dev/rules/` — the deliverable | `.claude/skills/ae-*/` |
-| `AGENTS.md`, `CLAUDE.md` (pointer blocks) | `.agents/skills/ae-*/` |
-| `skills-lock.json` | `.dev/context/` — regenerable analysis dump |
+| `.dev/knowledge/` | `.dev/context/` |
+| `.dev/rules/` | `.dev/work/` |
+| `.dev/policy/` | installed `**/skills/ae-*/` copies |
+| instruction pointer blocks | |
+| `skills-lock.json` | |
 
-The ignore rules are scoped to the `ae-` prefix, so **any skills you write
-yourself stay tracked**. Ignoring `.claude/skills/` wholesale would silently
-stop tracking your own work.
+Knowledge is split by question so later sessions read only what they need.
+Managed blocks can be regenerated while notes outside them survive. Feature
+workspaces preserve the full reasoning trail locally without putting session
+transcripts or sensitive evidence into git.
 
-The suite is a dependency, restored with the same one command after a clone.
-The knowledge base is not — it is committed, so a fresh clone has the project's
-own record of itself before anything is reinstalled.
+## Specialist roster
 
-## Verify
+| Specialist | Exclusive ownership |
+|---|---|
+| Scout | Opportunity evidence and alternatives |
+| Pulse | Product outcome, value, scope, and success |
+| Rift | Adversarial challenge of the product recommendation |
+| Flow | User journeys and experience acceptance |
+| Spine | System boundaries, interfaces, and material decisions |
+| Pixel | Client architecture and implemented experience |
+| Core | Services, APIs, integrations, and server behavior |
+| Shift | Schemas, migrations, backfills, and data recovery |
+| Vault | Threats, authorization, privacy, and security verification |
+| Signal | Failure behavior, performance, observability, and recovery |
+| Probe | Independent acceptance and risk-based verification design |
+| Judge | Integrated delivery-readiness judgment |
+
+The registry in `skills/ae-forge/references/registry.json` is the routing source
+of truth. Each specialist has one workflow file, one ownership statement, and
+structured completion and escalation outputs.
+
+## Runner
+
+The deterministic Forge runner has no dependencies:
 
 ```bash
-bash .claude/skills/ae-init/scripts/doctor.sh
+node skills/ae-forge/scripts/forge.mjs start --title "Team invitations" --kind feature --signals ui,auth
+node skills/ae-forge/scripts/forge.mjs status --id team-invitations
+node skills/ae-forge/scripts/forge.mjs route --id team-invitations --signals tenant
+node skills/ae-forge/scripts/forge.mjs advance --id team-invitations --to classified
+node skills/ae-forge/scripts/forge.mjs approve --id team-invitations
+node skills/ae-forge/scripts/forge.mjs check --id team-invitations
 ```
 
-Exits non-zero when something is missing, and says which thing. That exit code
-is the point: it is the part of the story that does not depend on a model being
-careful.
+Agents normally run these commands through `ae-forge`; the CLI is documented
+so state and approval behavior remain inspectable and testable.
 
-## Layout
-
-```
-skills/ae-init/
-├── SKILL.md                    # the entry point: the four-stage chain
-├── scripts/                    # deterministic owners
-│   scaffold.sh  analyze.mjs  knowledge.mjs  rules.mjs  doctor.sh  lib.sh
-├── references/
-│   ├── targets.yml             # the only tool-specific file in the kit
-│   └── stages/                 # model-driven owners
-│       knowledge.md  rules.md
-└── assets/                     # templates written into target projects
-```
-
-One installed skill. The stages are scripts and reference files rather than
-sibling skills: skill metadata sits in context for every session whether or not
-it fires, and four skills claiming overlapping trigger phrases is a coin flip.
-
-## Tests
+## Development
 
 ```bash
 npm test
 ```
 
-124 assertions: the authoring contract, scaffold and doctor behaviour, and the
-generated artifacts.
+The suite validates public skill ownership, specialist and lens registries,
+plugin manifests, runtime schema instances and references, strict policy YAML,
+policy compilation, every allowed and forbidden state pair, the Alpha seed and
+repair behavior, scaffold hygiene, knowledge and policy generation, risk-based
+routing, path containment, and approval invalidation. On Git Bash for Windows,
+set `TMPDIR` to a native path before running the shell tests.
 
-On Git Bash for Windows, set `TMPDIR` to a native path first
-(`export TMPDIR="C:/Users/you/AppData/Local/Temp"`) — MSYS does not translate a
-path embedded inside a `node -e` string, and the harness needs its own temp
-files back.
-
-## Status
-
-Built and tested: the install path, all four stages, and the verifier. The
-model-side halves of stages 3 and 4 are authored but have not been evaluated
-against a range of real codebases yet.
-
-Not started: the workflow skills that consume these artifacts.
+See `docs/DEVELOPMENT-KIT-PRD.md` for the product requirements and architectural
+decisions.
 
 ## License
 

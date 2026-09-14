@@ -7,24 +7,27 @@ that answers your question. Read that document, not all of them.
 
 | Question | Document |
 |---|---|
+| Who is this for and what outcomes matter? | `.dev/knowledge/05-product.md` |
 | What is this built with? | `.dev/knowledge/10-stack.md` |
 | How do I run and test it? | `.dev/knowledge/20-commands.md` |
 | How is it shaped? What breaks if I change this? | `.dev/knowledge/30-architecture.md` |
 | What is expensive to get wrong? | `.dev/knowledge/40-risks.md` |
 | How is code written here? | `.dev/knowledge/50-conventions.md` |
 | What is enforced, and by which command? | `.dev/rules/00-index.md` |
+| What may an agent decide and what gates apply? | `.dev/policy/` |
 
 These documents are generated but committed. Content between the
 `agent-engineering` markers is rewritten on every run; anything outside the
 markers is preserved, so corrections go under `## Notes`.
 
-Facts in a managed block came from a parser, not from a model, and are safe to
-rely on. A slot still reading `TODO (judgment)` has not been answered yet.
+Facts in a managed block came from a parser rather than a model. Treat them as
+observed evidence within the provenance and coverage recorded in the index. A
+slot still reading `TODO (judgment)` has not been answered yet.
 Anything marked `INFERRED` was derived rather than read; anything marked
 `UNKNOWN` is a gap, not an oversight.
 
 `.dev/context/` holds the raw analysis dump. It is regenerated on every run and
-is not committed.
+is not committed. `.dev/work/` holds ignored per-feature working artifacts.
 
 **The suite itself is not committed to this repository.** It is a dependency,
 listed in `skills-lock.json` and gitignored. In a fresh clone, restore it with:

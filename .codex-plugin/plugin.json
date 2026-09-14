@@ -1,0 +1,41 @@
+{
+  "name": "agent-engineering",
+  "version": "0.2.0",
+  "description": "Project-scoped product discovery and specialist engineering workflows for independently verified software delivery.",
+  "author": {
+    "name": "overthinkercurious",
+    "url": "https://github.com/overthinkercurious"
+  },
+  "homepage": "https://github.com/overthinkercurious/agent-engineering",
+  "repository": "https://github.com/overthinkercurious/agent-engineering",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "skills",
+    "product-development",
+    "software-engineering",
+    "code-review",
+    "autonomous-development"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Engineering",
+    "shortDescription": "A project-aware specialist team for shipping software",
+    "longDescription": "Agent Engineering indexes the product and repository, then assembles focused product and engineering specialists to research, plan, implement, audit, and verify a change.",
+    "developerName": "overthinkercurious",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/overthinkercurious/agent-engineering",
+    "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+    "brandColor": "#7C3AED",
+    "defaultPrompt": [
+      "Index this project and prepare it for Agent Engineering.",
+      "Forge this idea into a verified product change."
+    ]
+  }
+}

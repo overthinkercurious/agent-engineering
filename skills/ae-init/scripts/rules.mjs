@@ -16,17 +16,22 @@
 // Usage: node rules.mjs [--root DIR] [--in FILE] [--out DIR] [--quiet]
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, isAbsolute, relative, resolve } from 'node:path'
 
 const argv = process.argv.slice(2)
 const arg = (n, d) => { const i = argv.indexOf(n); return i === -1 ? d : argv[i + 1] }
-const ROOT = arg('--root', process.cwd())
-const IN = arg('--in', join(ROOT, '.dev', 'context', 'analysis.json'))
-const OUT = arg('--out', join(ROOT, '.dev', 'rules'))
+const ROOT = resolve(arg('--root', process.cwd()))
+const IN = resolve(arg('--in', join(ROOT, '.dev', 'context', 'analysis.json')))
+const OUT = resolve(arg('--out', join(ROOT, '.dev', 'rules')))
 const QUIET = argv.includes('--quiet')
 
 const MARK_START = '<!-- agent-engineering:start -->'
 const MARK_END = '<!-- agent-engineering:end -->'
+
+for (const [label, path] of [['--in', IN], ['--out', OUT]]) {
+  const rel = relative(ROOT, path)
+  if (rel.startsWith('..') || isAbsolute(rel)) { process.stderr.write(`${label} escapes the project root: ${path}\n`); process.exit(2) }
+}
 
 if (!existsSync(IN)) {
   process.stderr.write(`no analysis at ${IN}\nRun analyze.mjs first; stage 4 reads what stage 2 wrote.\n`)
@@ -50,13 +55,19 @@ const table = (headers, rows, empty) => {
 
 function writeManaged(file, title, body) {
   mkdirSync(dirname(file), { recursive: true })
-  const block = `${MARK_START}\n${body.trimEnd()}\n${MARK_END}`
+  let block = `${MARK_START}\n${body.trimEnd()}\n${MARK_END}`
   if (!existsSync(file)) {
     writeFileSync(file, `# ${title}\n\n${block}\n\n## Notes\n\n`
       + '<!-- Anything outside the markers above survives a re-run. -->\n')
     return 'created'
   }
   const cur = readFileSync(file, 'utf8')
+  const slotPattern = /<!-- agent-engineering:judgment:([a-z0-9-]+):start -->([\s\S]*?)<!-- agent-engineering:judgment:\1:end -->/g
+  const completed = new Map()
+  for (const match of cur.matchAll(slotPattern)) if (!/TODO \(judgment\)/.test(match[2])) completed.set(match[1], match[2])
+  block = block.replace(slotPattern, (whole, id) => completed.has(id)
+    ? `<!-- agent-engineering:judgment:${id}:start -->${completed.get(id)}<!-- agent-engineering:judgment:${id}:end -->`
+    : whole)
   const s = cur.indexOf(MARK_START)
   const e = cur.indexOf(MARK_END)
   if (s === -1) { writeFileSync(file, cur.trimEnd() + '\n\n' + block + '\n'); return 'updated' }
@@ -189,11 +200,13 @@ for (const d of derived) {
     '## Rules\n\n',
     table(['Rule', 'Enforced by'], d.rules.map(([r, c]) => [r, `\`${c}\``]), 'none'),
     '\n## Judgment\n\n',
+    `<!-- agent-engineering:judgment:${d.id}:start -->\n`,
     '> **TODO (judgment).** Add the stack-specific rules that this project\n',
     '> actually needs, using the admission contract in `00-index.md`: each one\n',
     '> must name a command that fails when it is broken. Search official\n',
     '> documentation for the detected stack rather than recalling it. Count the\n',
     '> existing violations and record them as debt.\n',
+    `<!-- agent-engineering:judgment:${d.id}:end -->\n`,
   ].join('')])
 }
 

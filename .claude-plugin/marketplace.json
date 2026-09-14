@@ -1,0 +1,21 @@
+{
+  "name": "agent-engineering",
+  "description": "Project-aware specialist product and engineering workflows",
+  "owner": {
+    "name": "overthinkercurious"
+  },
+  "metadata": {
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "agent-engineering",
+      "description": "Research, plan, implement, audit, and verify software with a project-scoped specialist team.",
+      "version": "0.2.0",
+      "source": "./",
+      "author": {
+        "name": "overthinkercurious"
+      }
+    }
+  ]
+}

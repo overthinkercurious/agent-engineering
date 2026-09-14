@@ -1,0 +1,24 @@
+schema: 1
+generated_at: "2026-09-13T00:00:00.000Z"
+source_revision: "2222222222222222222222222222222222222222"
+observed_filename_risk_signals:
+  shared_config: 2
+defaults:
+  plan_specialist: probe
+  final_specialist: judge
+  completed_diff_must_be_reclassified: true
+runtime:
+  execution_tier: deep
+  budget_tier: medium
+  model_profile: mixed
+  required_specialists:
+    - core
+    - probe
+    - judge
+  required_lenses:
+    - exact
+    - compat
+    - failure
+judgment:
+  always_route: "probe, judge, and core"
+  specialist_escalations: "exact, compat, and failure lenses"

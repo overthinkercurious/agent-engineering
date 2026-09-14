@@ -1,0 +1,33 @@
+{
+  "schema": 2,
+  "run_id": "alpha-config",
+  "dispatch_id": "probe-verify-1",
+  "specialist": "probe",
+  "status": "complete",
+  "outcome": "A security review is required",
+  "summary": "The request is improperly hidden inside a complete result.",
+  "evidence": [],
+  "assumptions": [],
+  "unknowns": [],
+  "confidence": {"level": "low", "basis": "Required domain context is missing"},
+  "artifact_changes": [],
+  "findings": [],
+  "needs_specialist": [
+    {
+      "specialty": "vault",
+      "reason": "Authorization behavior is unresolved",
+      "missing_inputs": ["authorization-policy"],
+      "blocking": true
+    }
+  ],
+  "usage": {
+    "schema": 1,
+    "calls": 1,
+    "input_tokens": {"value": null, "provenance": "unavailable"},
+    "output_tokens": {"value": null, "provenance": "unavailable"},
+    "reasoning_tokens": {"value": null, "provenance": "unavailable"},
+    "cached_tokens": {"value": null, "provenance": "unavailable"},
+    "charge_usd": {"value": null, "provenance": "unavailable"},
+    "wall_time_ms": 1200
+  }
+}

@@ -42,6 +42,29 @@ fm_get() {
   ' "$1"
 }
 
+# Agent Skills permits extension data under `metadata`, not as arbitrary
+# top-level frontmatter keys. Ownership lives there so other tools accept the
+# skill while this suite can still enforce non-overlap.
+fm_metadata_get() {
+  awk -v want="$2" '
+    NR == 1 && $0 == "---" { inb = 1; next }
+    inb && $0 == "---"     { exit }
+    !inb                   { next }
+    /^metadata:[[:space:]]*$/ { inmeta = 1; next }
+    inmeta && /^[^[:space:]]/ { inmeta = 0 }
+    inmeta {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (index(line, want ":") == 1) {
+        sub("^" want ":[[:space:]]*", "", line)
+        gsub(/^"|"$/, "", line)
+        print line
+        exit
+      }
+    }
+  ' "$1"
+}
+
 [ -d "$SKILLS" ] || { echo "no skills directory at $SKILLS" >&2; exit 2; }
 
 MANIFEST="$(mktemp "${TMPDIR:-/tmp}/ae-val.XXXXXX")"
@@ -62,7 +85,7 @@ while IFS= read -r skillmd; do
 
   name="$(fm_get "$skillmd" name)"
   desc="$(fm_get "$skillmd" description)"
-  owns="$(fm_get "$skillmd" owns)"
+  owns="$(fm_metadata_get "$skillmd" owns)"
 
   # name: required, must match the directory, must be prefixed.
   # Install flattens every skill into one directory, so a name is a global
@@ -92,7 +115,7 @@ while IFS= read -r skillmd; do
     fi
   fi
 
-  [ -n "$owns" ] || warn "$base: no 'owns' - the manifest and the duplicate-ownership check need it"
+  [ -n "$owns" ] || warn "$base: no 'metadata.owns' - the manifest and the duplicate-ownership check need it"
 
   # body length: progressive disclosure level 2
   body_lines="$(awk 'NR>1 && $0=="---" { found=1; next } found' "$skillmd" | wc -l | tr -d ' ')"

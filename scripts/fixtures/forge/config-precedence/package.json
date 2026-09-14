@@ -1,0 +1,8 @@
+{
+  "name": "ae-alpha-config-precedence",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test hidden/precedence.test.mjs"
+  }
+}

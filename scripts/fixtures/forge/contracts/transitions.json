@@ -1,0 +1,42 @@
+{
+  "states": [
+    "created",
+    "classified",
+    "discovery",
+    "definition",
+    "plan_review",
+    "awaiting_approval",
+    "approved",
+    "implementation",
+    "integration",
+    "audit",
+    "verification",
+    "repair",
+    "awaiting_specialist",
+    "blocked",
+    "halted",
+    "ready_for_pr",
+    "complete",
+    "cancelled"
+  ],
+  "normal_edges": [
+    "created>classified",
+    "classified>discovery",
+    "classified>definition",
+    "discovery>definition",
+    "definition>plan_review",
+    "plan_review>awaiting_approval",
+    "awaiting_approval>approved",
+    "approved>implementation",
+    "implementation>integration",
+    "integration>audit",
+    "audit>repair",
+    "audit>verification",
+    "verification>repair",
+    "verification>ready_for_pr",
+    "repair>implementation",
+    "ready_for_pr>complete"
+  ],
+  "pause_states": ["awaiting_specialist", "blocked", "halted"],
+  "terminal_states": ["complete", "cancelled"]
+}

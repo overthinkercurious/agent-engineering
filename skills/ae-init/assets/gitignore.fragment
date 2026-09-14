@@ -1,15 +1,18 @@
 # Installed skills are a dependency, not your code. They are restored with one
-# command, so they do not belong in your history. Ignoring by the ae- prefix
-# rather than ignoring the whole directory means any skills YOU write stay
-# tracked.
+# command, so they do not belong in your history. Skills CLI currently supports
+# many agent-specific directories, so match the reserved ae- prefix below any
+# skills directory. Skills with other prefixes remain tracked.
 #
 #   npx skills add __KIT_REPO__ --copy -y
 #
-.claude/skills/ae-*/
-.agents/skills/ae-*/
+**/skills/ae-*/
 
 # Raw analysis dump: large, machine-only, and regenerated on every run. The
-# documents derived from it in .dev/knowledge/ and .dev/rules/ ARE committed -
-# they are the point of this tool.
+# documents derived from it in .dev/knowledge/, .dev/rules/, and .dev/policy/
+# ARE committed - they are the reusable project contract.
 .dev/context/*
 !.dev/context/.gitkeep
+
+# Per-feature evidence, reviews, transcripts, and execution state are local
+# working memory and may contain sensitive material.
+.dev/work/

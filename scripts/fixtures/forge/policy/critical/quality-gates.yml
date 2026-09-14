@@ -1,0 +1,20 @@
+schema: 1
+generated_at: "2026-09-13T00:00:00.000Z"
+source_revision: "2222222222222222222222222222222222222222"
+required_commands:
+  - kind: test
+    command: "npm test"
+  - kind: test
+    command: "node --test hidden/precedence.test.mjs"
+required_evidence:
+  - full_suite
+  - focused_regression
+  - both_callers
+  - independent_probe
+evidence_rules:
+  bind_to_candidate_revision: true
+  model_pass_is_advisory: true
+  heuristics_must_be_labeled: true
+judgment:
+  required_user_journeys: "direct and wrapper callers plus public-contract review"
+  non_functional_budgets: "no regression outside the focused helper"
