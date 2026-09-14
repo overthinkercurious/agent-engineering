@@ -1,6 +1,6 @@
 # Agent Engineering Workflow Kit Implementation Plan
 
-Status: Implementation in progress; Phases 0a–7 complete, Phase 8 active (2026-09-14)  
+Status: Implementation in progress; Phases 0a–8 complete, Phase 0b active (2026-09-14)  
 Release target: Alpha after Phase 6; Beta after Phase 9; Stable after Phase 10 and external validation
 
 Phase 0a is closed by
@@ -26,7 +26,12 @@ Phase 7 is closed by
 all twelve specialists are authored against the common template, and the
 payment duplicate-charge Beta flagship passes with evidence across every
 required dimension.
-Phase 8 is now active; later gates remain unopened.
+Phase 8 is closed by
+[`docs/decisions/phase-8-acceptance.md`](decisions/phase-8-acceptance.md) —
+all twelve lenses are authored against the common template with
+non-overlapping coverage; capability packs remain deliberately deferred.
+Phase 0b is next in the critical path; Phase 9 remains gated on it and later
+gates remain unopened.
 
 ## Purpose
 
