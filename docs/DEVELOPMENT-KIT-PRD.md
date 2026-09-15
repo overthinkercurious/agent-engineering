@@ -394,7 +394,9 @@ The implementer may create tests, but completion cannot rely only on tests deriv
 
 The kit optimizes for value per accepted outcome rather than minimum token usage.
 
-Use strongest models for product synthesis and criticism, architecture, sensitive specialist work, difficult debugging, and integrated final review. Use standard models for planning and integration. Use economical or standard models for clearly bounded implementation and focused repair. Use scripts for extraction, schema checks, state transitions, and executable gates.
+Model selection is resolved at dispatch from the project's `model_profile`, the recorded risk tier, and the evidence the task actually requires — not from a fixed per-role recommendation. A `smaller-model-only` profile uses the one selected smaller model for all model work and returns a bounded unresolved result rather than reaching for a stronger one; a `mixed` profile may escalate only for a recorded capability failure, conflicting evidence, material unresolved risk, or a contract failure after one local retry, and every escalation is recorded and charged as mixed. The `model` field on each registry entry is a hint about where stronger capability tends to pay off; it never overrides the resolved profile, and no guidance in this document does either. Use scripts for extraction, schema checks, state transitions, and executable gates.
+
+The kit ships no measured comparison of model classes. Which model is adequate for which task is an open question here, deliberately unanswered until the deferred evaluation runs — see `decisions/phase-0b-deferral.md`.
 
 Cost controls include:
 

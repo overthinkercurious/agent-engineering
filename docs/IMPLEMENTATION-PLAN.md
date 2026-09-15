@@ -1,7 +1,10 @@
 # Agent Engineering Workflow Kit Implementation Plan
 
-Status: Implementation in progress; Phases 0a–8 complete, Phase 0b active (2026-09-14)  
-Release target: Alpha after Phase 6; Beta after Phase 9; Stable after Phase 10 and external validation
+Status: Phases 0a–8 and 10 complete; Phases 0b and 9 deferred (2026-09-15)  
+Release target: Alpha reached after Phase 6. Phase 10 closed as a
+**Beta-quality release** — installable, documented, and tested — whose
+performance and cost characteristics are explicitly **unevaluated**. Stable
+remains unavailable until the deferred evaluation completes.
 
 Phase 0a is closed by
 [`docs/decisions/implementation-contract.md`](decisions/implementation-contract.md),
@@ -30,8 +33,19 @@ Phase 8 is closed by
 [`docs/decisions/phase-8-acceptance.md`](decisions/phase-8-acceptance.md) —
 all twelve lenses are authored against the common template with
 non-overlapping coverage; capability packs remain deliberately deferred.
-Phase 0b is next in the critical path; Phase 9 remains gated on it and later
-gates remain unopened.
+Phase 0b and Phase 9 are deferred by
+[`docs/decisions/phase-0b-deferral.md`](decisions/phase-0b-deferral.md): the
+kit is built for its maintainer's own use and ships no comparative or cost
+claim, so no published statement depends on the measurement. Phase 10 proceeds
+with its evaluation-dependent deliverables marked unevaluated rather than
+estimated. No performance, cost, or model-equivalence claim may be published
+without first completing Phase 0b and Phase 9 in that order.
+Phase 10 is closed by
+[`docs/decisions/phase-10-acceptance.md`](decisions/phase-10-acceptance.md) —
+a clean install built from only the published files runs both skills end to
+end, the shipped documentation is reconciled with shipped behavior and guarded
+by an executable consistency check, and external validation plus measured
+performance remain recorded as open rather than asserted.
 
 ## Purpose
 

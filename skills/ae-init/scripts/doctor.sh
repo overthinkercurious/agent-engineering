@@ -15,7 +15,14 @@ AE_SELF="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 AE_KIT_ROOT="$(cd -P "$AE_SELF/.." && pwd)"
 
-ROOT="${1:-}"
+# Accepts the project root positionally or as --root DIR, so it matches
+# scaffold.sh rather than failing on the flag a user reasonably expects.
+if [ "${1:-}" = "--root" ]; then
+  ROOT="${2:-}"
+  [ -n "$ROOT" ] || { printf 'missing directory after --root\n' >&2; exit 2; }
+else
+  ROOT="${1:-}"
+fi
 if [ -n "$ROOT" ]; then
   [ -d "$ROOT" ] || { printf 'not a directory: %s\n' "$ROOT" >&2; exit 2; }
   ROOT="$(cd -P "$ROOT" && pwd)"
