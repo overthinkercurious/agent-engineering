@@ -88,9 +88,46 @@ not an artificial implementation contribution.
 
 ## Installation
 
-Install the plugin or copy the two skill directories into the skills location
-supported by your coding tool. The published package contains everything each
-skill needs inside its own directory.
+Open a terminal in the project you want to develop and run one command. Replace
+`AGENT_ID` with the identifier for your IDE:
+
+```bash
+npx skills add overthinkercurious/agent-engineering --agent AGENT_ID --copy -y
+```
+
+| IDE or coding agent | `AGENT_ID` | Project skill location |
+|---|---|---|
+| Antigravity IDE | `antigravity` | `.agents/skills/` |
+| Antigravity CLI | `antigravity-cli` | `.agents/skills/` |
+| Gemini CLI | `gemini-cli` | `.agents/skills/` |
+| Codex | `codex` | `.agents/skills/` |
+| Cursor | `cursor` | `.agents/skills/` |
+| OpenCode | `opencode` | `.agents/skills/` |
+| GitHub Copilot | `github-copilot` | `.agents/skills/` |
+| Claude Code | `claude-code` | `.claude/skills/` |
+
+For example, Antigravity IDE needs exactly:
+
+```bash
+npx skills add overthinkercurious/agent-engineering --agent antigravity --copy -y
+```
+
+The command is project-scoped: it downloads both complete skill directories,
+puts them where the selected IDE discovers them, and writes `skills-lock.json`.
+`--copy` avoids cross-platform symlink failures. Do not add `-g`; project scope
+is the portable contract and keeps the kit version tied to the repository.
+
+Reload the IDE's skills or begin a new task, then ask:
+
+> Use ae-init to index and configure this project.
+
+After that, normal work starts with a request such as:
+
+> Use ae-forge to implement team invitations, prevent cross-tenant access, and
+> independently verify the result.
+
+Initialization is optional. `ae-forge` can work directly from an uninitialized
+repository.
 
 The skills require Node.js. ae-init also uses Bash for its optional scaffold
 and doctor commands.

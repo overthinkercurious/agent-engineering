@@ -1,6 +1,6 @@
 {
   "name": "agent-engineering",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A project-scoped product and engineering system that turns intent into independently verified software.",
   "license": "MIT",
   "repository": {
@@ -26,6 +26,7 @@
   "private": false,
   "scripts": {
     "validate": "node scripts/validate-forge.mjs",
-    "test": "node scripts/test-all.mjs"
+    "test": "node scripts/test-all.mjs",
+    "test:install": "node scripts/test-installer.mjs"
   }
 }

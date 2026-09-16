@@ -7,7 +7,7 @@
 #
 # PROVENANCE
 # `skills_dir` values were read out of the `skills` CLI agent registry
-# (npm `skills` v1.5.25, dist/cli.mjs) rather than from documentation, because
+# (npm `skills` v1.5.26, src/agents.ts) rather than from documentation, because
 # that registry is what actually decides where files land. Instruction files
 # were checked against each tool's own docs. Verified 2026-09-11.
 #
@@ -38,6 +38,7 @@ targets:
 
   agents-md:
     display: "AGENTS.md (cross-tool canonical)"
+    installer_ids: "codex,cursor,opencode"
     instruction_file: AGENTS.md
     pointer_style: block
     skills_dir: .agents/skills
@@ -48,6 +49,7 @@ targets:
 
   claude-code:
     display: "Claude Code"
+    installer_ids: "claude-code"
     instruction_file: CLAUDE.md
     pointer_style: import
     skills_dir: .claude/skills
@@ -58,6 +60,7 @@ targets:
 
   antigravity:
     display: "Google Antigravity IDE"
+    installer_ids: "antigravity,antigravity-cli"
     instruction_file: .agents/rules/agent-engineering.md
     pointer_style: block
     skills_dir: .agents/skills
@@ -68,6 +71,7 @@ targets:
 
   gemini-cli:
     display: "Gemini CLI"
+    installer_ids: "gemini-cli"
     instruction_file: GEMINI.md
     pointer_style: block
     skills_dir: .agents/skills
@@ -78,6 +82,7 @@ targets:
 
   github-copilot:
     display: "GitHub Copilot"
+    installer_ids: "github-copilot"
     instruction_file: .github/copilot-instructions.md
     pointer_style: block
     skills_dir: .agents/skills

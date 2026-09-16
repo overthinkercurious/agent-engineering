@@ -15,7 +15,7 @@
  *                    [--out FILE] [--estimate]
  */
 
-import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join, relative, extname, basename, dirname, isAbsolute, resolve, sep } from 'node:path'
 
@@ -31,15 +31,33 @@ const has = (name) => argv.includes(name)
 const ROOT = resolveRoot(arg('--root', process.cwd()))
 const BUDGET = parseInt(arg('--budget-tokens', '120000'), 10)
 const DEPTH = arg('--depth', 'ranked')
-const OUT = resolve(arg('--out', join(ROOT, '.dev', 'context', 'analysis.json')))
+const OUT = canonicalPath(arg('--out', join(ROOT, '.dev', 'context', 'analysis.json')))
 const ESTIMATE_ONLY = has('--estimate')
+
+// Windows may expose the same directory through both an 8.3 alias
+// (RUNNER~1) and its long name. Canonicalize the nearest existing ancestor so
+// containment checks compare one spelling even when the output does not exist.
+function canonicalPath(value) {
+  const absolute = resolve(value)
+  let existing = absolute
+  const missing = []
+  while (!existsSync(existing)) {
+    const parent = dirname(existing)
+    if (parent === existing) return absolute
+    missing.unshift(basename(existing))
+    existing = parent
+  }
+  try { return resolve(realpathSync(existing), ...missing) }
+  catch { return absolute }
+}
 
 function resolveRoot(p) {
   try {
-    return execFileSync('git', ['-C', p, 'rev-parse', '--show-toplevel'], {
+    const top = execFileSync('git', ['-C', p, 'rev-parse', '--show-toplevel'], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
     }).trim()
-  } catch { return resolve(p) }
+    return canonicalPath(top)
+  } catch { return canonicalPath(p) }
 }
 
 const outRelative = relative(ROOT, OUT)
