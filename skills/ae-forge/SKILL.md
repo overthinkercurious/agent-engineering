@@ -1,211 +1,169 @@
 ---
 name: ae-forge
 description: >
-  Turns a product idea or software change into a researched, planned,
-  implemented, independently audited, and verified result using the project's
-  Agent Engineering knowledge and a routed team of specialists. Use when the
-  user wants to brainstorm or validate an idea, build or change a feature, fix
-  a bug, improve performance, review security, resume an Agent Engineering run,
-  or ship a production-ready pull request. Do not use to index a project; that
-  belongs to ae-init.
+  Takes a software request from problem to implemented and independently
+  verified result using a small, risk-sized team. Use for features, bugs,
+  refactors, performance work, security work, technical planning, code review,
+  or continuing an existing Agent Engineering task. The user provides the
+  outcome; Forge selects the experts, coordinates their work, implements the
+  change, runs the project's checks, repairs findings, and reports the result.
 metadata:
-  owns: "delivering a product or engineering outcome through specialist orchestration"
+  owns: "delivering a software outcome through an autonomous specialist team"
 ---
 
-# Forge an outcome
+# Forge a software outcome
 
-Own the run from intent to independently verified delivery. Coordinate the
-work; do not impersonate every specialist in one context.
+Turn the user's request into working, verified software. The user should not
+need to understand the workflow, choose agents, prepare artifacts, or run Forge
+commands.
 
-## Locate this skill
+Read `references/team.md` for the shared contract and `references/team.json`
+for routing. Then read only each selected workflow named by its `file` field.
+Do not load workflows for experts who were not selected.
 
-Every bundled command needs this skill directory. Claude Code may set
-`CLAUDE_SKILL_DIR`; other tools do not. Resolve it once and reuse `AE`:
+## Operating promise
+
+1. Understand the request and the repository.
+2. Select the smallest team that covers the risk.
+3. Plan only as much as safe implementation requires.
+4. Implement requested changes; planning alone is not delivery.
+5. Have a verifier independently inspect the result and run relevant checks.
+6. Repair valid findings, then report what changed and what remains uncertain.
+
+Keep coordination internal. Give the user short progress updates and ask only
+when a decision would materially change the outcome or requires new authority.
+
+## Start or resume
+
+Resolve the installed skill directory once:
 
 ```bash
 AE="${CLAUDE_SKILL_DIR:-}"
 [ -n "$AE" ] || for d in .claude/skills/ae-forge .agents/skills/ae-forge; do
   [ -f "$d/SKILL.md" ] && AE="$d" && break
 done
-[ -n "$AE" ] || { echo "cannot find ae-forge" >&2; exit 2; }
 ```
 
-## Start or resume
+Inspect the project instructions and current work. If `.dev/knowledge/` exists,
+use it as a repository map; its absence is not a blocker. Inspect the repository
+directly when knowledge is missing or stale.
 
-Read `references/contract.md` first. It defines evidence, ownership, authority,
-and completion for every mode.
-
-Check current work:
+First list current runs. Resume only a clearly matching active run; otherwise
+create one small record. Skip the record for explanation-only work.
 
 ```bash
 node "$AE/scripts/forge.mjs" list
+node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> --signals <comma-list>
 ```
 
-If the user is clearly continuing an existing feature, validate and resume its
-workspace. Otherwise start one:
-
-```bash
-node "$AE/scripts/forge.mjs" start --title "<request title>" --kind <kind> --signals <comma-list>
-```
+Use `status --id <id>` to resume. Never make the user manage this record. It
+is an internal recovery aid, not an approval bureaucracy.
 
 Kinds are `idea`, `feature`, `bug`, `refactor`, `performance`, `security`, and
-`audit`. Signals describe behavior or risk, not filenames. The command returns
-a feature id and deterministic routing suggestion. If project initialization
-is missing, return its structured prerequisite result and stop there.
+`audit`.
 
-## Route the workflow
+## Size the team
 
-Read `references/registry.json`. Load only the stage, specialist, and lens files
-selected for this run. The registry is the routing authority; descriptions in
-prose do not override it.
+Classify by behavior and risk, not filenames:
 
-A specialist may request another specialty through a structured result. It may
-not invoke another specialist itself. Validate the request, record the reason,
-check the budget, and dispatch through the host's isolated-agent mechanism.
+- **Quick:** local, reversible, understood, and low-risk. Builder + Verifier.
+- **Standard:** several files or a meaningful design choice. Architect +
+  Builder + Verifier. Add Investigator for an unknown defect.
+- **Deep:** trust boundaries, payments, permissions, destructive data changes,
+  public contracts, or difficult rollback. Architect + Builder + Verifier plus
+  only the relevant Security, Data, Reliability, Experience, Product, or
+  Investigator expert.
 
-Forge records a deterministic risk assessment at intake. `light`, `standard`,
-and `deep` are selected from the project-policy floor plus explicit behavior,
-blast radius, reversibility, sensitivity, uncertainty, and cross-system inputs.
-Risk can only stay level or rise. A filename match is recorded as a lead, never
-as proof. After implementation begins, run `forge.mjs reclassify --id <id>` so
-the completed diff and candidate identity can add required coverage.
+Three roles are the normal team. Five is the maximum without telling the user
+why multiple independent risk boundaries require more. Do not run every expert,
+every checklist, or a separate critic merely because they exist.
 
-## Dispatch through the runner
+An audit-only request is different: select Verifier and only the relevant
+Architect, Security, Data, Experience, or Reliability expert. Do not add
+Builder or edit code unless the user also asked for fixes.
 
-Never invoke a specialist host directly. Use `forge.mjs dispatch` with a local,
-schema-valid host adapter, one stage, one registered specialist, explicit
-acceptance IDs, exact file inputs, allowed tools and writes, invariants, a
-concrete procedure, a next check, and reserved usage. Read the current stage
-reference for the fields to select. Set `--independent` for independent work;
-shared host context is then rejected. For a validated `needs_specialist`
-follow-up, pass `--parent-dispatch <id>` so Forge can enforce routing ancestry
-and cycle limits.
+Prefer the host's native isolated-agent or subagent mechanism. Give each expert
+the request, exact repository scope, relevant project rules, its dedicated
+workflow file, and the shared result contract. Experts return findings to
+Forge; they do not dispatch one another. If isolated agents are unavailable,
+continue with explicit role passes and disclose that verification was not
+context-independent.
 
-For a bug or performance request, dispatch Probe with `--stage diagnosis` from
-a fresh independent context before advancing to definition. A complete result
-must contain the structured causal account defined in the result schema. If no
-cause is supported, preserve uncertainty and halt. Diagnosis and later
-verification use different dispatch IDs and results.
+Forge is the sole coordinator. Planning and review roles are read-only. Builder
+is the only role that edits application code. Do not run Builder and Verifier
+concurrently, and do not let experts mutate the recovery record.
 
-The runner binds the packet, brief, shared contract, specialist workflow,
-policy, candidate, host runtime, and selected inputs into a dependency key. It validates and secret-scans the
-result before accepting it, reconciles actual usage, and persists an auditable
-record under the feature workspace. A repeated dispatch ID succeeds only when
-all bound evidence is unchanged.
-
-A repairable output or contract failure may be retried once with a new dispatch
-ID and `--retry-of <failed-id>`. Transport, permission, secret, and budget
-failures are not locally retried. A strongest-class host under a mixed profile
-requires `--model-escalation-reason`; smaller-only profiles always reject it.
-Every call still records the actual host model and reconciles its usage. Forge
-stops an equivalent dispatch when complete evidence already exists for the
-same candidate and bounded task.
-
-For a local Codex host, `scripts/codex-host.mjs` provides a fresh ephemeral,
-schema-constrained read-only adapter. Configure its model and model class in a
-project-local host configuration. It accepts only `read` with no write roots,
-verifies and embeds only routed UTF-8 text, disables the model's shell plus
-auxiliary agents and interactive/network-capable UI tools, supplies usage from
-host telemetry, pins non-interactive approvals inside the read-only sandbox,
-and fails closed for broader packets. Do not label
-its unavailable monetary charge or cancellation acknowledgement as measured.
-
-After interruption or before relying on local evidence, run:
+Record material contributions with:
 
 ```bash
-node "$AE/scripts/forge.mjs" doctor --id <feature-id>
+node "$AE/scripts/forge.mjs" note --id <id> --role <role> --summary "<result>"
 ```
 
-Treat doctor failures as stale or inconsistent evidence. Its durability report
-also states which host memory and unavailable telemetry are not evidence.
+## Work autonomously
 
-Use fresh contexts for independent product challenge, plan review, domain
-audit, and release audit. Give each agent the approved intent, its routed
-context packet, its workflow file, and the exact output path. Do not give it the
-persuasive reasoning of the artifact author unless that reasoning is evidence
-the reviewer must examine.
+Proceed without approval for routine, reversible work that clearly matches the
+request. Ask once before implementation only when the plan introduces a
+material product choice, irreversible or destructive action, external side
+effect, new spending/access, production deployment, or unresolved high-risk
+tradeoff.
 
-## Runner-owned verification
+For material approval, summarize the outcome, important tradeoffs, and risk in
+plain language. After the user approves, record it with `approve`. Do not ask
+for approval merely because a workflow stage exists.
 
-No one — including Judge — may hand-write a command receipt. During `audit`,
-`verification`, or `repair`, run the project's declared quality command through
-the runner itself so Forge measures the exit code and output digest directly:
+Use these phases internally, omitting Plan only for quick work with no open
+design choice:
+
+1. **Understand:** inspect instructions, reproduce bugs, and identify unknowns.
+2. **Plan:** state acceptance behavior and the smallest implementation path.
+3. **Build:** edit the code and tests in small coherent steps.
+4. **Verify:** inspect the exact diff and run the project's relevant checks.
+5. **Repair:** fix valid findings and verify again, for at most two cycles.
+6. **Finish:** leave the repository in a coherent state and give one concise
+   delivery report.
+
+Update the recovery record at meaningful boundaries:
 
 ```bash
-node "$AE/scripts/forge.mjs" verify --id <feature-id> --receipt-id <id> --command "<one of the effective policy's required_commands, verbatim>"
+node "$AE/scripts/forge.mjs" phase --id <id> --to <understand|plan|build|verify|repair|blocked> --summary "<current truth>"
 ```
 
-The resulting receipt is bound to the exact current candidate. A specialist
-result may cite it as `MEASURED` evidence only by its exact receipt ID; a
-citation that does not resolve to a real, runner-issued receipt on the current
-candidate is rejected before the result is accepted. Dispatch Judge in
-`verification` with `--independent` after verification succeeds; its result
-must cite the receipt and its packet's acceptance IDs must cover every
-acceptance ID implemented so far. `ready_for_pr` fails closed without that
-independent Judge dispatch, without acceptance coverage, and without every open
-finding recorded in `reviews/release-audit.md`.
+## Quality rules
 
-## Run stages
+- Respect repository instructions and existing user changes.
+- Base claims on inspected code or executed checks. Keep unknowns visible.
+- Prefer no change, reuse, or deletion before adding code, dependencies, files,
+  or abstractions.
+- Builder cannot be the only reviewer of its own work.
+- Verification covers the requested behavior, the changed boundaries, and the
+  actual diff—not a summary of it.
+- Run narrow checks during implementation. Verifier independently re-runs the
+  repository's required gates before completion.
+- User-interface work requires inspecting the rendered result when the host can
+  do so. State the limitation when it cannot.
+- Critical or high findings block completion. Medium and low findings may be
+  reported as residual risk when repair would exceed the request.
+- Stop after two unsuccessful repair cycles and explain the blocker.
 
-Execute the stages selected by the request in dependency order:
-
-1. Intake — `references/stages/intake.md`
-2. Discovery, when intent is not already bounded — `references/stages/discover.md`
-3. Definition — `references/stages/define.md`
-4. Planning and independent plan review — `references/stages/plan.md`
-5. Approval — `references/stages/approve.md`
-6. Implementation and integration — `references/stages/build.md`
-7. Domain audits, repair, and verification — `references/stages/audit.md`
-8. Delivery and durable knowledge promotion — `references/stages/finish.md`
-
-Advance state only through the runner:
+Finish a delivery record only after implementation and verification both
+contributed. An audit-only record requires the Verifier and no code change:
 
 ```bash
-node "$AE/scripts/forge.mjs" advance --id <feature-id> --to <state>
+node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" --verification "<checks and independent verdict>"
 ```
 
-The runner checks required artifacts and legal transitions. When an executable
-check exists, use its result rather than a model claim.
+## Final response
 
-## Approval and authority
+Lead with the delivered outcome. Include the important files or behavior,
+checks performed, and any residual risk or user action. Do not expose internal
+role transcripts, state-machine terminology, token accounting, or generated
+coordination files unless the user asks.
 
-Present one material approval package after the plan passes independent review.
-Before treating it as approved, record it:
+## Hard stops
 
-```bash
-node "$AE/scripts/forge.mjs" approve --id <feature-id>
-```
-
-Approval binds the intent, definition, plan, and plan review to their content
-digests and current base revision. Verify the binding before implementation and
-after any interruption:
-
-```bash
-node "$AE/scripts/forge.mjs" check --id <feature-id>
-```
-
-After approval, decide routine reversible engineering questions within project
-policy and record material rulings in `decisions.md`. Escalate only the
-conditions named in the contract or project authority policy.
-
-## Completion
-
-Completion requires the exact candidate revision, required command receipts,
-acceptance evidence, disposition of specialist findings, a release audit, and a
-working preview when user-facing behavior changed. The MVP target is a reviewed
-pull request; deployment needs a separate project release policy and authority.
-
-Close with the delivered behavior, evidence, residual risks, cost by stage, and
-the exact external action remaining, if any.
-
-## Hard boundaries
-
-- Never implement before the material approval unless the user explicitly
-  authorized implementation in the current conversation.
-- Never let a specialist change another specialist's authoritative artifact.
-- Never describe a heuristic, citation, exit code, or model review as proving
-  more than it checked.
-- Never expose secrets in the feature workspace or reports.
-- Never allow implementation to weaken its own acceptance gates without an
-  independent finding and recorded authority.
-- Never declare integrated success from independently passing task reports.
+- Do not claim completion when implementation or verification did not happen.
+- Do not deploy, publish, spend money, access new private systems, or perform a
+  destructive action without the authority required by the user and project.
+- Do not expand a bounded request into unrelated cleanup.
+- Do not turn missing optional Agent Engineering metadata into a refusal to
+  help.

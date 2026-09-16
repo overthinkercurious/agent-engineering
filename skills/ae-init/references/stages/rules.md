@@ -1,6 +1,6 @@
 # Stage 4 — Rules
 
-Owner of `.dev/rules/`. Runs after the knowledge base and before project policy.
+Owner of `.dev/rules/`. Runs after the knowledge base.
 
 `rules.mjs` has already derived the rules whose enforcement this project
 already has. Your job is to add the stack-specific ones — and to refuse most of

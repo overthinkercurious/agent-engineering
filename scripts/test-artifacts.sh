@@ -258,63 +258,20 @@ node "$RULES" --root "$BARE" --in "$BARE/.dev/context/analysis.json" --out "$BAR
 check "admits no rules"              "! ls '$BARE/.dev/rules'/10-*.md >/dev/null 2>&1"
 check "says nothing is verifiable"   "grep -q 'No test, lint, typecheck or build command' '$BARE/.dev/rules/00-index.md'"
 
-POLICY="$KIT/skills/ae-init/scripts/policy.mjs"
-head_ "stage 5: project policy"
-POLICYOUT="$P/.dev/policy"
-node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1; rc=$?
-check "exits 0"                      "[ $rc -eq 0 ]"
-for f in authority quality-gates routing release; do
-  check "$f.yml written"             "[ -s '$POLICYOUT/$f.yml' ]"
-done
-check "records a real test gate"     "grep -q 'npm run test' '$POLICYOUT/quality-gates.yml'"
-check "defaults to Probe and Judge"  "grep -q 'plan_specialist: probe' '$POLICYOUT/routing.yml' && grep -q 'final_specialist: judge' '$POLICYOUT/routing.yml'"
-check "production deploy is gated"   "grep -q 'production_deployment_authorized: false' '$POLICYOUT/release.yml'"
-check "leaves judgment explicit"     "grep -q 'TODO (judgment)' '$POLICYOUT/authority.yml'"
-check "records input digest and field provenance" "grep -q 'input_digest:' '$POLICYOUT/authority.yml' && grep -q 'judgment_provenance:' '$POLICYOUT/authority.yml'"
-
-node -e 'const fs=require("fs");const p=process.argv[1];const s=fs.readFileSync(p,"utf8").replace("project_maturity: \"TODO (judgment)\"","project_maturity: \"production\"");fs.writeFileSync(p,s)' "$POLICYOUT/authority.yml"
-node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
-check "regeneration preserves a completed user decision" "grep -q 'project_maturity:.*production' '$POLICYOUT/authority.yml' && grep -q 'project_maturity: preserved_user_decision' '$POLICYOUT/authority.yml'"
-node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --confirm-conservative --quiet >/dev/null 2>&1
-check "confirmation resolves every material policy decision" "! grep -q 'TODO (judgment)' '$POLICYOUT/'*.yml"
-P1="$(md5sum "$POLICYOUT"/*.yml)"
-node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
-check "confirmed policy regeneration is idempotent" "[ \"$P1\" = \"\$(md5sum '$POLICYOUT'/*.yml)\" ]"
-
 FORGE="$KIT/skills/ae-forge/scripts/forge.mjs"
 node "$FORGE" start --root "$P" --title "Initialized fixture" --kind bug --id init-to-forge > "$P/.dev/context/forge.json" 2>&1; rc=$?
-check "confirmed ae-init output is consumed by Forge" "[ $rc -eq 0 ] && grep -q '\"budget_tier\": \"small\"' '$P/.dev/work/init-to-forge/manifest.json' && grep -q 'npm run test' '$P/.dev/work/init-to-forge/manifest.json'"
+check "Forge starts beside optional project knowledge" "[ $rc -eq 0 ] && grep -q '\"investigator\"' '$P/.dev/work/init-to-forge/run.json' && grep -q '\"verifier\"' '$P/.dev/work/init-to-forge/run.json'"
 
 node -e 'const fs=require("fs");const p=process.argv[1];const d=JSON.parse(fs.readFileSync(p,"utf8"));d.scripts.typecheck="tsc --noEmit";fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")' "$P/package.json"
 node "$ANALYZE" --root "$P" --out "$J" >/dev/null 2>&1
-node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
-check "changed source facts refresh generated gates" "grep -q 'npm run typecheck' '$POLICYOUT/quality-gates.yml'"
-check "source refresh still preserves user policy decisions" "grep -q 'project_maturity:.*production' '$POLICYOUT/authority.yml'"
-node "$FORGE" check --root "$P" --id init-to-forge > "$P/.dev/context/forge-check.json" 2>&1
-check "source refresh invalidates the earlier effective policy" "[ $? -eq 1 ] && grep -q 'stale_effective_policy' '$P/.dev/context/forge-check.json'"
-
-cp "$POLICYOUT/authority.yml" "$P/.dev/context/authority.backup"
-printf '\n# agent-engineering:start\n' >> "$POLICYOUT/authority.yml"
-CONFLICT_HASH="$(md5sum < "$POLICYOUT/authority.yml")"
-node "$POLICY" --root "$P" --in "$J" --out "$POLICYOUT" --quiet >/dev/null 2>&1
-check "conflicting policy markers fail without rewriting" "[ $? -ne 0 ] && [ \"$CONFLICT_HASH\" = \"\$(md5sum < '$POLICYOUT/authority.yml')\" ]"
-cp "$P/.dev/context/authority.backup" "$POLICYOUT/authority.yml"
-
-node "$POLICY" --root "$P" --in "$J" --out "$WORK/escape-policy" --quiet >/dev/null 2>&1
-check "policy output cannot escape project root" "[ $? -eq 2 ] && [ ! -e '$WORK/escape-policy' ]"
-
-printf '\n' >> "$J"
-DOCTOR="$KIT/skills/ae-init/scripts/doctor.sh"
-bash "$DOCTOR" "$P" > "$P/.dev/context/doctor.txt" 2>&1
-check "doctor diagnoses policy generated from stale analysis" "grep -q 'stale policy generated from an older analysis' '$P/.dev/context/doctor.txt'"
+node "$FORGE" status --root "$P" --id init-to-forge > "$P/.dev/context/forge-status.json" 2>&1
+check "project knowledge refresh does not strand active work" "[ $? -eq 0 ] && grep -q '\"status\": \"active\"' '$P/.dev/context/forge-status.json'"
 
 head_ "stages refuse to run before analysis"
 node "$KNOW" --root "$WORK" --in "$WORK/does-not-exist.json" --quiet >/dev/null 2>&1
 check "knowledge exits non-zero"     "[ $? -ne 0 ]"
 node "$RULES" --root "$WORK" --in "$WORK/does-not-exist.json" --quiet >/dev/null 2>&1
 check "rules exits non-zero"         "[ $? -ne 0 ]"
-node "$POLICY" --root "$WORK" --in "$WORK/does-not-exist.json" --quiet >/dev/null 2>&1
-check "policy exits non-zero"        "[ $? -ne 0 ]"
 
 printf '\n'
 if [ "$FAIL" -gt 0 ]; then printf '\033[31m%d failed\033[0m, %d passed\n\n' "$FAIL" "$PASS"; exit 1; fi

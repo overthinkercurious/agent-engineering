@@ -5,13 +5,13 @@
     "name": "overthinkercurious"
   },
   "metadata": {
-    "version": "0.2.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "agent-engineering",
       "description": "Research, plan, implement, audit, and verify software with a project-scoped specialist team.",
-      "version": "0.2.0",
+      "version": "1.1.0",
       "source": "./",
       "author": {
         "name": "overthinkercurious"

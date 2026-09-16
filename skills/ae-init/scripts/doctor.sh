@@ -47,20 +47,20 @@ printf 'project: %s\n' "$ROOT"
 printf 'kit:     %s\n' "$AE_KIT_ROOT"
 
 # ------------------------------------------------------------- .dev/ --------
-# Severity splits on lifecycle. knowledge/, rules/, and policy/ are the committed record
+# Severity splits on lifecycle. knowledge/ and rules/ are the committed record
 # and their absence means init has not run, or its output was lost. context/
 # holds only regenerable analysis, so a missing one is a note.
 
 ae_head "directories"
 missing_durable=""
-for d in knowledge rules policy; do
+for d in knowledge rules; do
   [ -d "$ROOT/.dev/$d" ] || missing_durable="$missing_durable .dev/$d"
 done
 
 if [ -n "$missing_durable" ]; then
   fail "missing committed directories:$missing_durable - re-run ae-init"
 else
-  ae_ok ".dev/knowledge, .dev/rules and .dev/policy present (the committed record)"
+  ae_ok ".dev/knowledge and .dev/rules present (the committed record)"
 fi
 if [ -d "$ROOT/.dev/context" ]; then
   ae_ok ".dev/context present"
@@ -84,31 +84,6 @@ if [ -s "$ROOT/.dev/rules/00-index.md" ]; then
   ae_ok "rules index present"
 else
   warn "no rules yet - run ae-init stage 4"
-fi
-policy_missing=""
-for f in authority.yml quality-gates.yml routing.yml release.yml; do
-  [ -s "$ROOT/.dev/policy/$f" ] || policy_missing="$policy_missing $f"
-done
-if [ -n "$policy_missing" ]; then
-  warn "project policy incomplete:$policy_missing - run ae-init stage 5"
-else
-  ae_ok "project policy present (4 documents)"
-  policy_todos="$(grep -l 'TODO (judgment)' "$ROOT/.dev/policy/"*.yml 2>/dev/null | wc -l | tr -d ' ')"
-  [ "$policy_todos" != "0" ] && warn "$policy_todos policy document(s) still require explicit project decisions; Forge will fail closed"
-  if [ -s "$ROOT/.dev/context/analysis.json" ]; then
-    analysis_digest="$(node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$ROOT/.dev/context/analysis.json" 2>/dev/null)"
-    stale_policy=""
-    for f in authority.yml quality-gates.yml routing.yml release.yml; do
-      recorded="$(awk -F': ' '/^input_digest:/{gsub(/"/, "", $2); print $2; exit}' "$ROOT/.dev/policy/$f")"
-      if [ -z "$recorded" ]; then
-        warn "$f has no analysis input digest; regenerate policy before relying on freshness"
-      elif [ "$recorded" != "$analysis_digest" ]; then
-        stale_policy="$stale_policy $f"
-      fi
-    done
-    [ -n "$stale_policy" ] && warn "stale policy generated from an older analysis:$stale_policy - rerun ae-init policy generation"
-    [ -z "$stale_policy" ] && ae_ok "policy input digests match current analysis.json"
-  fi
 fi
 
 # ------------------------------------------------- instruction files --------
@@ -177,9 +152,9 @@ else
   else
     fail ".gitignore does not exclude .dev/context/ - analysis.json would be committed"
   fi
-  # knowledge/, rules/, and policy/ are the deliverable. If a future edit ever ignores
+  # knowledge/ and rules/ are the deliverable. If a future edit ever ignores
   # them the suite silently stops being useful to anyone but this machine.
-  for e in ".dev/knowledge" ".dev/rules" ".dev/policy"; do
+  for e in ".dev/knowledge" ".dev/rules"; do
     grep -qE "^${e}" "$GI" && fail "$e is gitignored, but it is the committed record this tool exists to produce"
   done
 fi

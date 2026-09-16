@@ -1,0 +1,52 @@
+{
+  "version": 2,
+  "roles": {
+    "product": {
+      "owns": "user or system outcome, scope, non-goals, and acceptance behavior",
+      "file": "roles/product.md"
+    },
+    "investigator": {
+      "owns": "reproduced symptom and evidence-supported causal account",
+      "file": "roles/investigator.md"
+    },
+    "architect": {
+      "owns": "technical design, system boundaries, impact map, and implementation plan",
+      "file": "roles/architect.md"
+    },
+    "security": {
+      "owns": "trust, authorization, privacy, abuse, and security constraints",
+      "file": "roles/security.md"
+    },
+    "data": {
+      "owns": "persistent-data invariants, schema transition, migration, and data recovery",
+      "file": "roles/data.md"
+    },
+    "experience": {
+      "owns": "user journey, interaction states, and accessibility acceptance",
+      "file": "roles/experience.md"
+    },
+    "reliability": {
+      "owns": "runtime failure, performance, concurrency, observability, and operational recovery",
+      "file": "roles/reliability.md"
+    },
+    "builder": {
+      "owns": "application and test changes implementing the accepted plan",
+      "file": "roles/builder.md"
+    },
+    "verifier": {
+      "owns": "integrated evidence and the final delivery verdict",
+      "file": "roles/verifier.md"
+    }
+  },
+  "tiers": {
+    "quick": ["builder", "verifier"],
+    "standard": ["architect", "builder", "verifier"],
+    "deep": ["architect", "builder", "verifier"]
+  },
+  "signals": {
+    "security": ["auth", "authorization", "tenant", "secret", "privacy", "payment", "security"],
+    "data": ["schema", "migration", "backfill", "destructive", "database"],
+    "experience": ["ui", "ux", "accessibility", "journey", "onboarding"],
+    "reliability": ["external", "queue", "retry", "concurrency", "performance", "reliability", "critical"]
+  }
+}

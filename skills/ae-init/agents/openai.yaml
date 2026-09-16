@@ -1,6 +1,6 @@
 interface:
   display_name: "AE Init"
-  short_description: "Build trusted project context and policy"
+  short_description: "Build durable project knowledge and rules"
   default_prompt: "Use $ae-init to index and configure this project."
 
 policy:

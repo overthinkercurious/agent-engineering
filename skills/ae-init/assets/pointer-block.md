@@ -14,9 +14,8 @@ that answers your question. Read that document, not all of them.
 | What is expensive to get wrong? | `.dev/knowledge/40-risks.md` |
 | How is code written here? | `.dev/knowledge/50-conventions.md` |
 | What is enforced, and by which command? | `.dev/rules/00-index.md` |
-| What may an agent decide and what gates apply? | `.dev/policy/` |
 
-These documents are generated but committed. Content between the
+The knowledge and rules documents are generated but committed. Content between the
 `agent-engineering` markers is rewritten on every run; anything outside the
 markers is preserved, so corrections go under `## Notes`.
 

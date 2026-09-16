@@ -40,7 +40,7 @@ head_ "2. fresh scaffold creates exactly what is read"
 P="$(newproj fresh)"
 bash "$SCAFFOLD" --root "$P" >/dev/null 2>&1; rc=$?
 check "exits 0"                           "[ $rc -eq 0 ]"
-for d in context knowledge rules policy; do
+for d in context knowledge rules; do
   check ".dev/$d exists"                  "[ -d '$P/.dev/$d' ]"
 done
 check "no directory nothing reads"        "[ ! -d '$P/.dev/tasks' ] && [ ! -d '$P/.dev/scratch' ]"
@@ -50,7 +50,6 @@ check "AGENTS.md has the block"           "grep -qF 'agent-engineering:start' '$
 check "repo placeholder substituted"      "! grep -qF '__KIT_REPO__' '$P/AGENTS.md'"
 check "no stale version placeholder"      "! grep -qF '__KIT_VERSION__' '$P/AGENTS.md'"
 check "routes to the knowledge index"     "grep -qF '.dev/knowledge/00-index.md' '$P/AGENTS.md'"
-check "routes to project policy"          "grep -qF '.dev/policy/' '$P/AGENTS.md'"
 check ".gitignore ignores analysis"       "grep -qF '.dev/context/' '$P/.gitignore'"
 check "no CLAUDE.md (tool not present)"   "[ ! -f '$P/CLAUDE.md' ]"
 
@@ -98,7 +97,6 @@ bash "$SCAFFOLD" --root "$P" >/dev/null 2>&1; rc=$?
 check "scaffold exits 0"                    "[ $rc -eq 0 ]"
 check "writes the current Antigravity rule" "[ -s '$P/.agents/rules/agent-engineering.md' ]"
 check "rule routes to project knowledge"    "grep -qF '.dev/knowledge/00-index.md' '$P/.agents/rules/agent-engineering.md'"
-check "rule routes to project policy"       "grep -qF '.dev/policy/' '$P/.agents/rules/agent-engineering.md'"
 check "does not write the legacy rule path" "[ ! -e '$P/.agent/rules/agent-engineering.md' ]"
 ( cd "$P" && bash "$DOCTOR" ) >/dev/null 2>&1
 check "doctor recognizes Antigravity install" "[ $? -eq 0 ]"
@@ -146,7 +144,7 @@ OUT="$WORK/d10.txt"
 ( cd "$P" && bash "$SCAFFOLD" ) > "$OUT" 2>&1; rc=$?
 check "exits 0"                           "[ $rc -eq 0 ]"
 check "does not claim to escape the root" "! grep -q 'outside the project root' '$OUT'"
-for d in context knowledge rules policy; do
+for d in context knowledge rules; do
   check ".dev/$d created"                 "[ -d '$P/.dev/$d' ]"
 done
 ( cd "$P" && bash "$DOCTOR" ) >/dev/null 2>&1
@@ -168,7 +166,6 @@ bash "$SCAFFOLD" --root "$P" >/dev/null 2>&1
 node "$SKILL/scripts/analyze.mjs" --root "$P" >/dev/null 2>&1
 node "$SKILL/scripts/knowledge.mjs" --root "$P" --quiet >/dev/null 2>&1
 node "$SKILL/scripts/rules.mjs" --root "$P" --quiet >/dev/null 2>&1
-node "$SKILL/scripts/policy.mjs" --root "$P" --quiet >/dev/null 2>&1
 ( cd "$P" && git add -A && git -c user.email=t@t -c user.name=t commit -qm init ) >/dev/null 2>&1
 TRACKED="$WORK/tracked.txt"; ( cd "$P" && git ls-files ) > "$TRACKED"
 check "ae- skills are NOT tracked"        "! grep -q 'skills/ae-init' '$TRACKED'"
@@ -177,7 +174,6 @@ check "the user's own skill IS tracked"   "grep -q 'my-own-skill/SKILL.md' '$TRA
 check "analysis.json is NOT tracked"      "! grep -q 'analysis.json' '$TRACKED'"
 check "knowledge base IS tracked"         "grep -q '.dev/knowledge/00-index.md' '$TRACKED'"
 check "rules index IS tracked"            "grep -q '.dev/rules/00-index.md' '$TRACKED'"
-check "project policy IS tracked"         "grep -q '.dev/policy/authority.yml' '$TRACKED'"
 check "feature workspaces are ignored"    "( cd '$P' && git check-ignore -q .dev/work/example/state.json )"
 check "AGENTS.md IS tracked"              "grep -qx 'AGENTS.md' '$TRACKED'"
 check "skills-lock.json IS tracked"       "grep -qx 'skills-lock.json' '$TRACKED'"
@@ -204,9 +200,6 @@ check "stage 3 found the auth risk"       "grep -q 'src/auth.js' '$P/.dev/knowle
 ( cd "$P" && node "$SKILL/scripts/rules.mjs" --quiet ) >/dev/null 2>&1
 check "stage 4 wrote the rules index"     "[ -s '$P/.dev/rules/00-index.md' ]"
 check "stage 4 found a real gate"         "grep -q 'npm run test' '$P/.dev/rules/00-index.md'"
-( cd "$P" && node "$SKILL/scripts/policy.mjs" --quiet ) >/dev/null 2>&1
-check "stage 5 wrote authority policy"    "[ -s '$P/.dev/policy/authority.yml' ]"
-check "stage 5 found executable gates"    "grep -q 'npm run test' '$P/.dev/policy/quality-gates.yml'"
 OUT="$WORK/d12.txt"; ( cd "$P" && bash "$DOCTOR" ) > "$OUT" 2>&1; rc=$?
 check "doctor healthy after a full run"   "[ $rc -eq 0 ]"
 check "doctor sees the knowledge base"    "grep -q 'knowledge base present' '$OUT'"

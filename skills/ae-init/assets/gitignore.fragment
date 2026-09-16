@@ -8,7 +8,7 @@
 **/skills/ae-*/
 
 # Raw analysis dump: large, machine-only, and regenerated on every run. The
-# documents derived from it in .dev/knowledge/, .dev/rules/, and .dev/policy/
+# documents derived from it in .dev/knowledge/ and .dev/rules/
 # ARE committed - they are the reusable project contract.
 .dev/context/*
 !.dev/context/.gitkeep

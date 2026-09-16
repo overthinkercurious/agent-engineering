@@ -1,6 +1,6 @@
 {
   "name": "agent-engineering",
-  "version": "0.2.0",
+  "version": "1.1.0",
   "description": "Project-scoped product discovery and specialist engineering workflows for independently verified software delivery.",
   "author": {
     "name": "overthinkercurious",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Agent Engineering",
     "shortDescription": "A project-aware specialist team for shipping software",
-    "longDescription": "Agent Engineering indexes the product and repository, then assembles focused product and engineering specialists to research, plan, implement, audit, and verify a change.",
+    "longDescription": "Agent Engineering selects a risk-sized product and engineering team to understand, plan, implement, audit, and verify a change. Optional project indexing improves context but never blocks delivery.",
     "developerName": "overthinkercurious",
     "category": "Developer Tools",
     "capabilities": [

@@ -29,7 +29,7 @@ Usage: scaffold.sh [--dry-run] [--root DIR]
   --root DIR  Install into DIR instead of the detected project root.
   -h, --help  This message.
 
-Creates .dev/{context,knowledge,rules,policy}, writes a pointer block into the
+Creates .dev/{context,knowledge,rules}, writes a pointer block into the
 instruction file of every detected tool, and configures .gitignore.
 Never writes outside the project root.
 USAGE
@@ -80,7 +80,7 @@ fi
 # directories nobody reads are just noise in a diff.
 
 ae_head "directories"
-for d in context knowledge rules policy; do
+for d in context knowledge rules; do
   target="$ROOT/.dev/$d"
   ae_assert_inside "$ROOT" "$target"
   if [ -d "$target" ]; then
