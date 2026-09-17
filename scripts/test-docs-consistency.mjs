@@ -26,8 +26,20 @@ const installerIds = [...targets.matchAll(/^    installer_ids:\s*"?([^"\r\n]+)"?
 for (const id of installerIds) {
   check(readme.includes('| `' + id + '` |'), `README does not document installer agent ${id}`)
 }
-check(/agent-engineering --agent AGENT_ID --copy -y/.test(readme),
+check(/skills@1\.7\.0 add overthinkercurious\/agent-engineering --agent AGENT_ID --copy -y/.test(readme),
   'README must provide the portable project-install command')
+check(/\.agents\/skills\/ae-init\/SKILL\.md/.test(readme),
+  'README must show the exact Antigravity ae-init install path')
+check(/\.agents\/skills\/ae-forge\/SKILL\.md/.test(readme),
+  'README must show the exact Antigravity ae-forge install path')
+check(/Use `\/ae-init`, `\/ae-forge`/i.test(readme),
+  'README must document current Antigravity slash invocation')
+check(/Antigravity CLI users can also run `\/skills`/i.test(readme),
+  'README must document Antigravity CLI skill discovery')
+check(/rerun the same install command with the same `--agent` values/i.test(readme),
+  'README must document the deterministic skill update contract')
+check(/commit that file as the project's\s+source and content-hash record/i.test(readme),
+  'README must explain how skills-lock.json keeps project provenance')
 
 if (failures.length) {
   for (const failure of failures) process.stdout.write(`  FAIL  ${failure}\n`)

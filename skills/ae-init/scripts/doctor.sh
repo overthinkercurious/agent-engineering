@@ -113,7 +113,7 @@ for id in $(ae_target_ids "$TSV"); do
   if [ -d "$sd" ]; then
     n="$(find "$sd" -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
     if [ "$n" = "0" ]; then
-      fail "$disp reads $skdir/ but no SKILL.md is there - run: npx skills add ${AE_KIT_REPO:-overthinkercurious/agent-engineering} --copy"
+      fail "$disp reads $skdir/ but no SKILL.md is there - run: npx skills@1.7.0 add ${AE_KIT_REPO:-overthinkercurious/agent-engineering} --agent AGENT_ID --copy -y"
     else
       ae_ok "$skdir/ has $n skill(s)"
     fi
@@ -121,7 +121,7 @@ for id in $(ae_target_ids "$TSV"); do
     for stub in "$sd"/*; do
       [ -e "$stub" ] || continue
       if [ -f "$stub" ] && [ "$(wc -c < "$stub" | tr -d ' ')" -lt 400 ] && grep -qE '^\.{0,2}/?[A-Za-z0-9_./-]+$' "$stub" 2>/dev/null; then
-        fail "$stub looks like a broken symlink stub, not a skill directory. This happens when symlinked skills are committed and cloned on Windows. Re-install with: npx skills add ... --copy"
+        fail "$stub looks like a broken symlink stub, not a skill directory. This happens when symlinked skills are committed and cloned on Windows. Re-install with: npx skills@1.7.0 add ... --agent AGENT_ID --copy -y"
       fi
     done
   else
@@ -176,7 +176,7 @@ if [ -f "$ROOT/skills-lock.json" ]; then
   n="$(grep -c '"sourceType"' "$ROOT/skills-lock.json" 2>/dev/null || echo 0)"
   ae_ok "skills-lock.json present ($n skill(s) pinned) - commit this file"
 else
-  warn "no skills-lock.json - without it there is no record of which suite version this project expects. It is written by 'npx skills add'."
+  warn "no skills-lock.json - without it there is no source and content-hash record for the suite. It is written by 'npx skills@1.7.0 add'."
 fi
 
 # ------------------------------------------------------- line endings -------

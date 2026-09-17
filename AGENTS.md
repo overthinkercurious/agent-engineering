@@ -31,6 +31,7 @@ Everything a skill needs at runtime must live inside its own directory.
 ## Commands
 
     npm test
+    npm run test:install
     bash scripts/validate-suite.sh
     node scripts/validate-forge.mjs
     node scripts/test-forge.mjs

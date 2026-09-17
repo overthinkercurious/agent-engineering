@@ -3,7 +3,7 @@
 # many agent-specific directories, so match the reserved ae- prefix below any
 # skills directory. Skills with other prefixes remain tracked.
 #
-#   npx skills add __KIT_REPO__ --copy -y
+#   npx skills@1.7.0 add __KIT_REPO__ --agent AGENT_ID --copy -y
 #
 **/skills/ae-*/
 

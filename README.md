@@ -92,32 +92,47 @@ Open a terminal in the project you want to develop and run one command. Replace
 `AGENT_ID` with the identifier for your IDE:
 
 ```bash
-npx skills add overthinkercurious/agent-engineering --agent AGENT_ID --copy -y
+npx skills@1.7.0 add overthinkercurious/agent-engineering --agent AGENT_ID --copy -y
 ```
 
-| IDE or coding agent | `AGENT_ID` | Project skill location |
-|---|---|---|
-| Antigravity IDE | `antigravity` | `.agents/skills/` |
-| Antigravity CLI | `antigravity-cli` | `.agents/skills/` |
-| Gemini CLI | `gemini-cli` | `.agents/skills/` |
-| Codex | `codex` | `.agents/skills/` |
-| Cursor | `cursor` | `.agents/skills/` |
-| OpenCode | `opencode` | `.agents/skills/` |
-| GitHub Copilot | `github-copilot` | `.agents/skills/` |
-| Claude Code | `claude-code` | `.claude/skills/` |
+| IDE or coding agent | `AGENT_ID` | Installed project location | Discover or invoke |
+|---|---|---|---|
+| Antigravity IDE | `antigravity` | `.agents/skills/` | `/ae-init` or `/ae-forge` |
+| Antigravity CLI | `antigravity-cli` | `.agents/skills/` | `/skills`, then name the skill |
+| Gemini CLI | `gemini-cli` | `.agents/skills/` | `/skills reload`, then name the skill |
+| Codex | `codex` | `.agents/skills/` | `/skills` or `$ae-forge` |
+| Cursor | `cursor` | `.agents/skills/` | Type `/` and select the skill |
+| OpenCode | `opencode` | `.agents/skills/` | Ask naturally; OpenCode loads it with its skill tool |
+| GitHub Copilot | `github-copilot` | `.agents/skills/` | `/ae-forge` or `copilot skill list` |
+| Claude Code | `claude-code` | `.claude/skills/` | `/ae-init` or `/ae-forge` |
+
+These are not guessed compatibility paths. `.agents/skills` is an officially
+supported project location for every tool assigned to it above. Claude Code is
+the exception and receives its own native `.claude/skills` copy. The mapping is
+also verified against the installer registry and by an executable acceptance
+test for every `AGENT_ID`.
 
 For example, Antigravity IDE needs exactly:
 
 ```bash
-npx skills add overthinkercurious/agent-engineering --agent antigravity --copy -y
+npx skills@1.7.0 add overthinkercurious/agent-engineering --agent antigravity --copy -y
 ```
 
 The command is project-scoped: it downloads both complete skill directories,
 puts them where the selected IDE discovers them, and writes `skills-lock.json`.
 `--copy` avoids cross-platform symlink failures. Do not add `-g`; project scope
-is the portable contract and keeps the kit version tied to the repository.
+is the portable contract and records the installed content with the repository.
 
-Reload the IDE's skills or begin a new task, then ask:
+For Antigravity, run the command from the root of the project that is open in
+the IDE. A successful install has this exact shape:
+
+```text
+your-project/
+  .agents/skills/ae-init/SKILL.md
+  .agents/skills/ae-forge/SKILL.md
+```
+
+Then start a new Antigravity conversation and ask:
 
 > Use ae-init to index and configure this project.
 
@@ -128,6 +143,50 @@ After that, normal work starts with a request such as:
 
 Initialization is optional. `ae-forge` can work directly from an uninitialized
 repository.
+
+### Antigravity activation
+
+Current Antigravity versions support both semantic activation and skill slash
+commands. Use `/ae-init`, `/ae-forge`, or a normal request such as "Use ae-forge
+to build and verify password reset."
+
+If Antigravity does not list or use the skills:
+
+1. Check that the two `SKILL.md` files exist at the exact paths shown above in
+   the project currently open in Antigravity.
+2. If they do not, open a terminal at that project's root and rerun the
+   Antigravity install command.
+3. Start a new conversation so Antigravity refreshes the available skill names
+   and descriptions. If the `.agents` directory was added after the workspace
+   was opened and the skills still do not appear, fully quit and reopen
+   Antigravity with that project root; then use `/ae-init` or `/ae-forge`.
+
+Antigravity CLI users can also run `/skills` to browse loaded skills.
+
+### Multiple IDEs and updates
+
+Install for every IDE used on the project in one command:
+
+```bash
+npx skills@1.7.0 add overthinkercurious/agent-engineering --agent antigravity --agent cursor --agent claude-code --copy -y
+```
+
+Antigravity, Gemini CLI, Codex, Cursor, OpenCode, and GitHub Copilot share the
+same `.agents/skills` copy, so those tools cannot drift from one another inside
+a project. Claude Code reads its required `.claude/skills` copy.
+
+The installer writes `skills-lock.json`; commit that file as the project's
+source and content-hash record. Installed skill directories remain ignored
+dependencies. Updates are deliberate rather than automatic, so a workflow
+cannot change silently while work is in progress.
+
+To refresh, rerun the same install command with the same `--agent` values. It
+downloads the latest kit, replaces every selected copy, and refreshes the lock
+record while preserving the Windows-safe `--copy` installation mode. Afterward,
+use the reload action in the table above or start a new conversation. The
+installer also provides `npx skills@1.7.0 update --project -y`, but repeating the
+explicit install command is this kit's supported update path because the target
+IDEs and copy mode remain unambiguous.
 
 The skills require Node.js. ae-init also uses Bash for its optional scaffold
 and doctor commands.

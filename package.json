@@ -1,6 +1,6 @@
 {
   "name": "agent-engineering",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "A project-scoped product and engineering system that turns intent into independently verified software.",
   "license": "MIT",
   "repository": {

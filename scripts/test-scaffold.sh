@@ -181,7 +181,7 @@ check "working tree is clean after init"  "[ -z \"\$( cd '$P' && git status --po
 C="$WORK/clone"; git clone -q "$P" "$C" >/dev/null 2>&1
 check "clone carries the knowledge base"  "[ -s '$C/.dev/knowledge/00-index.md' ]"
 check "clone does NOT carry the suite"    "[ ! -d '$C/.claude/skills/ae-init' ]"
-check "clone says how to restore"         "grep -q 'npx skills add' '$C/AGENTS.md'"
+check "clone says how to restore"         "grep -q 'npx skills@1.7.0 add' '$C/AGENTS.md'"
 
 # ---------------------------------------------------------------------------
 head_ "13. the full chain, in the order SKILL.md gives"

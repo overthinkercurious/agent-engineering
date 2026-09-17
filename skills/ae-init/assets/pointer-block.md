@@ -32,8 +32,11 @@ is not committed. `.dev/work/` holds ignored per-feature working artifacts.
 listed in `skills-lock.json` and gitignored. In a fresh clone, restore it with:
 
 ```bash
-npx skills add __KIT_REPO__ --copy -y
+npx skills@1.7.0 add __KIT_REPO__ --agent AGENT_ID --copy -y
 ```
+
+Replace `AGENT_ID` with the current IDE's identifier from the installation table
+in the linked Agent Engineering README.
 
 then ask the agent to run ae-init. If the knowledge base looks out of date,
 re-run it: every stage is idempotent and the facts are regenerated from the

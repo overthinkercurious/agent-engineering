@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +10,7 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const temp = mkdtempSync(join(tmpdir(), 'ae-installer-'))
 const npx = process.platform === 'win32' ? process.env.ComSpec : 'npx'
 const npxPrefix = process.platform === 'win32' ? ['/d', '/s', '/c', 'npx'] : []
+const installer = 'skills@1.7.0'
 const agents = {
   antigravity: '.agents/skills',
   'antigravity-cli': '.agents/skills',
@@ -27,21 +28,63 @@ try {
     const project = join(temp, agent)
     mkdirSync(project)
     const result = spawnSync(npx, [...npxPrefix,
-      '-y', 'skills@1.5.26', 'add', repo,
+      '-y', installer, 'add', repo,
       '--agent', agent, '--copy', '--yes',
     ], { cwd: project, encoding: 'utf8', timeout: 120000 })
     const base = join(project, skillsDir)
+    const lockPath = join(project, 'skills-lock.json')
+    const lock = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, 'utf8')) : null
     const complete = result.status === 0 &&
       existsSync(join(base, 'ae-init', 'SKILL.md')) &&
       existsSync(join(base, 'ae-init', 'scripts', 'analyze.mjs')) &&
       existsSync(join(base, 'ae-forge', 'SKILL.md')) &&
-      existsSync(join(base, 'ae-forge', 'references', 'roles', 'security.md'))
+      existsSync(join(base, 'ae-forge', 'references', 'roles', 'security.md')) &&
+      lock?.skills?.['ae-init']?.computedHash &&
+      lock?.skills?.['ae-forge']?.computedHash
     if (complete) process.stdout.write(`  PASS  ${agent} installs both complete skills into ${skillsDir}\n`)
     else {
       failed++
       const detail = result.error?.message || `${result.stdout || ''}${result.stderr || ''}`
       process.stdout.write(`  FAIL  ${agent} install contract\n${detail}\n`)
     }
+  }
+
+  const combined = join(temp, 'combined')
+  mkdirSync(combined)
+  const combinedArgs = [...npxPrefix,
+    '-y', installer, 'add', repo,
+    '--agent', 'antigravity', '--agent', 'claude-code', '--copy', '--yes',
+  ]
+  const first = spawnSync(npx, combinedArgs, { cwd: combined, encoding: 'utf8', timeout: 120000 })
+  const second = spawnSync(npx, combinedArgs, { cwd: combined, encoding: 'utf8', timeout: 120000 })
+  const universal = join(combined, '.agents', 'skills')
+  const claude = join(combined, '.claude', 'skills')
+  const sameFile = (relativePath) => {
+    const universalFile = join(universal, relativePath)
+    const claudeFile = join(claude, relativePath)
+    return existsSync(universalFile) && existsSync(claudeFile) &&
+      readFileSync(universalFile, 'utf8') === readFileSync(claudeFile, 'utf8')
+  }
+  const combinedLockPath = join(combined, 'skills-lock.json')
+  const combinedLock = existsSync(combinedLockPath)
+    ? JSON.parse(readFileSync(combinedLockPath, 'utf8'))
+    : null
+  const combinedComplete = first.status === 0 && second.status === 0 &&
+    existsSync(join(universal, 'ae-init', 'SKILL.md')) &&
+    existsSync(join(universal, 'ae-forge', 'SKILL.md')) &&
+    existsSync(join(claude, 'ae-init', 'SKILL.md')) &&
+    existsSync(join(claude, 'ae-forge', 'SKILL.md')) &&
+    sameFile(join('ae-init', 'SKILL.md')) &&
+    sameFile(join('ae-init', 'scripts', 'analyze.mjs')) &&
+    sameFile(join('ae-forge', 'SKILL.md')) &&
+    sameFile(join('ae-forge', 'references', 'roles', 'security.md')) &&
+    Object.keys(combinedLock?.skills || {}).sort().join(',') === 'ae-forge,ae-init'
+  if (combinedComplete) process.stdout.write('  PASS  repeated multi-IDE install keeps both destinations in sync\n')
+  else {
+    failed++
+    const detail = first.error?.message || second.error?.message ||
+      `${first.stdout || ''}${first.stderr || ''}${second.stdout || ''}${second.stderr || ''}`
+    process.stdout.write(`  FAIL  repeated multi-IDE install contract\n${detail}\n`)
   }
 } finally {
   rmSync(temp, { recursive: true, force: true })
