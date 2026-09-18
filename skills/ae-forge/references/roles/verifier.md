@@ -21,6 +21,7 @@ from summaries without the underlying repository and command evidence.
 - Exact current diff and repository instructions.
 - Builder result for deliveries.
 - Candidate findings from every selected named specialist.
+- Attached lenses from `references/lenses/` for this role, selected per `team.md`'s lens-selection algorithm.
 - Access to required checks and rendered UI where applicable.
 
 ## Workflow

@@ -21,6 +21,12 @@ Read `references/team.md` for the shared contract and `references/team.json`
 for routing. Then read only each selected workflow named by its `file` field.
 Do not load workflows for experts who were not selected.
 
+`team.md`'s lens-selection section (and `team.json`'s `lenses` block) attach
+at most two domain lenses per selected role from `references/lenses/`.
+Lenses add platform/protocol depth; they never replace a role's own file.
+Load only the lenses actually attached — `references/lenses/_index.md` lists
+what exists versus what's still backlog.
+
 ## Operating promise
 
 1. Understand the request and the repository.
@@ -80,14 +86,24 @@ every checklist, or a separate critic merely because they exist.
 
 An audit-only request is different: select Verifier and only the relevant
 Architect, Security, Data, Experience, or Reliability expert. Do not add
-Builder or edit code unless the user also asked for fixes.
+Builder or edit code unless the user also asked for fixes. A release-readiness
+review ("Release Auditor") is this same audit path with `kind: audit` — there
+is no separate release role; scope it to the relevant specialists (Reliability
+for rollout/observability, Security for exposure, Data for migration safety)
+plus Verifier.
 
-Prefer the host's native isolated-agent or subagent mechanism. Give each expert
-the request, exact repository scope, relevant project rules, its dedicated
-workflow file, and the shared result contract. Experts return findings to
-Forge; they do not dispatch one another. If isolated agents are unavailable,
-continue with explicit role passes and disclose that verification was not
-context-independent.
+Dispatch experts using this host's isolated-agent capability, using the same
+tier vocabulary as `ae-surveyor`'s `references/targets.yml` (kept in sync with
+it rather than duplicated file-for-file, since installed skills cannot read
+each other's files): `native-parallel` (concurrent isolated dispatch),
+`native-sequential` (isolation confirmed, not concurrency), or `none` (the
+default — assume this unless this host is independently known to support
+isolated dispatch). On `native-parallel` or `native-sequential`, give each
+expert the request, exact repository scope, relevant project rules, its
+dedicated workflow file, and the shared result contract; experts return
+findings to Forge and never dispatch one another. On `none`, run explicit
+role passes in this same session and disclose in the final report that
+verification was not context-independent this run.
 
 Forge is the sole coordinator. Planning and review roles are read-only. Builder
 is the only role that edits application code. Do not run Builder and Verifier

@@ -51,6 +51,29 @@ for (const path of ['SKILL.md', 'references/team.md', 'references/team.json', 's
   check(existsSync(join(forge, path)), `missing shipped Forge file: ${path}`)
 }
 
+const lenses = team.lenses || {}
+const lensIndexPath = join(forge, 'references', 'lenses', '_index.md')
+const lensIndex = existsSync(lensIndexPath) ? readFileSync(lensIndexPath, 'utf8') : ''
+for (const [name, contract] of Object.entries(lenses)) {
+  const file = resolve(forge, 'references', contract.file || '')
+  const rel = relative(join(forge, 'references'), file)
+  check(Boolean(contract.file) && !rel.startsWith('..') && !isAbsolute(rel), `lens ${name} file must stay inside references`)
+  check(existsSync(file), `lens ${name} file is missing: ${contract.file}`)
+  check(Array.isArray(contract.attaches_to) && contract.attaches_to.length > 0, `lens ${name} needs at least one attaches_to role`)
+  check((contract.attaches_to || []).every((role) => roleNames.includes(role)), `lens ${name} attaches to an unknown role`)
+  check(Array.isArray(contract.signals) && contract.signals.length > 0, `lens ${name} needs routing signals`)
+  check(typeof contract.owns === 'string' && contract.owns.trim(), `lens ${name} needs an ownership phrase`)
+  if (existsSync(file)) {
+    const content = readFileSync(file, 'utf8')
+    check(/^# /m.test(content), `lens ${name} needs a title`)
+    check(/^## Exclusive constraint$/m.test(content), `lens ${name} needs an Exclusive constraint section`)
+    check(/^## Activates$/m.test(content), `lens ${name} needs an Activates section`)
+    check(/^## Authority$/m.test(content), `lens ${name} needs an Authority section stating the project's own docs and gates outrank it`)
+    check(/^## Hands off$/m.test(content), `lens ${name} needs a Hands off section`)
+  }
+  check(lensIndex.includes('`' + name + '`'), `lens ${name} is in team.json but not listed in lenses/_index.md`)
+}
+
 for (const path of [
   'references/budgets.json', 'references/registry.json',
   'scripts/dispatch.mjs', 'scripts/codex-host.mjs',

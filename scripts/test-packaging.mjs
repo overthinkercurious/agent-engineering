@@ -38,7 +38,7 @@ for (const entry of pkg.files) {
 }
 check('package contains both public skills',
   existsSync(join(install, 'skills', 'ae-forge', 'SKILL.md')) &&
-  existsSync(join(install, 'skills', 'ae-init', 'SKILL.md')))
+  existsSync(join(install, 'skills', 'ae-surveyor', 'SKILL.md')))
 
 const files = walk(install).map((path) => relative(install, path).replaceAll('\\', '/'))
 check('development-only files are not packaged',
@@ -51,7 +51,7 @@ check('packaged Forge runner starts', help.status === 0 && help.stdout.includes(
 const project = join(temp, 'project-without-init')
 mkdirSync(project)
 const started = node(forge, ['start', '--root', project, '--title', 'Packaged flow', '--kind', 'feature', '--id', 'packaged-flow'])
-check('packaged Forge starts without ae-init', started.status === 0, started.stdout || started.stderr)
+check('packaged Forge starts without ae-surveyor', started.status === 0, started.stdout || started.stderr)
 check('packaged Forge writes one run record', existsSync(join(project, '.dev', 'work', 'packaged-flow', 'run.json')))
 
 const team = JSON.parse(readFileSync(join(install, 'skills', 'ae-forge', 'references', 'team.json'), 'utf8'))
@@ -67,8 +67,8 @@ const initProject = join(temp, 'init-project')
 mkdirSync(join(initProject, 'src'), { recursive: true })
 writeFileSync(join(initProject, 'src', 'index.mjs'), 'export const value = 1\n')
 writeFileSync(join(initProject, 'package.json'), JSON.stringify({ name: 'sample', scripts: { test: 'node --test' } }, null, 2))
-const analyze = node(join(install, 'skills', 'ae-init', 'scripts', 'analyze.mjs'), ['--root', initProject])
-check('packaged ae-init analyzer remains usable', analyze.status === 0 && existsSync(join(initProject, '.dev', 'context', 'analysis.json')), analyze.stderr)
+const analyze = node(join(install, 'skills', 'ae-surveyor', 'scripts', 'analyze.mjs'), ['--root', initProject])
+check('packaged ae-surveyor analyzer remains usable', analyze.status === 0 && existsSync(join(initProject, '.dev', 'context', 'analysis.json')), analyze.stderr)
 
 const manifests = [
   JSON.parse(readFileSync(join(install, '.codex-plugin', 'plugin.json'), 'utf8')),

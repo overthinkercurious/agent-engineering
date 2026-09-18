@@ -58,14 +58,14 @@ for d in knowledge rules; do
 done
 
 if [ -n "$missing_durable" ]; then
-  fail "missing committed directories:$missing_durable - re-run ae-init"
+  fail "missing committed directories:$missing_durable - re-run ae-surveyor"
 else
   ae_ok ".dev/knowledge and .dev/rules present (the committed record)"
 fi
 if [ -d "$ROOT/.dev/context" ]; then
   ae_ok ".dev/context present"
 else
-  warn "missing .dev/context - regenerable by design; re-run ae-init to recreate"
+  warn "missing .dev/context - regenerable by design; re-run ae-surveyor to recreate"
 fi
 
 # ---------------------------------------------------------- artifacts -------
@@ -78,12 +78,12 @@ if [ -s "$ROOT/.dev/knowledge/00-index.md" ]; then
   todo="$(grep -rl 'TODO (judgment)' "$ROOT/.dev/knowledge" 2>/dev/null | wc -l | tr -d ' ')"
   [ "$todo" != "0" ] && warn "$todo knowledge document(s) still have unanswered judgment slots"
 else
-  warn "no knowledge base yet - run ae-init stages 2 and 3"
+  warn "no knowledge base yet - run ae-surveyor stages 2 and 3"
 fi
 if [ -s "$ROOT/.dev/rules/00-index.md" ]; then
   ae_ok "rules index present"
 else
-  warn "no rules yet - run ae-init stage 4"
+  warn "no rules yet - run ae-surveyor stage 4"
 fi
 
 # ------------------------------------------------- instruction files --------
@@ -105,7 +105,7 @@ for id in $(ae_target_ids "$TSV"); do
   if ae_block_present "$ROOT/$ifile"; then
     ae_ok "$ifile has the managed block ($disp)"
   else
-    fail "$disp detected but $ifile has no agent-engineering block - re-run ae-init"
+    fail "$disp detected but $ifile has no agent-engineering block - re-run ae-surveyor"
   fi
 
   # Skills present where this tool looks for them?
@@ -143,7 +143,7 @@ else
     grep -qF "$e" "$GI" || miss="$miss $e"
   done
   if [ -n "$miss" ]; then
-    fail ".gitignore is missing suite entries:$miss - re-run ae-init"
+    fail ".gitignore is missing suite entries:$miss - re-run ae-surveyor"
   else
     ae_ok ".gitignore excludes the installed suite"
   fi

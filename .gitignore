@@ -10,3 +10,7 @@ node_modules/
 /docs/_reference/
 /docs/DESIGN-CONTEXT.md
 /docs/PHASE-1-INSTALL-BRIEF.md
+
+# Accidental Claude-app export target; the design record lives in the
+# claude.ai project, not in this repo.
+/Claude outputs/

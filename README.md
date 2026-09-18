@@ -9,7 +9,7 @@ The kit ships two public skills:
 
 - **ae-forge** is the everyday entry point. It selects a risk-sized team,
   plans, implements, verifies, repairs findings, and reports the result.
-- **ae-init** optionally builds durable project knowledge and rules for large
+- **ae-surveyor** optionally builds durable project knowledge and rules for large
   or long-lived repositories. Forge does not refuse work when initialization
   has not been run.
 
@@ -97,14 +97,14 @@ npx skills@1.7.0 add overthinkercurious/agent-engineering --agent AGENT_ID --cop
 
 | IDE or coding agent | `AGENT_ID` | Installed project location | Discover or invoke |
 |---|---|---|---|
-| Antigravity IDE | `antigravity` | `.agents/skills/` | `/ae-init` or `/ae-forge` |
+| Antigravity IDE | `antigravity` | `.agents/skills/` | `/ae-surveyor` or `/ae-forge` |
 | Antigravity CLI | `antigravity-cli` | `.agents/skills/` | `/skills`, then name the skill |
 | Gemini CLI | `gemini-cli` | `.agents/skills/` | `/skills reload`, then name the skill |
 | Codex | `codex` | `.agents/skills/` | `/skills` or `$ae-forge` |
 | Cursor | `cursor` | `.agents/skills/` | Type `/` and select the skill |
 | OpenCode | `opencode` | `.agents/skills/` | Ask naturally; OpenCode loads it with its skill tool |
 | GitHub Copilot | `github-copilot` | `.agents/skills/` | `/ae-forge` or `copilot skill list` |
-| Claude Code | `claude-code` | `.claude/skills/` | `/ae-init` or `/ae-forge` |
+| Claude Code | `claude-code` | `.claude/skills/` | `/ae-surveyor` or `/ae-forge` |
 
 These are not guessed compatibility paths. `.agents/skills` is an officially
 supported project location for every tool assigned to it above. Claude Code is
@@ -128,13 +128,13 @@ the IDE. A successful install has this exact shape:
 
 ```text
 your-project/
-  .agents/skills/ae-init/SKILL.md
+  .agents/skills/ae-surveyor/SKILL.md
   .agents/skills/ae-forge/SKILL.md
 ```
 
 Then start a new Antigravity conversation and ask:
 
-> Use ae-init to index and configure this project.
+> Use ae-surveyor to index and configure this project.
 
 After that, normal work starts with a request such as:
 
@@ -147,7 +147,7 @@ repository.
 ### Antigravity activation
 
 Current Antigravity versions support both semantic activation and skill slash
-commands. Use `/ae-init`, `/ae-forge`, or a normal request such as "Use ae-forge
+commands. Use `/ae-surveyor`, `/ae-forge`, or a normal request such as "Use ae-forge
 to build and verify password reset."
 
 If Antigravity does not list or use the skills:
@@ -159,7 +159,7 @@ If Antigravity does not list or use the skills:
 3. Start a new conversation so Antigravity refreshes the available skill names
    and descriptions. If the `.agents` directory was added after the workspace
    was opened and the skills still do not appear, fully quit and reopen
-   Antigravity with that project root; then use `/ae-init` or `/ae-forge`.
+   Antigravity with that project root; then use `/ae-surveyor` or `/ae-forge`.
 
 Antigravity CLI users can also run `/skills` to browse loaded skills.
 
@@ -188,7 +188,7 @@ installer also provides `npx skills@1.7.0 update --project -y`, but repeating th
 explicit install command is this kit's supported update path because the target
 IDEs and copy mode remain unambiguous.
 
-The skills require Node.js. ae-init also uses Bash for its optional scaffold
+The skills require Node.js. ae-surveyor also uses Bash for its optional scaffold
 and doctor commands.
 
 ### Runtime expectations
@@ -203,7 +203,7 @@ access a new private system, or perform destructive work.
 
 ## Optional project initialization
 
-Use ae-init when a repository is large, unfamiliar, or will be worked on
+Use ae-surveyor when a repository is large, unfamiliar, or will be worked on
 repeatedly. It creates .dev/knowledge and .dev/rules.
 Initialization improves future context but is not a prerequisite for Forge.
 
@@ -234,7 +234,7 @@ Agents invoke these commands internally. Users normally never do.
 ## Development
 
 Run npm test. The test suite validates skill packaging, the small Forge
-recovery contract, and the deterministic ae-init scripts.
+recovery contract, and the deterministic ae-surveyor scripts.
 
 ## Design principles
 

@@ -9,7 +9,7 @@ Agent Engineering ships two public skills:
 
 - ae-forge takes a software request through a risk-sized expert team,
   implementation, and independent verification.
-- ae-init optionally creates durable repository knowledge and enforceable rules
+- ae-surveyor optionally creates durable repository knowledge and enforceable rules
   for large or long-lived projects.
 
 The kit is a workflow layer over the host coding agent. It must not become a
@@ -20,7 +20,7 @@ second agent runtime.
 | Path | Role |
 |---|---|
 | skills/ae-forge/ | Autonomous delivery workflow and lightweight recovery ledger |
-| skills/ae-init/ | Optional project indexing, knowledge, and rules |
+| skills/ae-surveyor/ | Optional project indexing, knowledge, and rules |
 | .codex-plugin/ | Codex package manifest |
 | .claude-plugin/ | Claude Code plugin and marketplace manifests |
 | scripts/ | Repository validation and acceptance tests; not shipped inside a skill |
@@ -46,7 +46,7 @@ accidentally invoke the Windows Subsystem for Linux bash shim.
 ## Product invariants
 
 - The user describes an outcome; the kit handles workflow mechanics.
-- Two public routing surfaces only: ae-init and ae-forge.
+- Two public routing surfaces only: ae-surveyor and ae-forge.
 - Initialization improves context but never blocks ordinary Forge work.
 - Use the smallest team that covers the actual behavioral risk.
 - Builder and Verifier are required for completion.

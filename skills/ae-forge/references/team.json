@@ -39,14 +39,121 @@
     }
   },
   "tiers": {
-    "quick": ["builder", "verifier"],
-    "standard": ["architect", "builder", "verifier"],
-    "deep": ["architect", "builder", "verifier"]
+    "quick": [
+      "builder",
+      "verifier"
+    ],
+    "standard": [
+      "architect",
+      "builder",
+      "verifier"
+    ],
+    "deep": [
+      "architect",
+      "builder",
+      "verifier"
+    ]
   },
   "signals": {
-    "security": ["auth", "authorization", "tenant", "secret", "privacy", "payment", "security"],
-    "data": ["schema", "migration", "backfill", "destructive", "database"],
-    "experience": ["ui", "ux", "accessibility", "journey", "onboarding"],
-    "reliability": ["external", "queue", "retry", "concurrency", "performance", "reliability", "critical"]
-  }
+    "security": [
+      "auth",
+      "authorization",
+      "tenant",
+      "secret",
+      "privacy",
+      "payment",
+      "security"
+    ],
+    "data": [
+      "schema",
+      "migration",
+      "backfill",
+      "destructive",
+      "database"
+    ],
+    "experience": [
+      "ui",
+      "ux",
+      "accessibility",
+      "journey",
+      "onboarding"
+    ],
+    "reliability": [
+      "external",
+      "queue",
+      "retry",
+      "concurrency",
+      "performance",
+      "reliability",
+      "critical"
+    ]
+  },
+  "lenses": {
+    "android": {
+      "owns": "Android/Kotlin platform behavior: lifecycle, background-execution limits, permissions, build/release configuration",
+      "file": "lenses/android.md",
+      "attaches_to": [
+        "architect",
+        "builder",
+        "verifier"
+      ],
+      "signals": [
+        "android",
+        "kotlin",
+        "jetpack",
+        "play store",
+        "apk",
+        "aab"
+      ]
+    },
+    "ui-finish": {
+      "owns": "Visual craft and design-system depth: layout composition, spacing/typography scale, component consistency, and interaction-state visual polish",
+      "file": "lenses/ui-finish.md",
+      "attaches_to": [
+        "experience",
+        "architect",
+        "builder"
+      ],
+      "signals": [
+        "design-system",
+        "visual",
+        "layout",
+        "spacing",
+        "typography",
+        "polish",
+        "component-library",
+        "theming",
+        "pixel",
+        "icon-system"
+      ]
+    }
+  },
+  "lenses_backlog": [
+    "ios",
+    "mobile-release",
+    "internationalization",
+    "cloud-security",
+    "identity-access",
+    "ai-generated-code-audit",
+    "secrets-hygiene",
+    "compliance",
+    "privacy",
+    "database-performance",
+    "database-reliability",
+    "payments",
+    "accessibility",
+    "data-visualization",
+    "realtime-collaboration",
+    "sre-observability",
+    "finops",
+    "release-pipeline",
+    "test-automation",
+    "api-platform",
+    "multi-agent-architecture",
+    "prompt-engineering",
+    "rag-pipeline",
+    "mcp-builder",
+    "technical-writing",
+    "developer-tooling"
+  ]
 }

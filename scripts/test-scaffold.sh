@@ -6,7 +6,7 @@
 
 set -uo pipefail
 KIT="$(cd -P "$(dirname "$0")/.." && pwd)"
-SKILL="$KIT/skills/ae-init"
+SKILL="$KIT/skills/ae-surveyor"
 SCAFFOLD="$SKILL/scripts/scaffold.sh"
 DOCTOR="$SKILL/scripts/doctor.sh"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ae-scaf.XXXXXX")"
@@ -84,7 +84,7 @@ bash "$SCAFFOLD" --root "$P" >/dev/null 2>&1
 check "imports AGENTS.md"                 "grep -qF '@AGENTS.md' '$P/CLAUDE.md'"
 check "AGENTS.md also written"            "[ -f '$P/AGENTS.md' ]"
 check "CLAUDE.md does not duplicate it"   "! grep -qF 'Project knowledge' '$P/CLAUDE.md'"
-mkdir -p "$P/.claude/skills" && cp -R "$SKILL" "$P/.claude/skills/ae-init"
+mkdir -p "$P/.claude/skills" && cp -R "$SKILL" "$P/.claude/skills/ae-surveyor"
 bash "$DOCTOR" "$P" >/dev/null 2>&1
 check "doctor passes with a real skill dir" "[ $? -eq 0 ]"
 
@@ -92,7 +92,7 @@ check "doctor passes with a real skill dir" "[ $? -eq 0 ]"
 head_ "7. Antigravity gets workspace skills and a native rule"
 P="$(newproj antigravity)"
 mkdir -p "$P/.agents/skills"
-cp -R "$SKILL" "$P/.agents/skills/ae-init"
+cp -R "$SKILL" "$P/.agents/skills/ae-surveyor"
 bash "$SCAFFOLD" --root "$P" >/dev/null 2>&1; rc=$?
 check "scaffold exits 0"                    "[ $rc -eq 0 ]"
 check "writes the current Antigravity rule" "[ -s '$P/.agents/rules/agent-engineering.md' ]"
@@ -153,11 +153,11 @@ check "doctor with no args exits 0"       "[ $? -eq 0 ]"
 # ---------------------------------------------------------------------------
 head_ "12. the suite is a dependency, the knowledge base is not"
 P="$(newproj deps)"
-mkdir -p "$P/.claude/skills/ae-init" "$P/.claude/skills/my-own-skill" "$P/.agents/skills/ae-init" "$P/.aider-desk/skills/ae-init" "$P/skills/ae-forge"
-printf 'x\n' > "$P/.claude/skills/ae-init/SKILL.md"
+mkdir -p "$P/.claude/skills/ae-surveyor" "$P/.claude/skills/my-own-skill" "$P/.agents/skills/ae-surveyor" "$P/.aider-desk/skills/ae-surveyor" "$P/skills/ae-forge"
+printf 'x\n' > "$P/.claude/skills/ae-surveyor/SKILL.md"
 printf 'x\n' > "$P/.claude/skills/my-own-skill/SKILL.md"
-printf 'x\n' > "$P/.agents/skills/ae-init/SKILL.md"
-printf 'x\n' > "$P/.aider-desk/skills/ae-init/SKILL.md"
+printf 'x\n' > "$P/.agents/skills/ae-surveyor/SKILL.md"
+printf 'x\n' > "$P/.aider-desk/skills/ae-surveyor/SKILL.md"
 printf 'x\n' > "$P/skills/ae-forge/SKILL.md"
 printf '{}\n' > "$P/skills-lock.json"
 printf '{"name":"d","scripts":{"test":"jest"}}\n' > "$P/package.json"
@@ -168,7 +168,7 @@ node "$SKILL/scripts/knowledge.mjs" --root "$P" --quiet >/dev/null 2>&1
 node "$SKILL/scripts/rules.mjs" --root "$P" --quiet >/dev/null 2>&1
 ( cd "$P" && git add -A && git -c user.email=t@t -c user.name=t commit -qm init ) >/dev/null 2>&1
 TRACKED="$WORK/tracked.txt"; ( cd "$P" && git ls-files ) > "$TRACKED"
-check "ae- skills are NOT tracked"        "! grep -q 'skills/ae-init' '$TRACKED'"
+check "ae- skills are NOT tracked"        "! grep -q 'skills/ae-surveyor' '$TRACKED'"
 check "all-agent ae- copies are ignored"  "! grep -q 'skills/ae-forge' '$TRACKED'"
 check "the user's own skill IS tracked"   "grep -q 'my-own-skill/SKILL.md' '$TRACKED'"
 check "analysis.json is NOT tracked"      "! grep -q 'analysis.json' '$TRACKED'"
@@ -180,7 +180,7 @@ check "skills-lock.json IS tracked"       "grep -qx 'skills-lock.json' '$TRACKED
 check "working tree is clean after init"  "[ -z \"\$( cd '$P' && git status --porcelain )\" ]"
 C="$WORK/clone"; git clone -q "$P" "$C" >/dev/null 2>&1
 check "clone carries the knowledge base"  "[ -s '$C/.dev/knowledge/00-index.md' ]"
-check "clone does NOT carry the suite"    "[ ! -d '$C/.claude/skills/ae-init' ]"
+check "clone does NOT carry the suite"    "[ ! -d '$C/.claude/skills/ae-surveyor' ]"
 check "clone says how to restore"         "grep -q 'npx skills@1.7.0 add' '$C/AGENTS.md'"
 
 # ---------------------------------------------------------------------------

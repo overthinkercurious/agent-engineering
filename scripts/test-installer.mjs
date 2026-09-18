@@ -35,11 +35,11 @@ try {
     const lockPath = join(project, 'skills-lock.json')
     const lock = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, 'utf8')) : null
     const complete = result.status === 0 &&
-      existsSync(join(base, 'ae-init', 'SKILL.md')) &&
-      existsSync(join(base, 'ae-init', 'scripts', 'analyze.mjs')) &&
+      existsSync(join(base, 'ae-surveyor', 'SKILL.md')) &&
+      existsSync(join(base, 'ae-surveyor', 'scripts', 'analyze.mjs')) &&
       existsSync(join(base, 'ae-forge', 'SKILL.md')) &&
       existsSync(join(base, 'ae-forge', 'references', 'roles', 'security.md')) &&
-      lock?.skills?.['ae-init']?.computedHash &&
+      lock?.skills?.['ae-surveyor']?.computedHash &&
       lock?.skills?.['ae-forge']?.computedHash
     if (complete) process.stdout.write(`  PASS  ${agent} installs both complete skills into ${skillsDir}\n`)
     else {
@@ -70,15 +70,15 @@ try {
     ? JSON.parse(readFileSync(combinedLockPath, 'utf8'))
     : null
   const combinedComplete = first.status === 0 && second.status === 0 &&
-    existsSync(join(universal, 'ae-init', 'SKILL.md')) &&
+    existsSync(join(universal, 'ae-surveyor', 'SKILL.md')) &&
     existsSync(join(universal, 'ae-forge', 'SKILL.md')) &&
-    existsSync(join(claude, 'ae-init', 'SKILL.md')) &&
+    existsSync(join(claude, 'ae-surveyor', 'SKILL.md')) &&
     existsSync(join(claude, 'ae-forge', 'SKILL.md')) &&
-    sameFile(join('ae-init', 'SKILL.md')) &&
-    sameFile(join('ae-init', 'scripts', 'analyze.mjs')) &&
+    sameFile(join('ae-surveyor', 'SKILL.md')) &&
+    sameFile(join('ae-surveyor', 'scripts', 'analyze.mjs')) &&
     sameFile(join('ae-forge', 'SKILL.md')) &&
     sameFile(join('ae-forge', 'references', 'roles', 'security.md')) &&
-    Object.keys(combinedLock?.skills || {}).sort().join(',') === 'ae-forge,ae-init'
+    Object.keys(combinedLock?.skills || {}).sort().join(',') === 'ae-forge,ae-surveyor'
   if (combinedComplete) process.stdout.write('  PASS  repeated multi-IDE install keeps both destinations in sync\n')
   else {
     failed++

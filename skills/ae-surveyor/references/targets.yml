@@ -34,6 +34,13 @@ version: 1
 defaults:
   universal_skills_dir: .agents/skills
   canonical_instruction_file: AGENTS.md
+  # Isolated-dispatch capability for Stage 3's fan-out and Stage 5's Verify.
+  # native-parallel: confirmed concurrent isolated dispatch, cited below.
+  # native-sequential: confirmed isolation, concurrency not confirmed.
+  # none: the default. Assume this for any target below with no `dispatch`
+  # key - never infer a tier a row has not verified. On `none`, the isolated
+  # passes run sequentially in this session and say so; they are not skipped.
+  dispatch: none
 
 targets:
 
@@ -70,6 +77,9 @@ targets:
     confidence: high
     notes: "Antigravity 2.0 loads workspace skills from .agents/skills and exposes them through semantic matching and /<skill-name>. The IDE still supports legacy .agent paths, but new output uses .agents."
     verified: "2026-09-17 antigravity.google/docs/ide/skills and antigravity.google/docs/migration/workflows-to-skills"
+    dispatch: native-parallel
+    dispatch_notes: "Parent agent calls invoke_subagent, which can be invoked multiple times concurrently; each subagent starts with a clean context window (does not inherit the parent's conversation history) and returns a result message when done. Use workspace mode inherit for Stage 3/5 dispatch - nothing here writes application code."
+    dispatch_verified: "2026-09-17 antigravity.google/docs/subagents/"
 
   gemini-cli:
     display: "Gemini CLI"

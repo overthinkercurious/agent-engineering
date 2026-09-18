@@ -63,6 +63,10 @@ for (const role of ['architect', 'security']) {
 const unapprovedBuild = run(['phase', '--id', 'tenant-payments', '--to', 'build', '--summary', 'Ready after planning.'])
 check('deep work requires material approval before build', unapprovedBuild.status === 5 && body(unapprovedBuild)?.error.includes('approval'))
 check('approval records', run(['approve', '--id', 'tenant-payments', '--by', 'user']).status === 0)
+
+const riskOnly = body(run(['start', '--title', 'Adjust tenant listing', '--kind', 'feature', '--signals', 'tenant', '--id', 'tenant-only-risk']))
+check('risk signal alone does not default to requiring approval',
+  riskOnly?.tier === 'deep' && riskOnly?.approval_required === false)
 check('approved and planned deep work can build', run(['phase', '--id', 'tenant-payments', '--to', 'build', '--summary', 'Building approved scope.']).status === 0)
 run(['note', '--id', 'tenant-payments', '--role', 'builder', '--summary', 'Builder completed its work.'])
 check('deep work enters verification after build', run(['phase', '--id', 'tenant-payments', '--to', 'verify', '--summary', 'Verifying deep change.']).status === 0)
@@ -73,6 +77,18 @@ run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Secu
 run(['note', '--id', 'tenant-payments', '--role', 'verifier', '--summary', 'Verifier reviewed the integrated candidate.'])
 const failedVerdict = run(['finish', '--id', 'tenant-payments', '--summary', 'Not safe.', '--verification', 'Verifier found a blocker.', '--result', 'FAIL'])
 check('a failed verifier verdict cannot close a run', failedVerdict.status === 2)
+
+run(['phase', '--id', 'tenant-payments', '--to', 'repair', '--summary', 'Repairing verifier finding.'])
+run(['note', '--id', 'tenant-payments', '--role', 'builder', '--summary', 'Builder repaired the finding.'])
+run(['phase', '--id', 'tenant-payments', '--to', 'verify', '--summary', 'Re-verifying repaired candidate.'])
+run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Security re-reviewed the repaired candidate.'])
+const staleFinish = run(['finish', '--id', 'tenant-payments', '--summary', 'Repair verified.', '--verification', 'Rechecked.', '--result', 'PASS'])
+check('a repaired candidate cannot finish on a stale verifier review',
+  staleFinish.status === 5 && body(staleFinish)?.error.includes('fresh review'))
+run(['note', '--id', 'tenant-payments', '--role', 'verifier', '--summary', 'Verifier re-reviewed the repaired candidate.'])
+const freshFinish = run(['finish', '--id', 'tenant-payments', '--summary', 'Repair verified.', '--verification', 'Rechecked after repair.', '--result', 'PASS'])
+check('a fresh verifier review after repair allows finish', freshFinish.status === 0)
+
 
 const record = JSON.parse(readFileSync(join(project, '.dev', 'work', 'profile', 'run.json'), 'utf8'))
 check('one compact record preserves phased contributions',
@@ -98,7 +114,7 @@ const protectedTier = body(run(['start', '--title', 'Change tenant permissions',
 check('an explicit quick tier cannot downgrade detected risk',
   protectedTier?.tier === 'deep' && protectedTier?.team.includes('security'))
 const listed = body(run(['list']))
-check('list reports runs', Array.isArray(listed) && listed.length === 8)
+check('list reports runs', Array.isArray(listed) && listed.length === 9)
 
 rmSync(project, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)

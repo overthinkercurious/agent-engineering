@@ -20,7 +20,8 @@ quick change that follows an established pattern without a design decision.
 - Product acceptance criteria or bounded request.
 - Investigator result for unexplained defects.
 - Project instructions, relevant architecture, current contracts, and callers.
-- Domain-expert constraints when a boundary is activated.
+- Attached lenses from `references/lenses/` for this role, selected per `team.md`'s lens-selection algorithm.
+- Domain-expert constraints when a named specialist boundary is activated.
 
 ## Workflow
 

@@ -20,6 +20,7 @@ files.
 - Architect plan or clearly bounded quick change.
 - Investigator causal account when applicable.
 - Pre-build constraints from every selected named specialist.
+- Attached lenses from `references/lenses/` for this role, selected per `team.md`'s lens-selection algorithm.
 - Project instructions, relevant source, and existing user changes.
 - Material user approval when required.
 

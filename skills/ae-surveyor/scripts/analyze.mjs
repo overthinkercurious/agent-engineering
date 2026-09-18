@@ -18,6 +18,8 @@
 import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join, relative, extname, basename, dirname, isAbsolute, resolve, sep } from 'node:path'
+import { createHash } from 'node:crypto'
+import { sense, manifestKind, redact } from './sense.mjs'
 
 // ---------------------------------------------------------------- args ------
 
@@ -33,6 +35,10 @@ const BUDGET = parseInt(arg('--budget-tokens', '120000'), 10)
 const DEPTH = arg('--depth', 'ranked')
 const OUT = canonicalPath(arg('--out', join(ROOT, '.dev', 'context', 'analysis.json')))
 const ESTIMATE_ONLY = has('--estimate')
+if (!Number.isSafeInteger(BUDGET) || BUDGET < 1 || !['ranked', 'full'].includes(DEPTH)) {
+  process.stderr.write('Use a positive integer --budget-tokens and --depth ranked|full.\n')
+  process.exit(2)
+}
 
 // Windows may expose the same directory through both an 8.3 alias
 // (RUNNER~1) and its long name. Canonicalize the nearest existing ancestor so
@@ -90,7 +96,7 @@ const LANG = {
   '.json': 'json', '.yml': 'yaml', '.yaml': 'yaml', '.toml': 'toml', '.xml': 'xml',
 }
 const CODE = new Set(['typescript', 'javascript', 'python', 'ruby', 'go', 'rust', 'java',
-  'kotlin', 'swift', 'php', 'csharp', 'c', 'cpp', 'svelte', 'vue', 'dart', 'elixir', 'scala'])
+  'kotlin', 'swift', 'php', 'csharp', 'c', 'cpp', 'svelte', 'vue', 'dart', 'elixir', 'scala', 'sql'])
 
 // Import extraction per language. Group 1 is always the module specifier.
 const IMPORTS = {
@@ -143,8 +149,8 @@ const SCHEMA_HINTS = [
 // Paths whose blast radius is high regardless of how they rank numerically.
 const RISK = [
   { tag: 'auth', re: /(^|[\/_-])(auth|authn|authz|login|session|oauth|jwt|token|password|permission|rbac|tenant)/i },
-  { tag: 'money', re: /(^|[\/_-])(payment|billing|invoice|charge|refund|stripe|subscription|price|checkout)/i },
-  { tag: 'data', re: /(^|[\/_-])(migration|schema|seed|backfill)/i },
+  { tag: 'money', re: /(^|[\/_-])(payment|billing|invoice|charge|refund|stripe|subscription|price|checkout|transaction|ledger|balance|account|amount|money|cash)/i },
+  { tag: 'data', re: /(^|[\/_-])(migration|schema|seed|backfill|sync|restore|wipe|rls|policy)/i },
   { tag: 'secrets', re: /(^|[\/_-])(secret|credential|vault|keystore|encrypt|crypto)/i },
   { tag: 'external', re: /(^|[\/_-])(webhook|callback|integration)/i },
   { tag: 'ai', re: /(^|[\/_-])(llm|prompt|embedding|completion|anthropic|openai)/i },
@@ -164,12 +170,19 @@ const TEST = [/(^|\/)(tests?|__tests__|spec|e2e|cypress|playwright)\//i, /\.(tes
 const EXAMPLE = [/(^|\/)(docs?_src|docs?|examples?|samples?|demos?|fixtures?|__fixtures__|website|site|playground|benchmarks?)\//i]
 
 const isAny = (list, p) => list.some((re) => re.test(p))
+const OMIT = /(^|\/)(?:\.git|\.dev|\.agents\/skills|\.claude\/skills|\.gemini\/[^/]*skills|\.codex\/skills)(?:\/|$)/
+const SENSITIVE = /(?:^|\/)(?:\.env(?:\..*)?|\.npmrc|\.pypirc|credentials(?:\.[^/]*)?|secrets?(?:\.[^/]*)?|id_rsa|id_ed25519)$|\.(?:pem|p12|pfx|jks|keystore|key)$/i
+const safePath = (p) => {
+  if (OMIT.test(p) || SENSITIVE.test(p)) return false
+  try { const r = relative(ROOT, realpathSync(join(ROOT, p))); return !r.startsWith('..') && !isAbsolute(r) }
+  catch { return false }
+}
 
 // -------------------------------------------------------------- walk --------
 
 function fileList() {
-  const out = sh('git', ['ls-files', '--cached', '--others', '--exclude-standard'])
-  if (out.trim()) return out.split('\n').filter(Boolean)
+  const out = sh('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
+  if (out.length) return [...new Set(out.split('\0').filter(Boolean))].sort()
   // Not a git repo: walk manually, skipping the obvious.
   const acc = []
   const walk = (dir) => {
@@ -178,7 +191,7 @@ function fileList() {
     for (const e of entries) {
       const full = join(dir, e.name)
       const rel = relative(ROOT, full).split(sep).join('/')
-      if (isAny(GENERATED, rel + (e.isDirectory() ? '/' : ''))) continue
+      if (e.isSymbolicLink() || OMIT.test(rel) || SENSITIVE.test(rel) || (e.isDirectory() && isAny(GENERATED, rel + '/'))) continue
       if (e.isDirectory()) walk(full)
       else acc.push(rel)
     }
@@ -203,11 +216,17 @@ const addRoute = (r) => {
 }
 const schemaFiles = []
 const envVars = new Set()
+const texts = new Map()
+const sourceHashes = new Map()
+const symbols = new Map()
+const packages = new Set()
 let totalLoc = 0
 
 const ENV_RE = /(?:process\.env\.([A-Z_][A-Z0-9_]*)|process\.env\[['"]([A-Z_][A-Z0-9_]*)['"]\]|os\.environ(?:\.get)?[\[\(]['"]([A-Z_][A-Z0-9_]*)['"]|os\.getenv\(['"]([A-Z_][A-Z0-9_]*)['"]|ENV\[['"]([A-Z_][A-Z0-9_]*)['"]\])/g
 
-const allPaths = fileList()
+const discoveredPaths = fileList()
+const allPaths = discoveredPaths.filter(safePath)
+excluded.sensitive_or_outside = discoveredPaths.length - allPaths.length
 
 for (const rel of allPaths) {
   const abs = join(ROOT, rel)
@@ -224,8 +243,11 @@ for (const rel of allPaths) {
   const rec = { path: rel, bytes: st.size, lang, generated, test, example, loc: 0, risk: [], fan_in: 0, churn: 0 }
   if (!example) for (const r of RISK) if (r.re.test(rel)) rec.risk.push(r.tag)
   if (!example) for (const s of SCHEMA_HINTS) if (s.re.test(rel)) { schemaFiles.push({ path: rel, kind: s.kind }); break }
+  if (!example && lang === 'sql' && !rec.risk.includes('data')) rec.risk.push('data')
   if (!test && !generated && !example) {
     for (const f of FILE_ROUTES) if (f.re.test(rel)) addRoute({ path: rel, framework: f.fw, route: rel })
+    const endpoint = rel.match(/(?:^|\/)supabase\/functions\/([^/]+)\/index\.ts$/)
+    if (endpoint && !/^_|tests?$/.test(endpoint[1])) addRoute({ path: rel, framework: 'supabase-function', route: endpoint[1], method: null })
   }
 
   files.push(rec)
@@ -235,6 +257,21 @@ for (const rel of allPaths) {
   let text
   try { text = readFileSync(abs, 'utf8') } catch { excluded.unreadable++; continue }
   if (text.includes('\u0000')) { excluded.binary++; continue }
+  rec.parsed = true
+  texts.set(rel, text)
+  sourceHashes.set(rel, createHash('sha256').update(text).digest('hex'))
+  if (lang === 'kotlin' || lang === 'java') {
+    const pkg = text.match(/^\s*package\s+([\w.]+)/m)?.[1]
+    if (pkg) {
+      packages.add(pkg)
+      const names = [basename(rel).replace(/\.[^.]+$/, ''), ...[...text.matchAll(/\b(?:class|interface|object|fun|val|var|typealias|enum)\s+([A-Za-z_]\w*)/g)].map((m) => m[1])]
+      for (const name of names) {
+        const key = `${pkg}.${name}`
+        const existing = symbols.get(key) || new Set()
+        existing.add(rel); symbols.set(key, existing)
+      }
+    }
+  }
 
   rec.loc = text.length ? text.split('\n').length : 0
   totalLoc += rec.loc
@@ -281,6 +318,13 @@ for (const rel of allPaths) {
     const v = em[1] || em[2] || em[3] || em[4] || em[5]
     if (v) envVars.add(v)
   }
+  for (const m of text.matchAll(/Deno\.env\.get\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\)/g)) envVars.add(m[1])
+}
+
+const { stack, commands, components, warnings: sensingWarnings } = sense(allPaths, (p) => texts.get(p) ?? null)
+for (const component of components) {
+  component.entrypoints = routes.filter((r) => component.root === '.' || r.path.startsWith(component.root + '/')).map((r) => r.path)
+  for (const entry of commands.entries) if (entry.origin === 'ci' && entry.cwd === component.root) component.commands.push(entry.id)
 }
 
 // ---------------------------------------------------- resolve fan-in --------
@@ -294,7 +338,7 @@ const SRC_ROOTS = ['', 'src/', 'app/', 'lib/', 'packages/', 'internal/', 'pkg/']
 // Go module prefix, so `github.com/org/repo/pkg/x` resolves to `pkg/x`.
 const goMod = (read0('go.mod') || '').match(/^module\s+(\S+)/m)
 const GO_PREFIX = goMod ? goMod[1] : null
-function read0(p) { try { return readFileSync(join(ROOT, p), 'utf8') } catch { return null } }
+function read0(p) { return texts.get(p) ?? null }
 
 function candidates(lang, fromFile, spec) {
   const dir = dirname(fromFile)
@@ -317,6 +361,12 @@ function candidates(lang, fromFile, spec) {
     else if (p.includes('.')) return out       // external module path
     if (p) out.push(p, p + '.go')
   } else if (lang === 'java' || lang === 'kotlin' || lang === 'scala' || lang === 'csharp') {
+    let symbol = spec
+    while (symbol.includes('.')) {
+      const matches = symbols.get(symbol)
+      if (matches?.size === 1) { out.push([...matches][0]); break }
+      symbol = symbol.slice(0, symbol.lastIndexOf('.'))
+    }
     const p = spec.split('.').join('/')
     for (const sr of ['src/main/java/', 'src/main/kotlin/', 'src/', '']) out.push(sr + p + '.java', sr + p + '.kt', sr + p + '.scala', sr + p + '.cs')
   } else if (lang === 'rust') {
@@ -335,15 +385,23 @@ function candidates(lang, fromFile, spec) {
   return out
 }
 
-let resolvedEdges = 0
+let resolvedEdges = 0, unresolvedInternal = 0, externalEdges = 0, unknownEdges = 0
+const resolvedImports = []
+const unresolvedImports = []
+const declaredDeps = new Set(stack.manifests.flatMap((m) => [...Object.keys(m.deps || {}), ...Object.keys(m.devDeps || {})]))
 for (const [from, lang, spec] of importEdges) {
   let hit = null
   for (const c of candidates(lang, from, spec)) if (byPath.has(c)) { hit = c; break }
-  if (hit) { byPath.get(hit).fan_in++; resolvedEdges++ }
+  if (hit) { byPath.get(hit).fan_in++; resolvedEdges++; resolvedImports.push({ from, to: hit }) }
   else {
     const pkg = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/')
       : spec.replace(/^\.+/, '').split(/[/.:]/)[0]
-    if (pkg) externalDeps[pkg] = (externalDeps[pkg] || 0) + 1
+    const internal = spec.startsWith('.') || /^[@~]\//.test(spec) || [...packages].some((p) => spec.startsWith(p + '.'))
+    const external = declaredDeps.has(pkg) || /^(?:node:|npm:|jsr:|https?:)/.test(spec)
+      || /^(?:java|javax|kotlin|kotlinx|android|androidx|org\.junit)\./.test(spec)
+    if (internal) { unresolvedInternal++; unresolvedImports.push({ from, specifier: spec }) }
+    else if (external) { externalEdges++; if (pkg) externalDeps[pkg] = (externalDeps[pkg] || 0) + 1 }
+    else { unknownEdges++; unresolvedImports.push({ from, specifier: spec }) }
   }
 }
 
@@ -362,9 +420,7 @@ for (const line of churnRaw.split('\n')) {
 }
 
 // test coverage proxy: does a test file mention this file's basename?
-const testBodies = files.filter((f) => f.test && !f.generated).map((f) => {
-  try { return readFileSync(join(ROOT, f.path), 'utf8') } catch { return '' }
-}).join('\n')
+const testBodies = files.filter((f) => f.test && f.parsed).map((f) => texts.get(f.path)).join('\n')
 for (const f of files) {
   if (f.test || f.generated || !CODE.has(f.lang)) continue
   const stem = basename(f.path).replace(/\.\w+$/, '')
@@ -373,7 +429,7 @@ for (const f of files) {
 
 // ----------------------------------------------------------- ranking --------
 
-const code = files.filter((f) => !f.generated && CODE.has(f.lang) && !f.test && !f.example)
+const code = files.filter((f) => f.parsed && CODE.has(f.lang) && !f.test && !f.example)
 // The most-imported files are the load-bearing ones by definition. Force them
 // in regardless of score: a file with 648 inbound imports is the thing every
 // other file depends on, and missing it makes the whole map wrong.
@@ -402,6 +458,17 @@ const estTokens = (f) => Math.ceil(f.bytes / 4)
 const selected = []
 const deferred = []
 let spent = 0
+const controlCandidates = files.filter((f) => f.parsed && (manifestKind(f.path) || /(?:^|\/)(?:AGENTS|CLAUDE|README|DESIGN|ARCHITECTURE|CONTRIBUTING)(?:\.[^/]*)?$/i.test(f.path)
+  || /^\.github\/workflows\/.+\.ya?ml$/.test(f.path) || /(?:^|\/)(?:Makefile|\.gitignore|tsconfig[^/]*\.json|Dockerfile)$/.test(f.path)))
+  .sort((a, b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path))
+const controls = []
+const deferredControls = []
+// Reserve room for source even when documentation is large. Record every omission.
+const controlBudget = DEPTH === 'full' ? Infinity : Math.floor(BUDGET * 0.2)
+for (const f of controlCandidates) {
+  if (spent + estTokens(f) > controlBudget) { deferredControls.push(f.path); continue }
+  controls.push(f.path); spent += estTokens(f)
+}
 if (DEPTH === 'full') {
   for (const f of code) { selected.push(f); spent += estTokens(f) }
 } else {
@@ -421,59 +488,25 @@ if (DEPTH === 'full') {
 }
 
 const selSet = new Set(selected.map((f) => f.path))
-const totalFan = code.reduce((s, f) => s + (f.fan_in || 0), 0) || 1
+const totalFan = code.reduce((s, f) => s + (f.fan_in || 0), 0)
 const coveredFan = code.filter((f) => selSet.has(f.path)).reduce((s, f) => s + (f.fan_in || 0), 0)
 const riskFiles = code.filter((f) => f.risk.length)
 
 // ----------------------------------------------- manifests / commands -------
 
-const read = (p) => { try { return readFileSync(join(ROOT, p), 'utf8') } catch { return null } }
+const read = (p) => texts.get(p) ?? null
 const readJson = (p) => { const t = read(p); if (!t) return null; try { return JSON.parse(t) } catch { return null } }
 
-const stack = { package_managers: [], manifests: [], runtimes: {} }
-const commands = { scripts: {}, make_targets: [], ci: [] }
-
-const pkg = readJson('package.json')
-if (pkg) {
-  stack.package_managers.push(
-    existsSync(join(ROOT, 'pnpm-lock.yaml')) ? 'pnpm'
-      : existsSync(join(ROOT, 'yarn.lock')) ? 'yarn'
-      : existsSync(join(ROOT, 'bun.lockb')) ? 'bun' : 'npm')
-  stack.manifests.push({ file: 'package.json', deps: pkg.dependencies || {}, devDeps: pkg.devDependencies || {} })
-  if (pkg.engines) stack.runtimes = { ...stack.runtimes, ...pkg.engines }
-  if (pkg.packageManager) stack.runtimes.packageManager = pkg.packageManager
-  commands.scripts = pkg.scripts || {}
-}
-for (const [f, pm] of [['requirements.txt', 'pip'], ['pyproject.toml', 'pip/poetry'], ['Pipfile', 'pipenv'],
-  ['go.mod', 'go'], ['Cargo.toml', 'cargo'], ['Gemfile', 'bundler'], ['composer.json', 'composer'],
-  ['pom.xml', 'maven'], ['build.gradle', 'gradle'], ['build.gradle.kts', 'gradle']]) {
-  const t = read(f)
-  if (t) { stack.package_managers.push(pm); stack.manifests.push({ file: f, raw_head: t.split('\n').slice(0, 60).join('\n') }) }
-}
-const mk = read('Makefile')
-if (mk) commands.make_targets = [...mk.matchAll(/^([a-zA-Z0-9_.-]+):\s*(?:[^=]|$)/gm)].map((m) => m[1])
-
-for (const f of allPaths) {
-  if (/^\.github\/workflows\/.+\.ya?ml$/.test(f) || /^\.gitlab-ci\.yml$/.test(f) ||
-      /^\.circleci\/config\.yml$/.test(f) || /^azure-pipelines\.yml$/.test(f) ||
-      /^Jenkinsfile$/.test(f) || /^\.travis\.yml$/.test(f)) {
-    const t = read(f)
-    if (!t) continue
-    const runs = [...t.matchAll(/^\s*(?:-\s*)?run:\s*\|?\s*(.*)$/gm)].map((m) => m[1].trim()).filter(Boolean)
-    commands.ci.push({ file: f, run_steps: runs.slice(0, 40) })
-  }
-}
 
 // ---------------------------------------------------------- deployment ------
 
 const deployment = { containers: [], platforms: [], env_example: null, env_vars: [...envVars].sort(), iac: [] }
 for (const f of allPaths) {
-  if (/(^|\/)Dockerfile(\.\w+)?$/.test(f)) deployment.containers.push({ file: f, raw: (read(f) || '').split('\n').slice(0, 50).join('\n') })
+  if (/(^|\/)Dockerfile(\.\w+)?$/.test(f)) deployment.containers.push({ file: f })
   else if (/(^|\/)(docker-compose|compose)\.ya?ml$/.test(f)) deployment.containers.push({ file: f })
   else if (/^(vercel\.json|netlify\.toml|fly\.toml|render\.yaml|app\.yaml|Procfile|serverless\.ya?ml|railway\.json|amplify\.yml)$/.test(f))
-    deployment.platforms.push({ file: f, raw: (read(f) || '').slice(0, 4000) })
+    deployment.platforms.push({ file: f })
   else if (/(^|\/)(k8s|kubernetes|helm|terraform|\.tf)($|\/)/.test(f) || /\.tf$/.test(f)) deployment.iac.push(f)
-  else if (/^\.env\.(example|sample|template)$/.test(f)) deployment.env_example = read(f)
 }
 
 // ------------------------------------------------- existing enforcement -----
@@ -492,12 +525,25 @@ if (tsconf) enforcement.typescript_options = tsconf.compilerOptions || {}
 
 const head = sh('git', ['rev-parse', 'HEAD']).trim() || null
 const branch = sh('git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim() || null
+const gitStatus = sh('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'])
+const changedFiles = []
+const statusFields = gitStatus.split('\0').filter(Boolean)
+for (let i = 0; i < statusFields.length; i++) {
+  const status = statusFields[i].slice(0, 2), path = statusFields[i].slice(3)
+  if (!OMIT.test(path)) changedFiles.push(path)
+  if (/[RC]/.test(status)) i++
+}
+const sources = [...sourceHashes].sort(([a], [b]) => a.localeCompare(b)).map(([path, sha256]) => ({ path, sha256 }))
+const fingerprint = createHash('sha256').update(JSON.stringify(sources)).digest('hex')
+const parsedCount = files.filter((f) => f.parsed).length
+const pct = (n, d) => d ? +(n / d * 100).toFixed(1) : null
 
 const result = {
-  schema: 1,
+  schema: 2,
   generated_at: new Date().toISOString(),
   root: ROOT,
-  git: { head, branch, commits_last_12mo: commitsSeen, is_repo: !!head },
+  git: { head, branch, commits_last_12mo: commitsSeen, is_repo: !!head, dirty: !!gitStatus, changed_files: [...new Set(changedFiles)].sort() },
+  provenance: { fingerprint, sources, source_count: sources.length, method: 'sha256 of inspected UTF-8 file contents; excluded files are outside this snapshot' },
   inventory: {
     total_files: files.length,
     total_loc: totalLoc,
@@ -507,9 +553,14 @@ const result = {
   },
   stack: { ...stack, external_imports: Object.fromEntries(Object.entries(externalDeps).sort((a, b) => b[1] - a[1]).slice(0, 60)) },
   commands,
+  components,
+  warnings: sensingWarnings,
   deployment,
   enforcement,
-  imports: { edges_found: importEdges.length, edges_resolved: resolvedEdges },
+  imports: { edges_found: importEdges.length, edges_resolved: resolvedEdges,
+    internal_resolved: resolvedEdges, internal_unresolved: unresolvedInternal, external: externalEdges, unknown: unknownEdges,
+    resolution_pct: pct(resolvedEdges, resolvedEdges + unresolvedInternal),
+    edges: resolvedImports, unresolved: unresolvedImports },
   routes: routes.slice(0, 1000),
   schema_files: schemaFiles,
   risk_files: riskFiles.map((f) => ({ path: f.path, tags: f.risk })),
@@ -521,20 +572,23 @@ const result = {
     depth: DEPTH,
     budget_tokens: DEPTH === 'full' ? null : BUDGET,
     files: selected.map((f) => f.path),
+    control_files: controls,
+    deferred_control_files: deferredControls,
     est_tokens: spent,
     deferred_high_signal: deferred.map((f) => ({ path: f.path, risk: f.risk, est_tokens: estTokens(f) })),
   },
   coverage: {
-    files_parsed: files.length,
-    files_parsed_pct: 100,
+    files_parsed: parsedCount,
+    files_parsed_pct: pct(parsedCount, files.length),
     code_files: code.length,
     files_to_model_read: selected.length,
     files_to_model_read_pct: code.length ? +(selected.length / code.length * 100).toFixed(1) : 0,
-    fan_in_weight_covered_pct: +(coveredFan / totalFan * 100).toFixed(1),
+    fan_in_weight_covered_pct: pct(coveredFan, totalFan),
+    route_detection: routeFiles.size ? 'detected' : 'unknown',
     route_files_covered_pct: routeFiles.size
-      ? +([...routeFiles].filter((p) => selSet.has(p)).length / routeFiles.size * 100).toFixed(1) : 100,
+      ? +([...routeFiles].filter((p) => selSet.has(p)).length / routeFiles.size * 100).toFixed(1) : null,
     risk_files_covered_pct: riskFiles.length
-      ? +(riskFiles.filter((f) => selSet.has(f.path)).length / riskFiles.length * 100).toFixed(1) : 100,
+      ? +(riskFiles.filter((f) => selSet.has(f.path)).length / riskFiles.length * 100).toFixed(1) : null,
     not_read: {
       generated_or_vendored: excluded.generated,
       tests: files.filter((f) => f.test && !f.generated).length,
@@ -546,6 +600,10 @@ const result = {
       'Import edges come from regex, not a parser. Dynamic and computed imports are missed, so fan-in is a lower bound.',
       'Token estimates are bytes/4 and are approximate.',
       'Test coverage here is a filename-mention heuristic, not a coverage report.',
+      'Selected-file coverage describes a proposed reading set, not a completed audit. No findings are validated by this sensor.',
+      'Route discovery is convention-based and incomplete. Zero detected routes means unknown, not complete coverage.',
+      'Unclassified imports remain unknown, not external. Fan-in measures only resolved edges.',
+      'CI parsing supports ordinary GitHub Actions mappings and literal run blocks. Other forms need source review.',
     ],
   },
 }
@@ -557,16 +615,18 @@ function summary(r) {
   L.push(`project   ${r.root}`)
   L.push(`git       ${r.git.branch || 'not a repo'}${r.git.head ? ' @ ' + r.git.head.slice(0, 8) : ''}  ${r.git.commits_last_12mo} commits in 12mo`)
   L.push('')
-  L.push(`parsed    ${c.files_parsed} files, ${r.inventory.total_loc.toLocaleString()} lines  (100%)`)
+  L.push(`parsed    ${c.files_parsed} files, ${r.inventory.total_loc.toLocaleString()} lines  (${c.files_parsed_pct ?? 'unknown'}% of inventoried files)`)
   const langs = Object.entries(r.inventory.by_language).slice(0, 6)
     .map(([k, v]) => `${k} ${v.files}`).join(', ')
   L.push(`languages ${langs}`)
   L.push(`routes    ${r.routes.length}   schema files ${r.schema_files.length}   risk-flagged ${r.risk_files.length}`)
   L.push('')
   L.push(`to read   ${c.files_to_model_read} of ${c.code_files} code files (${c.files_to_model_read_pct}%)  ~${r.selection.est_tokens.toLocaleString()} tokens`)
-  L.push(`  covering ${c.fan_in_weight_covered_pct}% of import fan-in weight`)
-  L.push(`           ${c.route_files_covered_pct}% of route files`)
-  L.push(`           ${c.risk_files_covered_pct}% of files touching auth, money, data or secrets`)
+  L.push(`controls  ${r.selection.control_files.length} selected; ${r.selection.deferred_control_files.length} deferred`)
+  L.push(`imports   ${r.imports.internal_resolved} resolved internal, ${r.imports.internal_unresolved} unresolved internal, ${r.imports.external} external, ${r.imports.unknown} unknown`)
+  L.push(`  covering ${c.fan_in_weight_covered_pct ?? 'unknown'}% of resolved import fan-in weight`)
+  L.push(`           ${c.route_files_covered_pct ?? 'unknown'}% of detected route files`)
+  L.push(`           ${c.risk_files_covered_pct ?? 'unknown'}% of detected risk files`)
   L.push('')
   if (r.selection.deferred_high_signal.length) {
     L.push(`WARNING   ${r.selection.deferred_high_signal.length} high-signal files did not fit the ${r.selection.budget_tokens.toLocaleString()}-token budget.`)

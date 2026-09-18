@@ -8,7 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const readme = readFileSync(join(root, 'README.md'), 'utf8')
 const skill = readFileSync(join(root, 'skills', 'ae-forge', 'SKILL.md'), 'utf8')
 const team = JSON.parse(readFileSync(join(root, 'skills', 'ae-forge', 'references', 'team.json'), 'utf8'))
-const targets = readFileSync(join(root, 'skills', 'ae-init', 'references', 'targets.yml'), 'utf8')
+const targets = readFileSync(join(root, 'skills', 'ae-surveyor', 'references', 'targets.yml'), 'utf8')
 const failures = []
 const check = (condition, message) => { if (!condition) failures.push(message) }
 
@@ -28,11 +28,11 @@ for (const id of installerIds) {
 }
 check(/skills@1\.7\.0 add overthinkercurious\/agent-engineering --agent AGENT_ID --copy -y/.test(readme),
   'README must provide the portable project-install command')
-check(/\.agents\/skills\/ae-init\/SKILL\.md/.test(readme),
-  'README must show the exact Antigravity ae-init install path')
+check(/\.agents\/skills\/ae-surveyor\/SKILL\.md/.test(readme),
+  'README must show the exact Antigravity ae-surveyor install path')
 check(/\.agents\/skills\/ae-forge\/SKILL\.md/.test(readme),
   'README must show the exact Antigravity ae-forge install path')
-check(/Use `\/ae-init`, `\/ae-forge`/i.test(readme),
+check(/Use `\/ae-surveyor`, `\/ae-forge`/i.test(readme),
   'README must document current Antigravity slash invocation')
 check(/Antigravity CLI users can also run `\/skills`/i.test(readme),
   'README must document Antigravity CLI skill discovery')

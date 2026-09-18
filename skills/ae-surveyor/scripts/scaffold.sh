@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scaffold.sh - prepare a project to hold the generated knowledge artifacts.
 #
-# Stage 1 of ae-init. Deterministic by design: there is no model judgment
+# Stage 1 of ae-surveyor. Deterministic by design: there is no model judgment
 # anywhere in this file, which is the point. The parts of a workflow system
 # that can be checked by an exit code should never be left to a prompt.
 #

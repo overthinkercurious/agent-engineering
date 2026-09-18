@@ -25,6 +25,15 @@ const RISK_SIGNALS = new Set(
   ['security', 'data', 'reliability'].flatMap((role) => TEAM.signals[role]),
 )
 const QUICK_SIGNALS = new Set(['copy', 'style', 'docs', 'typo', 'local', 'mechanical'])
+const APPROVAL_SIGNALS = new Set([
+  'destructive', 'irreversible', 'production', 'deploy', 'deployment',
+  'external', 'payment', 'spend', 'spending', 'access-grant', 'credential',
+  'public-contract', 'breaking-change',
+])
+
+function requiresApproval(signals) {
+  return signals.some((value) => APPROVAL_SIGNALS.has(value))
+}
 
 function option(name, fallback = null) {
   const index = args.indexOf(name)
@@ -176,10 +185,11 @@ function start() {
     signals,
     tier,
     team: chooseTeam(kind, tier, signals),
-    approval_required: parseBoolean('--approval-required', tier === 'deep' && kind !== 'audit'),
+    approval_required: parseBoolean('--approval-required', requiresApproval(signals)),
     approval: null,
     status: 'active',
     phase: 'understand',
+    revision: 0,
     summary: 'Run created.',
     contributions: [],
     verification: null,
@@ -231,14 +241,14 @@ function note() {
     const prior = new Set(feature.run.contributions.map((item) => item.role))
     const missingPrior = feature.run.team.filter((selected) => selected !== 'verifier' && !prior.has(selected))
     const reviewedCandidate = new Set(feature.run.contributions
-      .filter((item) => item.phase === 'verify')
+      .filter((item) => item.phase === 'verify' && item.revision === feature.run.revision)
       .map((item) => item.role))
     const missingCandidateReviews = feature.run.kind === 'audit' ? [] : feature.run.team
       .filter((selected) => SPECIALIST_ROLES.includes(selected) && !reviewedCandidate.has(selected))
     const missing = [...new Set([...missingPrior, ...missingCandidateReviews])]
     if (missing.length) die('Verifier must run after all selected expert work', 5, { missing })
   }
-  feature.run.contributions.push({ role, phase: feature.run.phase, summary, at: new Date().toISOString() })
+  feature.run.contributions.push({ role, phase: feature.run.phase, revision: feature.run.revision, summary, at: new Date().toISOString() })
   save(feature.path, feature.run)
   output({ ok: true, id, role })
 }
@@ -270,6 +280,9 @@ function phase() {
   }
   if (to === 'verify' && feature.run.kind !== 'audit' && !contributed.has('builder')) {
     die('Builder contribution is required before verification', 5, { id })
+  }
+  if (to === 'build' || to === 'repair') {
+    feature.run.revision = (feature.run.revision || 0) + 1
   }
   feature.run.phase = to
   feature.run.summary = summary
@@ -310,13 +323,18 @@ function finish() {
   if (missing.length) die('every selected expert must contribute before completion', 5, { missing })
   if (feature.run.kind !== 'audit') {
     const candidateReviews = new Set(feature.run.contributions
-      .filter((item) => item.phase === 'verify')
+      .filter((item) => item.phase === 'verify' && item.revision === feature.run.revision)
       .map((item) => item.role))
     const missingCandidateReviews = feature.run.team
       .filter((role) => SPECIALIST_ROLES.includes(role) && !candidateReviews.has(role))
     if (missingCandidateReviews.length) {
-      die('selected named specialists must inspect the candidate during verification', 5, { missing: missingCandidateReviews })
+      die('selected named specialists must inspect the current candidate during verification', 5, { missing: missingCandidateReviews, revision: feature.run.revision })
     }
+  }
+  const verifierReview = feature.run.contributions.find((item) =>
+    item.role === 'verifier' && item.phase === 'verify' && item.revision === feature.run.revision)
+  if (!verifierReview) {
+    die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
   }
   feature.run.status = 'done'
   feature.run.phase = 'done'
