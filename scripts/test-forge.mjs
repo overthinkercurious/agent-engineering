@@ -143,6 +143,32 @@ check('omitting the risk assessment stays visible in routing',
 const badFlag = run(['start', '--title', 'Bad flag', '--kind', 'feature', '--risk', 'sekurity', '--id', 'bad-flag'])
 check('an unknown risk flag is rejected rather than ignored', badFlag.status === 2)
 
+// The brief is the reviewable artifact and the resume contract. Its sections
+// are tier-bound so a one-line fix cannot grow enterprise ceremony.
+const deepBrief = body(run(['brief', '--id', 'oauth-login']))
+check('a deep brief carries the full contract',
+  deepBrief?.sections.includes('Options considered') && deepBrief?.sections.includes('Rollback'))
+check('the brief records acceptance criteria and a verification plan',
+  deepBrief?.sections.includes('Acceptance criteria') && deepBrief?.sections.includes('Verification plan'))
+const quickBrief = body(run(['brief', '--id', 'copy-fix']))
+check('a quick brief omits sections outside its tier',
+  quickBrief?.sections.length === 4 && !quickBrief?.sections.includes('Rollback'))
+check('a brief is not silently overwritten', run(['brief', '--id', 'copy-fix']).status === 4)
+
+const briefFile = join(project, '.dev', 'work', 'oauth-login', 'brief.md')
+check('the brief names the team and the declared risk',
+  readFileSync(briefFile, 'utf8').includes('security') &&
+  readFileSync(briefFile, 'utf8').includes('access'))
+
+// The report is rendered from the ledger, never recalled, so it can be used
+// to judge whether routing worked.
+const rendered = run(['report', '--id', 'oauth-login']).stdout
+check('the report shows why each role was selected', rendered.includes('risk=access'))
+check('the report names every skipped role and the reason',
+  rendered.includes('Skipped') && rendered.includes('no stored-shape risk declared'))
+check('the report warns when risk was never assessed',
+  run(['report', '--id', 'unassessed']).stdout.includes('NOT ASSESSED'))
+
 const listed = body(run(['list']))
 check('list reports runs', Array.isArray(listed) && listed.length === 13)
 

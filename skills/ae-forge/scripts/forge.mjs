@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -184,6 +186,84 @@ function chooseTeam(kind, tier, signals, risks) {
   return { team: order, selected, skipped }
 }
 
+// The brief is the one artifact a user reviews and the audit later checks
+// against. Its sections are tier-bound on purpose: a section outside the tier
+// is omitted, never filled with "N/A", so a quick fix cannot grow a four-page
+// plan and a deep change cannot quietly skip its rollback story.
+const BRIEF_SECTIONS = [
+  ['Request', 'quick', null],
+  ['Assumptions', 'standard', 'What you are taking as true that the request did not state. Each one a user could correct.'],
+  ['Scope and non-goals', 'standard', 'What this deliberately does not do.'],
+  ['Acceptance criteria', 'quick', 'Observable behaviour, one per line, with stable IDs AC-1, AC-2. A criterion nobody can check is not a criterion.'],
+  ['Evidence read', 'standard', 'Every path:line actually opened. A step touching a file absent from this list is unverified by construction.'],
+  ['Options considered', 'deep', 'Only where more than one viable design exists. One line of tradeoff each, then the pick and why. An invented alternative is worse than none.'],
+  ['Design decisions', 'standard', 'Each decision with VERIFIED (path:line) or INFERRED (basis). ASSUMED does not exist.'],
+  ['Implementation steps', 'quick', 'Ordered, file-level. Each step: the change, why, and a runnable check.'],
+  ['Risks and residual', 'standard', 'What could still go wrong after this ships.'],
+  ['Rollback', 'deep', 'How this is reversed, or why reversal is not possible. A code revert is not data recovery.'],
+  ['Verification plan', 'quick', 'The exact commands, and which acceptance criterion each one evidences.'],
+]
+
+// Recorded at start so the audit can tell whether the repository moved under
+// the brief. Stale context is a silent correctness failure otherwise.
+function baseline(root) {
+  let head = null
+  try {
+    head = execFileSync('git', ['rev-parse', '--short', 'HEAD'],
+      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  } catch { /* not a git repository, or no commit yet */ }
+  const analysis = join(root, '.dev', 'context', 'analysis.json')
+  let map = null
+  if (existsSync(analysis)) {
+    map = createHash('sha256').update(readFileSync(analysis, 'utf8')).digest('hex').slice(0, 16)
+  }
+  return { head, analysis: map, at: new Date().toISOString() }
+}
+
+function briefPath(root, id) {
+  const path = join(workRoot(root), safeId(id), 'brief.md')
+  if (!inside(root, path)) die('brief path escapes project root')
+  return path
+}
+
+function briefDigest(root, id) {
+  const path = briefPath(root, id)
+  if (!existsSync(path)) return null
+  return createHash('sha256').update(readFileSync(path, 'utf8')).digest('hex').slice(0, 16)
+}
+
+function brief() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const { run } = load(root, id)
+  const path = briefPath(root, id)
+  if (existsSync(path) && !args.includes('--force')) {
+    die('brief already exists; edit it in place or pass --force to rescaffold', 4, { id })
+  }
+  const rank = TIERS.indexOf(run.tier)
+  const lines = [
+    `# ${run.title}`, '',
+    `> ${run.tier} · ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
+    `> Team: ${run.team.join(' → ')}`,
+    `> Baseline: ${run.baseline?.head ?? 'UNKNOWN'} · approval ${run.approval_required ? 'required' : 'not required'}`,
+    '',
+    '_This brief is the approved contract. After approval it is frozen: the',
+    'release audit compares the delivered change against this text, so',
+    'rewriting it destroys the answer to "did we build what was approved?"_',
+    '',
+  ]
+  for (const [heading, minTier, prompt] of BRIEF_SECTIONS) {
+    if (TIERS.indexOf(minTier) > rank) continue
+    lines.push(`## ${heading}`, '')
+    if (heading === 'Request') lines.push(run.title, '')
+    else lines.push(`<!-- ${prompt} -->`, '', 'TODO', '')
+  }
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, `${lines.join('\n').trimEnd()}\n`, 'utf8')
+  const included = BRIEF_SECTIONS.filter(([, t]) => TIERS.indexOf(t) <= rank).map(([h]) => h)
+  output({ ok: true, id, tier: run.tier, sections: included, brief: relative(root, path).replaceAll('\\', '/') })
+}
+
 function allowedPhases(role) {
   if (role === 'builder') return ['build', 'repair']
   if (role === 'verifier') return ['verify']
@@ -263,6 +343,7 @@ function start() {
     },
     approval_required: parseBoolean('--approval-required', requiresApproval(signals, risks)),
     approval: null,
+    baseline: baseline(root),
     status: 'active',
     phase: 'understand',
     revision: 0,
@@ -328,7 +409,19 @@ function note() {
     const missing = [...new Set([...missingPrior, ...missingCandidateReviews])]
     if (missing.length) die('Verifier must run after all selected expert work', 5, { missing })
   }
-  feature.run.contributions.push({ role, phase: feature.run.phase, revision: feature.run.revision, summary, at: new Date().toISOString() })
+  const severity = option('--severity')
+  if (severity && !['critical', 'high', 'medium', 'low', 'none'].includes(severity)) {
+    die('severity must be critical, high, medium, low, or none')
+  }
+  feature.run.contributions.push({
+    role,
+    phase: feature.run.phase,
+    revision: feature.run.revision,
+    summary,
+    severity: severity ?? null,
+    result: option('--result'),
+    at: new Date().toISOString(),
+  })
   save(feature.path, feature.run)
   output({ ok: true, id, role })
 }
@@ -379,6 +472,10 @@ function approve() {
     by: option('--by', 'user'),
     at: new Date().toISOString(),
     basis: option('--basis', 'Explicit approval in the active conversation.'),
+    // The brief is the contract from here on. Recording its digest is what
+    // lets the audit answer "did we build what was approved?" rather than
+    // "did we build what the brief now says?".
+    brief_sha: briefDigest(root, id),
   }
   save(feature.path, feature.run)
   output({ ok: true, id, approval: feature.run.approval })
@@ -416,6 +513,7 @@ function finish() {
   if (!verifierReview) {
     die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
   }
+  feature.run.brief_sha_at_finish = briefDigest(root, id)
   feature.run.status = 'done'
   feature.run.phase = 'done'
   feature.run.summary = summary
@@ -423,6 +521,66 @@ function finish() {
   feature.run.result = result
   save(feature.path, feature.run)
   output({ ok: true, id, status: 'done', summary, verification, result: feature.run.result })
+}
+
+// Rendered from the ledger, never composed from memory. A model-written
+// summary reports what it remembers; this reports what was recorded, which is
+// the only version that can be used to judge whether routing worked.
+function report() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const { run } = load(root, id)
+  const byRole = (role) => run.contributions.filter((item) => item.role === role)
+  const out = []
+
+  const verdict = run.result ?? (run.status === 'active' ? `in progress (${run.phase})` : run.status)
+  out.push(`## ${run.title} — ${verdict}`, '')
+
+  const risk = run.routing?.risk_assessed === false
+    ? '**NOT ASSESSED**'
+    : (run.risks?.length ? `\`${run.risks.join(', ')}\`` : 'none declared')
+  out.push(`**Routing** · tier \`${run.tier}\` · risk ${risk} · ${run.routing?.tier_reason ?? 'no reason recorded'}`, '')
+
+  out.push('| Expert | Why selected | Contribution |', '|---|---|---|')
+  for (const role of run.team) {
+    const mine = byRole(role)
+    const last = mine[mine.length - 1]
+    const passes = mine.length > 1 ? ` _(${mine.length} passes)_` : ''
+    const why = run.routing?.selected?.[role] ?? 'not recorded'
+    out.push(`| **${role}** | ${why} | ${last ? last.summary + passes : '_no contribution recorded_'} |`)
+  }
+  out.push('')
+
+  // The routing ROI line: a specialist that is selected and never catches
+  // anything is over-triggered; a defect in a skipped role's boundary is
+  // under-triggered. Both are only visible if findings are attributed.
+  const caught = run.contributions.filter((item) => item.severity && item.severity !== 'none')
+  if (caught.length) {
+    out.push('**Caught**')
+    for (const item of caught) {
+      out.push(`- ${item.role} r${item.revision} — ${item.summary} _(${item.severity})_`)
+    }
+    out.push('')
+  }
+
+  const skipped = Object.entries(run.routing?.skipped ?? {})
+  if (skipped.length) {
+    out.push(`**Skipped** · ${skipped.map(([role, why]) => `\`${role}\` (${why})`).join(' · ')}`, '')
+  }
+
+  if (run.verification) out.push(`**Checks** · ${run.verification}`)
+  const cycles = Math.max(0, (run.revision ?? 1) - 1)
+  out.push(`**Loop** · ${run.revision} revision(s) · repair cycle ${cycles} of 2`)
+  out.push(`**Approval** · ${run.approval ? `recorded ${run.approval.at}` : (run.approval_required ? 'REQUIRED, not yet recorded' : 'not required')}`)
+
+  if (run.approval?.brief_sha && run.brief_sha_at_finish && run.approval.brief_sha !== run.brief_sha_at_finish) {
+    out.push('', '> **Scope note.** The brief changed after approval. Compare the delivered change against what was approved before releasing.')
+  }
+  if (run.routing?.risk_assessed === false) {
+    out.push('', '> **Routing note.** Risk was never assessed for this run, so specialists were selected by keyword alone. Treat any absent review as unverified rather than unnecessary.')
+  }
+
+  process.stdout.write(`${out.join('\n')}\n`)
 }
 
 function cancel() {
@@ -446,9 +604,11 @@ Internal recovery ledger for the autonomous Forge workflow.
          [--tier quick|standard|deep]
   list
   status --id ID
-  note   --id ID --role ROLE --summary TEXT
+  note   --id ID --role ROLE --summary TEXT [--severity S] [--result PATH]
   phase  --id ID --to PHASE --summary TEXT
+  brief  --id ID [--force]
   approve --id ID [--by NAME] [--basis TEXT]
+  report --id ID
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]
   cancel --id ID [--reason TEXT]
 
@@ -466,6 +626,6 @@ All commands accept --root DIR. Users do not need to run these commands.
 `)
 }
 
-const handlers = { help, start, list, status, note, phase, approve, finish, cancel }
+const handlers = { help, start, brief, list, status, note, phase, approve, report, finish, cancel }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()

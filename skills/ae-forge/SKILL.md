@@ -164,9 +164,32 @@ material product choice, irreversible or destructive action, external side
 effect, new spending/access, production deployment, or unresolved high-risk
 tradeoff.
 
-For material approval, summarize the outcome, important tradeoffs, and risk in
-plain language. After the user approves, record it with `approve`. Do not ask
-for approval merely because a workflow stage exists.
+Approval is a document, not a paragraph. Scaffold the brief and fill it, then
+point the user at it:
+
+```bash
+node "$AE/scripts/forge.mjs" brief --id <id>
+```
+
+The brief carries only the sections its tier calls for — a section outside the
+tier is omitted, never filled with "N/A". A quick brief is four sections; a
+four-page plan for a one-line fix is a defect, not thoroughness.
+
+After the user approves, record it with `approve`. That freezes the brief: it
+becomes the contract the release audit compares the delivered change against,
+so do not rewrite it afterwards. Do not ask for approval merely because a
+workflow stage exists.
+
+Write each expert's full result to `.dev/work/<id>/results/<role>.md` and pass
+the path to `note`. Downstream experts receive **paths and findings, never
+transcripts** — that is what keeps coordination context bounded as the team
+grows. Record a severity when an expert finds something:
+
+```bash
+node "$AE/scripts/forge.mjs" note --id <id> --role <role> \
+  --summary "<result>" --severity <critical|high|medium|low|none> \
+  --result .dev/work/<id>/results/<role>.md
+```
 
 Use these phases internally, omitting Plan only for quick work with no open
 design choice:
@@ -209,12 +232,38 @@ contributed. An audit-only record requires the Verifier and no code change:
 node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" --verification "<checks and independent verdict>"
 ```
 
+## Stay quiet while working
+
+The user reads the routing block, then the result. Between them, keep output
+to a hard minimum:
+
+| Moment | Allowed | Cap |
+|---|---|---|
+| After routing | the routing block | 6 lines |
+| Phase transition | `plan → build` plus a half-line of current truth | 1 line |
+| An expert finishes | **nothing** — it goes to `results/<role>.md` | 0 lines |
+| A blocking finding | severity and the affected behavior | 1 line |
+| Approval needed | the brief's path and the decision being asked | the brief |
+| Completion | the delivery report | ~20 lines |
+
+A five-role deep run should produce about ten lines of chat before the final
+report, however much work happened underneath. Never narrate file-by-file
+progress, expert reasoning, ledger commands, or phase vocabulary.
+
 ## Final response
 
-Lead with the delivered outcome. Include the important files or behavior,
-checks performed, and any residual risk or user action. Do not expose internal
-role transcripts, state-machine terminology, token accounting, or generated
-coordination files unless the user asks.
+Render the report from the ledger rather than recalling the run:
+
+```bash
+node "$AE/scripts/forge.mjs" report --id <id>
+```
+
+Add at most two sentences of plain-language outcome above it, then stop. The
+report is generated from what was actually recorded — routing, each expert's
+contribution, what each one caught, what was skipped and why, checks, and
+repair cycles — so it cannot drift from the run the way a recalled summary
+can. Do not paste role transcripts, state-machine terminology, token
+accounting, or coordination files alongside it.
 
 ## Hard stops
 
