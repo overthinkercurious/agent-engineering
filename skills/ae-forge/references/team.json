@@ -54,6 +54,29 @@
       "verifier"
     ]
   },
+  "risk": {
+    "access": {
+      "role": "security",
+      "question": "Does this change who can read, do, or reach anything? (authentication, authorization, tenancy, secrets, payments)"
+    },
+    "stored-shape": {
+      "role": "data",
+      "question": "Does this change the shape of persisted data, or move or delete existing data?"
+    },
+    "rendered": {
+      "role": "experience",
+      "question": "Does this change a rendered surface or a user journey?"
+    },
+    "runtime": {
+      "role": "reliability",
+      "question": "Does this change external calls, concurrency, retries, or a performance budget?"
+    },
+    "irreversible": {
+      "role": null,
+      "approval": true,
+      "question": "Is any part of this destructive, production-affecting, spending money, or a public contract change?"
+    }
+  },
   "signals": {
     "security": [
       "auth",

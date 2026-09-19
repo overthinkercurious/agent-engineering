@@ -59,8 +59,31 @@ create one small record. Skip the record for explanation-only work.
 
 ```bash
 node "$AE/scripts/forge.mjs" list
-node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> --signals <comma-list>
+node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
+  --risk <comma-list|none> [--domain <comma-list>]
 ```
+
+### Assess risk before starting
+
+`--risk` is the router, and it is not optional. Answer each question about the
+behavior the change introduces, not about filenames, and pass every flag that
+is true — or `none` when none are:
+
+| Flag | Answer yes when the change… |
+|---|---|
+| `access` | changes who can read, do, or reach anything — authentication, authorization, tenancy, secrets, payments |
+| `stored-shape` | changes the shape of persisted data, or moves or deletes existing data |
+| `rendered` | changes a rendered surface or a user journey |
+| `runtime` | changes external calls, concurrency, retries, or a performance budget |
+| `irreversible` | is destructive, production-affecting, spends money, or changes a public contract |
+
+Each flag deterministically selects its expert, so the vocabulary of the
+request never decides whether a review happens. **An empty risk set is not
+evidence of safety** — it records that you assessed and found none. Omitting
+`--risk` entirely is recorded as unassessed and reported to the user.
+
+Pass domain words — `android`, `react`, `postgres` — to `--domain`. Those
+attach lenses; a miss there costs depth, never a review.
 
 Use `status --id <id>` to resume. Never make the user manage this record. It
 is an internal recovery aid, not an approval bureaucracy.
@@ -83,6 +106,24 @@ Classify by behavior and risk, not filenames:
 Three roles are the normal team. Five is the maximum without telling the user
 why multiple independent risk boundaries require more. Do not run every expert,
 every checklist, or a separate critic merely because they exist.
+
+### Print the routing decision
+
+Before any expert works, print the routing block from `start`'s output — six
+lines, once, then stay quiet:
+
+```text
+Routing · deep · Architect → Security → Experience → Builder → Verifier
+Why     · risk=access (changes who may authenticate), risk=rendered (new login journey)
+Skipped · data (no stored-shape risk declared) · reliability (no runtime risk declared)
+        · investigator (no undiagnosed defect) · product (outcome already specified)
+Lenses  · ui-finish → experience, builder
+Approval· required before build (external provider registration)
+```
+
+The `Skipped` line is required. A review the team decided not to run is the
+one thing the user cannot infer from the result, and it is how a wrong routing
+decision gets caught on the first run instead of the tenth.
 
 An audit-only request is different: select Verifier and only the relevant
 Architect, Security, Data, Experience, or Reliability expert. Do not add

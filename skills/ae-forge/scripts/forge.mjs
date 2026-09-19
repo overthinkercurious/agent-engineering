@@ -31,8 +31,26 @@ const APPROVAL_SIGNALS = new Set([
   'public-contract', 'breaking-change',
 ])
 
-function requiresApproval(signals) {
-  return signals.some((value) => APPROVAL_SIGNALS.has(value))
+const RISK = TEAM.risk ?? {}
+const RISK_FLAGS = Object.keys(RISK)
+
+function requiresApproval(signals, risks) {
+  return risks.some((flag) => RISK[flag]?.approval) || signals.some((value) => APPROVAL_SIGNALS.has(value))
+}
+
+// `--risk none` is an explicit assessment that found nothing. An ABSENT
+// --risk is not: it means the behavioural questions were never answered, and
+// that difference has to stay visible all the way into the delivery report -
+// silently treating "unasked" as "no risk" is the failure this router exists
+// to remove.
+function splitRisks() {
+  const provided = option('--risk')
+  const values = [...new Set(String(provided ?? '')
+    .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
+  const declared = values.filter((value) => value !== 'none')
+  const unknown = declared.filter((value) => !RISK_FLAGS.includes(value))
+  if (unknown.length) die(`unknown risk flag(s): ${unknown.join(', ')}`, 2, { allowed: [...RISK_FLAGS, 'none'] })
+  return { risks: declared, assessed: provided !== null }
 }
 
 function option(name, fallback = null) {
@@ -93,10 +111,16 @@ function splitSignals() {
     .filter(Boolean))]
 }
 
-function chooseTier(kind, signals) {
+// Risk flags are the primary router: the model answers a behavioural question
+// and the mapping to a role is deterministic. Keyword signals remain only as
+// additive escalation - a keyword may ADD a role, never withhold one - because
+// an exact-match vocabulary silently misses near-synonyms (oauth, sso, rbac),
+// and a router that fails open is worse than no router at all.
+function chooseTier(kind, signals, risks) {
   const requested = option('--tier')
   if (requested && !TIERS.includes(requested)) die(`tier must be one of: ${TIERS.join(', ')}`)
-  const inferred = kind === 'security' || signals.some((value) => RISK_SIGNALS.has(value))
+  const deepFlag = risks.some((flag) => RISK[flag]?.approval || RISK[flag]?.role)
+  const inferred = kind === 'security' || deepFlag || signals.some((value) => RISK_SIGNALS.has(value))
     ? 'deep'
     : signals.length && signals.every((value) => QUICK_SIGNALS.has(value))
       ? 'quick'
@@ -105,21 +129,59 @@ function chooseTier(kind, signals) {
   return TIERS[Math.max(TIERS.indexOf(requested), TIERS.indexOf(inferred))]
 }
 
-function chooseTeam(kind, tier, signals) {
-  const specialists = SPECIALIST_ROLES.filter((role) =>
-    TEAM.signals[role].some((signal) => signals.includes(signal)) ||
-    (kind === 'security' && role === 'security') ||
-    (kind === 'performance' && role === 'reliability'))
-  if (kind === 'audit') {
-    const auditTeam = []
-    if (tier !== 'quick') auditTeam.push('architect')
-    return [...new Set([...auditTeam, ...specialists, 'verifier'])]
+function tierReason(kind, signals, risks, tier) {
+  if (kind === 'security') return 'kind=security'
+  const flag = risks.find((value) => RISK[value]?.approval || RISK[value]?.role)
+  if (flag) return `risk=${flag}`
+  const signal = signals.find((value) => RISK_SIGNALS.has(value))
+  if (signal) return `escalated by signal "${signal}"`
+  if (tier === 'quick') return 'local, reversible, and understood'
+  return 'several files or a meaningful design choice'
+}
+
+// Returns both the team and why each role was selected or skipped, so the
+// delivery report can show the routing decision instead of the model
+// recalling it. A skipped role with no recorded reason is a routing bug.
+function chooseTeam(kind, tier, signals, risks) {
+  const selected = {}
+  const skipped = {}
+  const take = (role, reason) => { if (!selected[role]) selected[role] = reason }
+
+  for (const role of SPECIALIST_ROLES) {
+    const flag = RISK_FLAGS.find((value) => RISK[value]?.role === role && risks.includes(value))
+    if (flag) { take(role, `risk=${flag}`); continue }
+    const signal = TEAM.signals[role].find((value) => signals.includes(value))
+    if (signal) { take(role, `signal "${signal}"`); continue }
+    if (kind === 'security' && role === 'security') { take(role, 'kind=security'); continue }
+    if (kind === 'performance' && role === 'reliability') { take(role, 'kind=performance'); continue }
+    const declared = RISK_FLAGS.find((value) => RISK[value]?.role === role)
+    skipped[role] = declared ? `no ${declared} risk declared` : 'no matching risk or signal'
   }
-  const optional = []
-  if (tier !== 'quick') optional.push('architect')
-  if (kind === 'bug' || kind === 'performance' || signals.includes('unknown')) optional.push('investigator')
-  else if (kind === 'idea' || signals.includes('ambiguous') || signals.includes('product')) optional.push('product')
-  return [...new Set([...optional, ...specialists, 'builder', 'verifier'])]
+
+  if (tier !== 'quick') take('architect', 'tier is standard or deeper')
+  else skipped.architect = 'quick tier: no open design choice'
+
+  if (kind === 'bug' || kind === 'performance' || signals.includes('unknown')) {
+    take('investigator', `kind=${kind === 'performance' ? 'performance' : kind === 'bug' ? 'bug' : 'feature'}, cause not demonstrated`)
+  } else skipped.investigator = 'no undiagnosed defect'
+
+  if (kind === 'idea' || signals.includes('ambiguous') || signals.includes('product')) {
+    take('product', kind === 'idea' ? 'kind=idea' : 'outcome is materially ambiguous')
+  } else skipped.product = 'requested outcome is already specified'
+
+  if (kind === 'audit') {
+    delete selected.builder
+    skipped.builder = 'audit-only: cannot modify code'
+    delete skipped.investigator
+    delete skipped.product
+    take('verifier', 'owns the audit verdict')
+  } else {
+    take('builder', 'code must change')
+    take('verifier', 'independent verification of every delivery')
+  }
+
+  const order = [...ROLES.filter((role) => selected[role])]
+  return { team: order, selected, skipped }
 }
 
 function allowedPhases(role) {
@@ -175,7 +237,11 @@ function start() {
   const path = runPath(root, id)
   if (existsSync(path)) die('run already exists; resume it instead', 4, { id })
   const signals = splitSignals()
-  const tier = chooseTier(kind, signals)
+  const { risks, assessed } = splitRisks()
+  const domains = [...new Set(String(option('--domain', ''))
+    .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
+  const tier = chooseTier(kind, signals, risks)
+  const routing = chooseTeam(kind, tier, signals, risks)
   const now = new Date().toISOString()
   const run = {
     schema: 1,
@@ -183,9 +249,19 @@ function start() {
     title,
     kind,
     signals,
+    risks,
+    domains,
     tier,
-    team: chooseTeam(kind, tier, signals),
-    approval_required: parseBoolean('--approval-required', requiresApproval(signals)),
+    team: routing.team,
+    routing: {
+      risk_assessed: assessed,
+      tier_reason: assessed
+        ? tierReason(kind, signals, risks, tier)
+        : `${tierReason(kind, signals, risks, tier)} (risk not assessed: specialists selected by keyword only)`,
+      selected: routing.selected,
+      skipped: routing.skipped,
+    },
+    approval_required: parseBoolean('--approval-required', requiresApproval(signals, risks)),
     approval: null,
     status: 'active',
     phase: 'understand',
@@ -198,7 +274,11 @@ function start() {
     updated_at: now,
   }
   save(path, run)
-  output({ ok: true, id, tier, team: run.team, approval_required: run.approval_required, record: relative(root, path).replaceAll('\\', '/') })
+  output({
+    ok: true, id, tier, team: run.team, routing: run.routing,
+    approval_required: run.approval_required,
+    record: relative(root, path).replaceAll('\\', '/'),
+  })
 }
 
 function list() {
@@ -362,7 +442,8 @@ function help() {
 
 Internal recovery ledger for the autonomous Forge workflow.
 
-  start  --title TEXT --kind KIND [--signals a,b] [--tier quick|standard|deep]
+  start  --title TEXT --kind KIND --risk FLAGS [--domain a,b] [--signals a,b]
+         [--tier quick|standard|deep]
   list
   status --id ID
   note   --id ID --role ROLE --summary TEXT
@@ -370,6 +451,16 @@ Internal recovery ledger for the autonomous Forge workflow.
   approve --id ID [--by NAME] [--basis TEXT]
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]
   cancel --id ID [--reason TEXT]
+
+--risk is the router. Answer the behavioural questions in team.json and pass
+every flag that is true, or 'none' when none are. Omitting it is recorded as
+"risk not assessed" and shown in the delivery report.
+
+  access        changes who can read, do, or reach anything
+  stored-shape  changes persisted shape, or moves or deletes data
+  rendered      changes a rendered surface or a user journey
+  runtime       changes external calls, concurrency, retries, perf budget
+  irreversible  destructive, production-affecting, spending, public contract
 
 All commands accept --root DIR. Users do not need to run these commands.
 `)

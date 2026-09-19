@@ -113,8 +113,38 @@ check('performance work selects Investigator and Reliability',
 const protectedTier = body(run(['start', '--title', 'Change tenant permissions', '--kind', 'feature', '--signals', 'tenant', '--tier', 'quick', '--id', 'protected-tier']))
 check('an explicit quick tier cannot downgrade detected risk',
   protectedTier?.tier === 'deep' && protectedTier?.team.includes('security'))
+// Behavioural risk routing. The vocabulary these requests would naturally
+// produce (oauth, sso, rbac) matches no keyword, which is exactly why the
+// router must not depend on the model guessing the right synonym.
+const oauth = body(run(['start', '--title', 'Add OAuth login', '--kind', 'feature',
+  '--risk', 'access,rendered', '--signals', 'oauth,login', '--id', 'oauth-login']))
+check('an access risk selects Security whatever the wording',
+  oauth?.tier === 'deep' && oauth?.team.includes('security') && oauth?.team.includes('experience'))
+check('routing records why each role was selected',
+  oauth?.routing.selected.security === 'risk=access' && oauth?.routing.selected.experience === 'risk=rendered')
+check('routing records why each role was skipped',
+  typeof oauth?.routing.skipped.data === 'string' && typeof oauth?.routing.skipped.reliability === 'string')
+
+const stored = body(run(['start', '--title', 'Add a nullable column', '--kind', 'feature',
+  '--risk', 'stored-shape,irreversible', '--id', 'stored-shape-change']))
+check('stored-shape selects Data and irreversible demands approval',
+  stored?.team.includes('data') && stored?.approval_required === true)
+
+const assessedClear = body(run(['start', '--title', 'Rename a local helper', '--kind', 'refactor',
+  '--risk', 'none', '--id', 'assessed-clear']))
+check('an explicit "none" assessment is recorded as assessed',
+  assessedClear?.routing.risk_assessed === true && !assessedClear?.team.includes('security'))
+
+const unassessed = body(run(['start', '--title', 'Unassessed work', '--kind', 'feature', '--id', 'unassessed']))
+check('omitting the risk assessment stays visible in routing',
+  unassessed?.routing.risk_assessed === false &&
+  unassessed?.routing.tier_reason.includes('risk not assessed'))
+
+const badFlag = run(['start', '--title', 'Bad flag', '--kind', 'feature', '--risk', 'sekurity', '--id', 'bad-flag'])
+check('an unknown risk flag is rejected rather than ignored', badFlag.status === 2)
+
 const listed = body(run(['list']))
-check('list reports runs', Array.isArray(listed) && listed.length === 9)
+check('list reports runs', Array.isArray(listed) && listed.length === 13)
 
 rmSync(project, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
