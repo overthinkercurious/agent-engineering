@@ -191,33 +191,37 @@ head_ "stage 3: knowledge base"
 KB="$P/.dev/knowledge"
 node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1; rc=$?
 check "exits 0"                      "[ $rc -eq 0 ]"
-for f in 00-index 05-product 10-stack 20-commands 30-architecture 40-risks 50-conventions; do
+# The contract is five named documents plus the index - "never a sixth, and
+# never a parallel documentation tree" (references/stages/knowledge.md).
+for f in 00-index stack architecture schema commands decisions; do
   check "$f.md written"              "[ -s '$KB/$f.md' ]"
 done
-check "facts: npm script table"      "grep -q 'jest' '$KB/20-commands.md'"
-check "facts: route from code"       "grep -q '/users' '$KB/30-architecture.md'"
-check "facts: NOT the README route"  "! grep -q 'from-the-readme' '$KB/30-architecture.md'"
-check "facts: auth in risks"         "grep -q 'src/auth.js' '$KB/40-risks.md'"
-check "leaves judgment slots"        "grep -q 'TODO (judgment)' '$KB/30-architecture.md'"
-check "title sits outside the block" "[ \"\$(head -1 '$KB/10-stack.md')\" = '# Stack' ]"
-check "index links every doc"        "grep -q '50-conventions.md' '$KB/00-index.md'"
-check "index links product context"  "grep -q '05-product.md' '$KB/00-index.md'"
+check "no sixth document"            "[ \"\$(ls '$KB' | wc -l)\" -eq 6 ]"
+check "facts: npm script table"      "grep -q 'jest' '$KB/commands.md'"
+check "facts: route from code"       "grep -q '/users' '$KB/architecture.md'"
+check "facts: NOT the README route"  "! grep -q 'from-the-readme' '$KB/architecture.md'"
+check "facts: auth surfaced as risk" "grep -q 'src/auth.js' '$KB/architecture.md'"
+check "leaves judgment slots"        "grep -q 'TODO (judgment)' '$KB/architecture.md'"
+check "title sits outside the block" "[ \"\$(head -1 '$KB/stack.md')\" = '# Stack' ]"
+check "index links every doc"        "grep -q 'decisions.md' '$KB/00-index.md'"
+check "index names each consumer"    "grep -q 'architect, builder' '$KB/00-index.md'"
+check "index states the tag contract" "grep -q 'ASSUMED' '$KB/00-index.md'"
 check "records its caveats"          "grep -q 'lower bound' '$KB/00-index.md'"
 
-node -e 'const fs=require("fs");const p=process.argv[1];const s=fs.readFileSync(p,"utf8").replace(/(<!-- agent-engineering:judgment:[a-f0-9]{16}:start -->)[\s\S]*?(<!-- agent-engineering:judgment:\w{16}:end -->)/,"$1\nProject control flow is documented from reviewed source.\n$2");fs.writeFileSync(p,s)' "$KB/30-architecture.md"
+node -e 'const fs=require("fs");const p=process.argv[1];const s=fs.readFileSync(p,"utf8").replace(/(<!-- agent-engineering:judgment:[a-z0-9-]+:start -->)[\s\S]*?(<!-- agent-engineering:judgment:[a-z0-9-]+:end -->)/,"$1\nProject control flow is documented from reviewed source.\n$2");fs.writeFileSync(p,s)' "$KB/architecture.md"
 node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1
-check "completed knowledge judgment survives regeneration" "grep -q 'Project control flow is documented' '$KB/30-architecture.md'"
+check "completed knowledge judgment survives regeneration" "grep -q 'Project control flow is documented' '$KB/architecture.md'"
 
 head_ "stage 3: re-running preserves human edits"
 printf '
 HAND-WRITTEN NOTE
-' >> "$KB/10-stack.md"
+' >> "$KB/stack.md"
 node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1
-check "note survives regeneration"   "grep -q 'HAND-WRITTEN NOTE' '$KB/10-stack.md'"
-check "facts still present"          "grep -q 'javascript' '$KB/10-stack.md'"
-B1="$(md5sum < "$KB/20-commands.md")"
+check "note survives regeneration"   "grep -q 'HAND-WRITTEN NOTE' '$KB/stack.md'"
+check "facts still present"          "grep -q 'javascript' '$KB/stack.md'"
+B1="$(md5sum < "$KB/commands.md")"
 node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1
-check "idempotent"                   "[ \"$B1\" = \"\$(md5sum < '$KB/20-commands.md')\" ]"
+check "idempotent"                   "[ \"$B1\" = \"\$(md5sum < '$KB/commands.md')\" ]"
 node "$KNOW" --root "$P" --in "$J" --out "$WORK/escape-knowledge" --quiet >/dev/null 2>&1
 check "knowledge output cannot escape project root" "[ $? -eq 2 ] && [ ! -e '$WORK/escape-knowledge' ]"
 
@@ -225,10 +229,10 @@ head_ "stage 3: refuses a half-open block"
 printf '# X
 <!-- agent-engineering:start -->
 broken
-' > "$KB/10-stack.md"
+' > "$KB/stack.md"
 node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1; rc=$?
 check "exits non-zero"               "[ $rc -ne 0 ]"
-check "leaves the file untouched"    "grep -q 'broken' '$KB/10-stack.md'"
+check "leaves the file untouched"    "grep -q 'broken' '$KB/stack.md'"
 
 head_ "stage 4: rules"
 RULEOUT="$P/.dev/rules"

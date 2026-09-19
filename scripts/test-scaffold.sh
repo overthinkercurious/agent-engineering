@@ -196,7 +196,9 @@ printf 'export const login = (u) => u\n' > "$P/src/auth.js"
 check "stage 2 wrote analysis.json"       "[ -s '$P/.dev/context/analysis.json' ]"
 ( cd "$P" && node "$SKILL/scripts/knowledge.mjs" --quiet ) >/dev/null 2>&1
 check "stage 3 wrote the index"           "[ -s '$P/.dev/knowledge/00-index.md' ]"
-check "stage 3 found the auth risk"       "grep -q 'src/auth.js' '$P/.dev/knowledge/40-risks.md'"
+check "stage 3 wrote all five documents"  "[ -s '$P/.dev/knowledge/stack.md' ] && [ -s '$P/.dev/knowledge/architecture.md' ] && [ -s '$P/.dev/knowledge/schema.md' ] && [ -s '$P/.dev/knowledge/commands.md' ] && [ -s '$P/.dev/knowledge/decisions.md' ]"
+check "stage 3 surfaced the auth risk"    "grep -q 'src/auth.js' '$P/.dev/knowledge/architecture.md'"
+check "stage 3 left judgment to the model" "grep -q 'TODO (judgment)' '$P/.dev/knowledge/stack.md'"
 ( cd "$P" && node "$SKILL/scripts/rules.mjs" --quiet ) >/dev/null 2>&1
 check "stage 4 wrote the rules index"     "[ -s '$P/.dev/rules/00-index.md' ]"
 check "stage 4 found a real gate"         "grep -q 'npm run test' '$P/.dev/rules/00-index.md'"
