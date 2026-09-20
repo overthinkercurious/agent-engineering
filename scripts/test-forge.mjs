@@ -196,8 +196,34 @@ check('the report warns when risk was never assessed',
   check('the same refactor finishes once its tests are unmodified', allowed.status === 0)
 }
 
+// Deterministic release audit: the questions a script can settle by exit code.
+// Everything else stays with the Verifier; this is input to that judgment.
+{
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const git = (argv) => spawnSync('git', argv, { cwd: project, encoding: 'utf8' })
+  mkdirSync(join(project, 'db'), { recursive: true })
+  writeFileSync(join(project, 'db', 'schema.sql'), 'CREATE TABLE t(id int);\n')
+  git(['add', '-A']); git(['commit', '-qm', 'schema'])
+
+  rr(['start', '--title', 'Add a column', '--kind', 'feature', '--risk', 'stored-shape', '--id', 'audit-run'])
+  rr(['brief', '--id', 'audit-run'])
+  writeFileSync(join(project, 'db', 'schema.sql'), 'CREATE TABLE t(id int, s text);\n')
+  writeFileSync(join(project, 'leak.js'), 'const K = "sk-abcdefghijklmnopqrstuvwxyz012345678"\n')
+
+  const audited = JSON.parse(rr(['audit', '--id', 'audit-run']).stdout)
+  const status = (name) => audited.checks.find((c) => c.check === name)?.status
+  check('audit flags a schema change with no migration', status('migration') === 'REVIEW')
+  check('audit finds a credential in an UNTRACKED new file', status('secrets') === 'FAIL')
+  check('audit flags acceptance criteria with no evidence', status('acceptance') === 'REVIEW')
+  check('audit flags files the brief never named', status('scope') === 'REVIEW')
+  check('audit blocks on critical or high findings only',
+    audited.ok === false && audited.findings.some((f) => f.severity === 'critical'))
+  check('audit states that judgment remains the Verifier\'s',
+    /Verifier/.test(audited.note))
+}
+
 const listed = body(run(['list']))
-check('list reports runs', Array.isArray(listed) && listed.length === 14)
+check('list reports runs', Array.isArray(listed) && listed.length === 15)
 
 rmSync(project, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)

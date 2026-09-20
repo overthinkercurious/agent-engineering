@@ -315,6 +315,18 @@ settled. Do not log routine choices, and never rewrite an existing entry.
 
 ## Final response
 
+Before the Verifier issues its verdict, run the deterministic checks and hand
+them over as input:
+
+```bash
+node "$AE/scripts/forge.mjs" audit --id <id>
+```
+
+It settles scope, credential patterns, migration presence, test movement,
+acceptance evidence and brief drift by exit code. It is not a verdict — the
+Verifier still owns whether the tests are meaningful, whether scope crept, and
+whether residual risk is acceptable.
+
 Render the report from the ledger rather than recalling the run:
 
 ```bash

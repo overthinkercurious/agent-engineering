@@ -266,6 +266,7 @@ The bundled runner supports:
 | note | Record an expert's contribution, severity, and result file |
 | phase | Record a meaningful workflow boundary |
 | approve | Record material user approval, freezing the brief |
+| audit | Run the deterministic release checks |
 | report | Render the delivery summary from the record |
 | finish | Close only after implementation and verification contributed |
 | cancel | Stop an active run |

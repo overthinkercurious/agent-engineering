@@ -613,6 +613,143 @@ function report() {
   process.stdout.write(`${out.join('\n')}\n`)
 }
 
+// Deterministic half of the release audit. These are the questions a script
+// can settle by exit code; everything else - are the tests meaningful, did
+// scope creep under a plausible justification, is the residual risk acceptable
+// - stays with the Verifier. This is INPUT to that judgment, never a
+// replacement for it.
+const SECRET_PATTERNS = [
+  [/-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/, 'private key block'],
+  [/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/, 'AWS access key id'],
+  [/\bgh[pousr]_[A-Za-z0-9]{36,}\b/, 'GitHub token'],
+  [/\bsk-[A-Za-z0-9]{32,}\b/, 'API secret key'],
+  [/\b(?:postgres|mysql|mongodb)(?:\+srv)?:\/\/[^\s:@\/]+:[^\s@\/]+@/, 'connection string with inline password'],
+  [/\b(?:secret|password|passwd|token|api[_-]?key)\s*[:=]\s*["'][^"'\s]{8,}["']/i, 'assigned literal credential'],
+]
+const SCHEMA_PATH = /(^|[\/\\])(migrations?|schema)[\/\\]|\.sql$|(^|[\/\\])schema\.(prisma|rb|py)$/i
+const MIGRATION_PATH = /(^|[\/\\])migrations?[\/\\]/i
+
+function git(root, argv) {
+  try {
+    return execFileSync('git', argv, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  } catch { return null }
+}
+
+function audit() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const { run } = load(root, id)
+  const from = run.baseline?.head
+  const findings = []
+  const checks = []
+  const add = (name, status, detail) => checks.push({ check: name, status, detail })
+
+  if (!from) {
+    add('baseline', 'UNKNOWN', 'no git baseline recorded at start; scope checks cannot run')
+  }
+
+  // `git diff` only sees tracked files, so a brand-new untracked file - the
+  // most likely place for a leaked credential to sit - would be invisible to
+  // every check below. Include untracked files and treat them as wholly added.
+  const tracked = from
+    ? (git(root, ['diff', '--name-only', from]) ?? '').split('\n').map((line) => line.trim()).filter(Boolean)
+    : []
+  const untracked = (git(root, ['ls-files', '--others', '--exclude-standard']) ?? '')
+    .split('\n').map((line) => line.trim()).filter(Boolean)
+    .filter((name) => !name.startsWith('.dev/'))
+  const names = [...new Set([...tracked, ...untracked])]
+  const diff = from ? (git(root, ['diff', '--unified=0', from]) ?? '') : ''
+  const added = diff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+  for (const name of untracked) {
+    try { added.push(...readFileSync(join(root, name), 'utf8').split('\n')) } catch { /* binary or unreadable */ }
+  }
+
+  // 1. Scope: every changed file should appear in the approved brief.
+  const briefFile = briefPath(root, id)
+  if (existsSync(briefFile) && names.length) {
+    const brief = readFileSync(briefFile, 'utf8')
+    const unplanned = names.filter((name) => !brief.includes(name))
+    add('scope', unplanned.length ? 'REVIEW' : 'OK',
+      unplanned.length ? `${unplanned.length} changed file(s) are not named in the brief` : `${names.length} changed file(s), all named in the brief`)
+    for (const name of unplanned.slice(0, 20)) {
+      findings.push({ check: 'scope', severity: 'medium', detail: `${name} changed but is not named in the approved brief` })
+    }
+  } else if (names.length) {
+    add('scope', 'UNKNOWN', 'no brief to compare the changed files against')
+  }
+
+  // 2. Secrets introduced by this change, in ADDED lines only.
+  let secrets = 0
+  for (const [pattern, label] of SECRET_PATTERNS) {
+    if (added.some((line) => pattern.test(line))) {
+      secrets++
+      findings.push({ check: 'secrets', severity: 'critical', detail: `added line matches ${label}` })
+    }
+  }
+  add('secrets', secrets ? 'FAIL' : 'OK', secrets ? `${secrets} pattern(s) matched in added lines` : 'no known credential pattern in added lines')
+
+  // 3. A changed schema with no migration alongside it.
+  const schemaTouched = names.filter((name) => SCHEMA_PATH.test(name))
+  const migrationTouched = names.some((name) => MIGRATION_PATH.test(name))
+  if (schemaTouched.length) {
+    const ok = migrationTouched
+    add('migration', ok ? 'OK' : 'REVIEW',
+      ok ? 'schema change ships with a migration' : 'schema changed with no migration file in the diff')
+    if (!ok) findings.push({ check: 'migration', severity: 'high', detail: `${schemaTouched[0]} changed but no migration file is present in the diff` })
+  }
+
+  // 4. Tests. A refactor must not touch them; anything else probably should.
+  const testsTouched = changedTestFiles(root, from) ?? []
+  if (run.kind === 'refactor') {
+    add('tests', testsTouched.length ? 'FAIL' : 'OK',
+      testsTouched.length ? `refactor changed ${testsTouched.length} test file(s); behaviour preservation is unproven` : 'existing tests unmodified')
+    if (testsTouched.length) findings.push({ check: 'tests', severity: 'high', detail: 'a refactor changed its own tests' })
+  } else if (names.length) {
+    add('tests', testsTouched.length ? 'OK' : 'REVIEW',
+      testsTouched.length ? `${testsTouched.length} test file(s) changed` : 'no test file changed by this work')
+    if (!testsTouched.length) findings.push({ check: 'tests', severity: 'medium', detail: 'no test changed; confirm the behaviour is covered by an existing one' })
+  }
+
+  // 5. Acceptance criteria declared in the brief, versus evidenced in results.
+  if (existsSync(briefFile)) {
+    const brief = readFileSync(briefFile, 'utf8')
+    const ids = [...new Set([...brief.matchAll(/\bAC-\d+\b/g)].map((m) => m[0]))]
+    if (ids.length) {
+      const dir = join(workRoot(root), id, 'results')
+      const evidence = existsSync(dir)
+        ? readdirSync(dir).map((f) => readFileSync(join(dir, f), 'utf8')).join('\n')
+        : ''
+      const unevidenced = ids.filter((ac) => !evidence.includes(ac))
+      add('acceptance', unevidenced.length ? 'REVIEW' : 'OK',
+        unevidenced.length ? `${unevidenced.join(', ')} not referenced by any expert result` : `${ids.length} criterion/criteria referenced in results`)
+      for (const ac of unevidenced) {
+        findings.push({ check: 'acceptance', severity: 'high', detail: `${ac} is declared in the brief but referenced by no expert result` })
+      }
+    }
+  }
+
+  // 6. Did the contract move after it was approved?
+  if (run.approval?.brief_sha) {
+    const now = briefDigest(root, id)
+    const drifted = now && now !== run.approval.brief_sha
+    add('brief-drift', drifted ? 'REVIEW' : 'OK',
+      drifted ? 'the brief changed after approval' : 'the brief matches what was approved')
+    if (drifted) findings.push({ check: 'brief-drift', severity: 'high', detail: 'the approved contract was edited after approval' })
+  }
+
+  const blocking = findings.filter((f) => ['critical', 'high'].includes(f.severity))
+  output({
+    ok: blocking.length === 0,
+    id,
+    kind: run.kind,
+    changed_files: names.length,
+    checks,
+    findings,
+    verdict: blocking.length ? 'BLOCKING FINDINGS' : 'NO BLOCKING MECHANICAL FINDINGS',
+    note: 'Deterministic checks only. Whether the tests are meaningful, whether scope crept, and whether residual risk is acceptable remain the Verifier\'s judgment.',
+  })
+}
+
 function cancel() {
   const root = projectRoot()
   const id = safeId(option('--id'))
@@ -638,6 +775,7 @@ Internal recovery ledger for the autonomous Forge workflow.
   phase  --id ID --to PHASE --summary TEXT
   brief  --id ID [--force]
   approve --id ID [--by NAME] [--basis TEXT]
+  audit  --id ID          (deterministic release checks; input to Verifier)
   report --id ID
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]
          [--tests-changed-justified]   (refactor only; explain in the report)
@@ -657,6 +795,6 @@ All commands accept --root DIR. Users do not need to run these commands.
 `)
 }
 
-const handlers = { help, start, brief, list, status, note, phase, approve, report, finish, cancel }
+const handlers = { help, start, brief, list, status, note, phase, approve, audit, report, finish, cancel }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()
