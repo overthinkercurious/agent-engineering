@@ -103,9 +103,9 @@ does not go in the file.
 Read `references/stages/rules.md`. Two outputs, never merged, never given
 equal authority:
 
-- **Enforced rules** — `node "$SV/scripts/rules.mjs"`. A rule enters only
-  if a command fails when it is broken. This is mechanical and repo-specific;
-  nothing here is copied from outside the project.
+- **Enforced rules** — `node "$SV/scripts/rules.mjs"` scaffolds candidate
+  checks. In this stage's model pass, inspect their implementation and admit a
+  rule only if the command fails when that exact rule is broken.
 - **Gaps** — an unenforced invariant is recorded in the knowledge Notes as a
   gap, never promoted into the rules table. A rule nothing can check is a
   suggestion, and suggestions accumulate until the file is too long to read.

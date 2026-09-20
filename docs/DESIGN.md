@@ -16,7 +16,7 @@ boundaries, autonomy rules, recovery state, and completion criteria.
       -> risk-sized brief (tier-bound sections), approved and then frozen
       -> build
       -> independent verify
-      -> repair (at most two cycles; the second is delta-only)
+      -> repair (at most two cycles; second pass focuses on the repair)
       -> report, rendered from the ledger
 
 Quick work may omit a separate architecture pass. Standard changes use

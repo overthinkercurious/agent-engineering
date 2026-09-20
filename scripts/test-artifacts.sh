@@ -38,6 +38,9 @@ EOF
 cat > tsconfig.json <<'EOF'
 { "compilerOptions": { "strict": true, "noImplicitAny": true } }
 EOF
+cat > eslint.config.js <<'EOF'
+export default [{ rules: { 'no-console': 'warn' } }]
+EOF
 # A README whose code fence looks exactly like a route declaration.
 cat > README.md <<'EOF'
 # Fixture
@@ -256,9 +259,12 @@ RULEOUT="$P/.dev/rules"
 node "$RULES" --root "$P" --in "$J" --out "$RULEOUT" --quiet >/dev/null 2>&1; rc=$?
 check "exits 0"                      "[ $rc -eq 0 ]"
 check "index written"                "[ -s '$RULEOUT/00-index.md' ]"
-check "derives the typescript rule"  "[ -s '$RULEOUT/10-typescript.md' ]"
+check "scaffolds typescript review"  "[ -s '$RULEOUT/10-typescript.md' ]"
 check "gate names a real command"    "grep -q 'npm run test' '$RULEOUT/00-index.md'"
-check "typecheck rule cites tsc"     "grep -qE 'tsc|typecheck' '$RULEOUT/10-typescript.md'"
+check "typescript review cites config" "grep -q 'tsconfig.json' '$RULEOUT/10-typescript.md'"
+check "strict mode does not invent policies or a typecheck command" "! grep -qE 'No new|@ts-ignore|npx tsc' '$RULEOUT/10-typescript.md'"
+check "lint discovery does not claim warnings fail" "grep -q 'npm run lint' '$RULEOUT/20-lint.md' && ! grep -q 'no new warnings' '$RULEOUT/20-lint.md'"
+check "test discovery does not enforce added-test coverage" "[ ! -e '$RULEOUT/40-risk-coverage.md' ]"
 check "states the admission test"    "grep -q 'names a command that fails' '$RULEOUT/00-index.md'"
 check "states the ratchet"           "grep -q 'ratchet' '$RULEOUT/00-index.md'"
 check "lists what CI runs"           "grep -q 'npm test' '$RULEOUT/00-index.md'"
@@ -285,6 +291,8 @@ check "Forge starts beside optional project knowledge" "[ $rc -eq 0 ] && grep -q
 
 node -e 'const fs=require("fs");const p=process.argv[1];const d=JSON.parse(fs.readFileSync(p,"utf8"));d.scripts.typecheck="tsc --noEmit";fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")' "$P/package.json"
 node "$ANALYZE" --root "$P" --out "$J" >/dev/null 2>&1
+node "$RULES" --root "$P" --in "$J" --quiet >/dev/null 2>&1
+check "changed inputs retire earlier rules judgment for revalidation" "grep -q 'Previous synthesis.*STALE' '$RULEOUT/10-typescript.md' && grep -q 'TODO (judgment)' '$RULEOUT/10-typescript.md' && grep -q 'No additional stack-specific rule' '$RULEOUT/10-typescript.md'"
 node "$FORGE" status --root "$P" --id init-to-forge > "$P/.dev/context/forge-status.json" 2>&1
 check "project knowledge refresh does not strand active work" "[ $? -eq 0 ] && grep -q '\"status\": \"active\"' '$P/.dev/context/forge-status.json'"
 
