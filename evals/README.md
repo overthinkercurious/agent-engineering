@@ -34,7 +34,33 @@ specialist was deep enough to **find something** — and that distinction
 matters, because a routing failure and a depth failure look identical from the
 outside and are fixed in completely different places.
 
-Run each case's `request` against `evals/fixture/` with a real model and grade:
+```bash
+node scripts/eval-depth.mjs list
+node scripts/eval-depth.mjs prepare --case order-idor
+#   -> run a full Forge delivery against the printed project path,
+#      giving it the printed request and nothing else
+node scripts/eval-depth.mjs grade --case order-idor --project <path>
+```
+
+The runner does not invoke a model. The host owns models and isolated agents
+(`docs/DESIGN.md`'s product boundary), so an adapter here would be the second
+model-host system this kit deliberately excludes. What it owns is the
+instrument: a clean fixture, the ground truth, the mechanical scoring, and the
+evidence a grader needs for the rest.
+
+**`prepare` strips the in-file defect labels.** They exist for maintainers, but
+they sit in the same files the model under test reads — grading a model against
+files that announce their own answers measures reading comprehension, not
+depth. The repository keeps the labels; the prepared copy does not.
+
+Mechanical rows (risk assessed, risk flags, tier, team membership, recorded
+severity) are scored automatically. Whether a specialist actually *understood*
+a defect is judgment, not string matching, so `grade` surfaces the owning
+role's recorded evidence next to `must_catch`, offers a keyword-overlap score
+as a hint only, and leaves the verdict pending until you pass
+`--verdict <defect>=caught|missed`.
+
+What each row tells you:
 
 | Question | Where the answer comes from | Diagnosis if wrong |
 |---|---|---|
@@ -46,8 +72,9 @@ Run each case's `request` against `evals/fixture/` with a real model and grade:
 
 ### Planted defects
 
-Each is labelled in-file in `evals/fixture/`, so a grader can confirm what was
-supposed to be found.
+Each is labelled in-file in `evals/fixture/` so a maintainer can confirm what a
+case is for. `prepare` removes those labels from the copy a run sees — the
+defects stay, the answers go.
 
 | Defect | File | Owner | Severity |
 |---|---|---|---|
