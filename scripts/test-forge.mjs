@@ -333,8 +333,44 @@ check('the report warns when risk was never assessed',
     close('gate-a', ['--accept-gaps', 'everything']).status === 2)
 }
 
+// Three regressions the order-idor eval case found live, none of which the
+// suite above caught: a brand-new untracked test file was invisible to the
+// "was any test touched" check, the kit's own installed-skill files inflated
+// every count in audit(), and a role that can never reach the verify phase
+// (Investigator) blocked finish() forever on the severity of the bug it
+// diagnosed rather than a defect in the delivered fix.
+{
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...withResult(argv), '--root', project], { encoding: 'utf8' })
+  const git = (argv) => spawnSync('git', argv, { cwd: project, encoding: 'utf8' })
+  mkdirSync(join(project, '.claude', 'skills', 'ae-forge', 'scripts'), { recursive: true })
+  writeFileSync(join(project, '.claude', 'skills', 'ae-forge', 'scripts', 'forge.mjs'), '// installed kit copy\n')
+  git(['add', '-A']); git(['commit', '-qm', 'audit-fixture baseline'])
+
+  rr(['start', '--title', 'Fix the bug', '--kind', 'bug', '--risk', 'none', '--id', 'audit-fixture'])
+  rr(['note', '--id', 'audit-fixture', '--role', 'investigator', '--summary', 'reproduced the reported symptom', '--severity', 'critical'])
+  rr(['note', '--id', 'audit-fixture', '--role', 'architect', '--summary', 'plan'])
+  rr(['phase', '--id', 'audit-fixture', '--to', 'build', '--summary', 'b'])
+  writeFileSync(join(project, 'fixed.js'), 'export const fixed = true\n')
+  writeFileSync(join(project, 'fixed.test.js'), 'test("fixed",()=>{})\n')
+  rr(['note', '--id', 'audit-fixture', '--role', 'builder', '--summary', 'implemented the fix with a new test'])
+
+  const audited = JSON.parse(rr(['audit', '--id', 'audit-fixture']).stdout)
+  check('audit sees an untracked new test file, not just tracked diffs',
+    audited.checks.find((c) => c.check === 'tests')?.status === 'OK',
+    JSON.stringify(audited.checks.find((c) => c.check === 'tests')))
+  check("audit does not count the kit's own installed-skill files as changed",
+    !audited.checks.some((c) => c.check === 'scope') || audited.changed_files < 5,
+    `changed_files=${audited.changed_files}`)
+
+  rr(['phase', '--id', 'audit-fixture', '--to', 'verify', '--summary', 'v'])
+  rr(['note', '--id', 'audit-fixture', '--role', 'verifier', '--summary', 'candidate closes the reported bug'])
+  const closed = rr(['finish', '--id', 'audit-fixture', '--summary', 's', '--verification', 'tests pass', '--accept-gaps', 'lenses,audit'])
+  check("Investigator's diagnostic-phase severity does not block finish on an otherwise-clean candidate",
+    closed.status === 0, closed.stdout || closed.stderr)
+}
+
 const listed = body(run(['list']))
-check('list reports runs', Array.isArray(listed) && listed.length === 18)
+check('list reports runs', Array.isArray(listed) && listed.length === 19)
 
 rmSync(project, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)

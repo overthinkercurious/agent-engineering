@@ -227,12 +227,25 @@ const TEST_PATH = /(^|[\/\\])(tests?|spec|__tests__)[\/\\]|[._-](test|spec)\.[a-
 // its own tests is the one signal that contradicts the claim. This is the rare
 // acceptance rule a script can settle, so a script settles it - the model is
 // asked to justify, not to self-assess.
-function changedTestFiles(root, from) {
+//
+// Tracked-only is deliberate here, not an oversight: a wholly new untracked
+// test file is ordinary added coverage, not evidence of hiding a behaviour
+// change. The risk this check exists for is *rewriting an existing test*, so
+// widening it to untracked files would flag the safe case as if it were the
+// dangerous one. `includeUntracked` exists for the one other caller that
+// wants the opposite question answered - "was any test touched at all" - not
+// this one.
+function changedTestFiles(root, from, includeUntracked = false) {
   if (!from) return null
   try {
     const out = execFileSync('git', ['diff', '--name-only', from],
       { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-    return out.split('\n').map((line) => line.trim()).filter(Boolean).filter((line) => TEST_PATH.test(line))
+    const tracked = out.split('\n').map((line) => line.trim()).filter(Boolean)
+    if (!includeUntracked) return tracked.filter((line) => TEST_PATH.test(line))
+    const untracked = (execFileSync('git', ['ls-files', '--others', '--exclude-standard'],
+      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) ?? '')
+      .split('\n').map((line) => line.trim()).filter(Boolean)
+    return [...new Set([...tracked, ...untracked])].filter((line) => TEST_PATH.test(line))
   } catch { return null }
 }
 
@@ -624,9 +637,20 @@ function finish() {
   }
   // Keep findings until their owner explicitly records the remaining severity.
   // A missing severity or a new revision does not silently resolve a blocker.
+  //
+  // Restricted to 'verify' phase contributions: severity recorded during
+  // understand/plan describes the reported problem or a design-time risk,
+  // not a defect in the delivered candidate - only a role reviewing the
+  // actual candidate can say whether one remains. Investigator is the sharp
+  // case: it is not a SPECIALIST_ROLE, so allowedPhases() never lets it
+  // contribute during verify at all. Its causal account is, by design,
+  // reported once and never re-inspected - so the severity of the bug it
+  // diagnosed must not be read as an unresolved severity of the fix, or a
+  // correctly delivered repair could never close.
   const unresolved = new Map()
   const acceptedResiduals = []
   for (const item of feature.run.contributions) {
+    if (item.phase !== 'verify') continue
     if (item.residual && item.severity) {
       unresolved.delete(item.role)
       acceptedResiduals.push({ role: item.role, severity: item.severity, why: item.residual })
@@ -801,9 +825,16 @@ function audit() {
   const tracked = from
     ? (git(root, ['diff', '--name-only', from]) ?? '').split('\n').map((line) => line.trim()).filter(Boolean)
     : []
+  // A project that installed this kit but has not yet wired ae-surveyor's
+  // .gitignore fragment leaves the kit's own skill files untracked, which
+  // would otherwise inflate every count below with this run's own tooling
+  // rather than the work it produced. Exclude by the same pattern the
+  // fragment itself uses (**/skills/ae-*/), so the exclusion holds regardless
+  // of whether the project's .gitignore has caught up yet.
+  const KIT_PATH = /(^|\/)skills\/ae-[^/]+\//
   const untracked = (git(root, ['ls-files', '--others', '--exclude-standard']) ?? '')
     .split('\n').map((line) => line.trim()).filter(Boolean)
-    .filter((name) => !name.startsWith('.dev/'))
+    .filter((name) => !name.startsWith('.dev/') && !KIT_PATH.test(name))
   const names = [...new Set([...tracked, ...untracked])]
   const diff = from ? (git(root, ['diff', '--unified=0', from]) ?? '') : ''
   const added = diff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++'))
@@ -857,13 +888,21 @@ function audit() {
   }
 
   // 4. Tests. A refactor must not touch them; anything else probably should.
-  const testsTouched = changedTestFiles(root, from) ?? []
   if (run.kind === 'refactor') {
+    // Tracked-only, deliberately: a brand-new untracked test is ordinary
+    // added coverage, not evidence a refactor quietly changed behaviour. The
+    // risk this branch exists for is rewriting an existing test.
+    const testsTouched = changedTestFiles(root, from) ?? []
     const justified = args.includes('--tests-changed-justified')
     add('tests', testsTouched.length ? (justified ? 'REVIEW' : 'FAIL') : 'OK',
       testsTouched.length ? (justified ? 'test edits declared justified; Verifier must inspect the rationale' : `refactor changed ${testsTouched.length} test file(s); behaviour preservation is unproven`) : 'existing tests unmodified')
     if (testsTouched.length && !justified) findings.push({ check: 'tests', severity: 'high', detail: 'a refactor changed its own tests' })
   } else if (names.length) {
+    // Untracked-inclusive: a new test file for a bug fix or feature is
+    // typically brand new and would never appear in `git diff` at all, so
+    // asking only "was any test touched" must see it or this check reports
+    // "no test changed" while a fresh test sits unrecorded on disk.
+    const testsTouched = changedTestFiles(root, from, true) ?? []
     add('tests', testsTouched.length ? 'OK' : 'REVIEW',
       testsTouched.length ? `${testsTouched.length} test file(s) changed` : 'no test file changed by this work')
     if (!testsTouched.length) findings.push({ check: 'tests', severity: 'medium', detail: 'no test changed; confirm the behaviour is covered by an existing one' })
