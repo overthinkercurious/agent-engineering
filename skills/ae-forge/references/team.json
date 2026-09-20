@@ -147,7 +147,8 @@
         "component-library",
         "theming",
         "pixel",
-        "icon-system"
+        "icon-system",
+        "rendered"
       ]
     },
     "accessibility": {
@@ -166,7 +167,8 @@
         "keyboard",
         "contrast",
         "aria",
-        "focus"
+        "focus",
+        "rendered"
       ],
       "verified": "2026-09-20"
     },
@@ -186,7 +188,8 @@
         "env",
         "vault",
         "rotation",
-        "signing"
+        "signing",
+        "access"
       ]
     },
     "web-performance": {
@@ -227,7 +230,8 @@
         "explain",
         "lock",
         "replica",
-        "vacuum"
+        "vacuum",
+        "stored-shape"
       ]
     },
     "api-platform": {
@@ -329,7 +333,8 @@
         "tracing",
         "alert",
         "slo",
-        "incident"
+        "incident",
+        "runtime"
       ]
     },
     "ios": {

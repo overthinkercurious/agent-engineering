@@ -131,6 +131,57 @@ if [ "$detected_any" = "0" ]; then
   ae_warn "no AI tool detected in this project - only AGENTS.md was written"
 fi
 
+# ------------------------------------------------------- host table ---------
+# No other skill in this kit can read this file's targets.yml - installed
+# skills cannot reach each other's directories. Without a channel, a consumer
+# has to assume the safest dispatch tier, which silently downgrades every
+# isolated review on a host that in fact supports them. Publishing the
+# resolved table into the project is a data channel, not a "keep these two
+# files in sync" instruction that nothing enforces.
+#
+# The table lists every known host, not only the detected ones: the consumer
+# is the agent that is running, and it knows which tool it is. Its job is to
+# look itself up, not to infer itself from what this project happens to
+# contain.
+
+ae_head "host capability table"
+HOST_JSON="$ROOT/.dev/context/host.json"
+ae_assert_inside "$ROOT" "$HOST_JSON"
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+{
+  printf '{\n'
+  printf '  "generated_by": "ae-surveyor/scripts/scaffold.sh",\n'
+  printf '  "default_dispatch": "none",\n'
+  printf '  "hosts": {\n'
+  first=1
+  for id in $(ae_target_ids "$TSV"); do
+    disp="$(ae_target_field "$TSV" "$id" display)"
+    dsp="$(ae_target_field "$TSV" "$id" dispatch)"
+    dver="$(ae_target_field "$TSV" "$id" dispatch_verified)"
+    ifile="$(ae_target_field "$TSV" "$id" instruction_file)"
+    detect="$(ae_target_field "$TSV" "$id" detect)"
+    [ -n "$dsp" ] || dsp="none"
+    if ae_target_detected "$ROOT" "$detect"; then det="true"; else det="false"; fi
+    [ "$first" = "1" ] || printf ',\n'
+    first=0
+    printf '    "%s": { "display": "%s", "dispatch": "%s", "dispatch_verified": "%s", "instruction_file": "%s", "detected_in_project": %s }' \
+      "$(esc "$id")" "$(esc "$disp")" "$(esc "$dsp")" "$(esc "$dver")" "$(esc "$ifile")" "$det"
+  done
+  printf '\n  }\n}\n'
+} > "$BODY"
+
+if [ "$DRY" = "1" ]; then
+  ae_info ".dev/context/host.json would be written"
+  note unchanged ".dev/context/host.json"
+elif [ -f "$HOST_JSON" ] && cmp -s "$BODY" "$HOST_JSON"; then
+  ae_info ".dev/context/host.json unchanged"
+  note unchanged ".dev/context/host.json"
+else
+  cp "$BODY" "$HOST_JSON"
+  ae_ok ".dev/context/host.json written (dispatch tiers for $(ae_target_ids "$TSV" | wc -l | tr -d ' ') known hosts)"
+  note written ".dev/context/host.json"
+fi
+
 # ------------------------------------------------------- .gitignore ---------
 
 ae_head ".gitignore"

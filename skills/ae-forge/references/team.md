@@ -57,17 +57,27 @@ Audit-only work omits Builder and cannot modify application code.
 
 ## Dispatch tiers
 
-Three tiers, duplicated here deliberately rather than read from
-`ae-surveyor`'s `targets.yml`: installed skills cannot read each other's
-files, and a "keep these in sync" instruction that no mechanism enforces is
-how a shared contract silently rots.
+Three tiers. The vocabulary is stated here; **which tier applies is read from
+the project**, never assumed:
 
 - `native-parallel` — concurrent isolated dispatch, confirmed for this host.
 - `native-sequential` — isolation confirmed, concurrency not.
-- `none` — the default. Assume it unless this host is independently known to
-  support isolated dispatch. On `none`, run explicit sequential role passes in
-  this session and disclose in the report that the final review was not
+- `none` — no confirmed isolation. Run explicit sequential role passes in this
+  session and disclose in the report that the final review was not
   context-independent.
+
+`ae-surveyor` resolves every known host's tier from its own `targets.yml` at
+scaffold time and publishes the table to `.dev/context/host.json`. Read that
+file and look up the tool you are running as. This kit still never reads
+another installed skill's files — the channel is an artifact inside the
+project, so it cannot silently rot the way a "keep these in sync" instruction
+would.
+
+Assume `none` only when that file is missing or your own row is not in it, and
+say which of the two it was. Assuming `none` on a host that supports isolation
+is not the safe choice it looks like: it collapses Builder and Verifier into
+one context, and the independent review this team depends on stops existing
+while still being reported as though it happened.
 
 ## Lens selection
 

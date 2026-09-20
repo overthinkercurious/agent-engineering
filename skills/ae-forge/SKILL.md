@@ -157,18 +157,31 @@ is no separate release role; scope it to the relevant specialists (Reliability
 for rollout/observability, Security for exposure, Data for migration safety)
 plus Verifier.
 
-Dispatch experts using this host's isolated-agent capability, using the same
-tier vocabulary as `ae-surveyor`'s `references/targets.yml` (kept in sync with
-it rather than duplicated file-for-file, since installed skills cannot read
-each other's files): `native-parallel` (concurrent isolated dispatch),
-`native-sequential` (isolation confirmed, not concurrency), or `none` (the
-default — assume this unless this host is independently known to support
-isolated dispatch). On `native-parallel` or `native-sequential`, give each
-expert the request, exact repository scope, relevant project rules, its
-dedicated workflow file, and the shared result contract; experts return
-findings to Forge and never dispatch one another. On `none`, run explicit
-role passes in this same session and disclose in the final report that
-verification was not context-independent this run.
+Resolve this host's isolated-agent capability before dispatching anything:
+
+```bash
+cat .dev/context/host.json   # written by ae-surveyor stage 1
+```
+
+Find **your own** row in `hosts` — you know which tool you are running as —
+and use its `dispatch` value. Do not infer a tier from `detected_in_project`;
+that field describes what this repository contains, not what is executing.
+If the file is absent, or you cannot identify your own row, use
+`default_dispatch` and say so in the report.
+
+The tiers: `native-parallel` (concurrent isolated dispatch),
+`native-sequential` (isolation confirmed, not concurrency), `none`.
+
+On `native-parallel` or `native-sequential`, give each expert the request,
+exact repository scope, relevant project rules, its dedicated workflow file,
+and the shared result contract; experts return findings to Forge and never
+dispatch one another. A dispatched expert inherits nothing from this
+conversation, so everything it needs must be in its prompt — that isolation
+is the point, not an inconvenience to work around by summarising what you
+already concluded.
+
+On `none`, run explicit role passes in this same session and disclose in the
+final report that verification was not context-independent this run.
 
 Forge is the sole coordinator. Planning and review roles are read-only. Builder
 is the only role that edits application code. Do not run Builder and Verifier
@@ -194,6 +207,14 @@ request. Ask once before implementation only when the plan introduces a
 material product choice, irreversible or destructive action, external side
 effect, new spending/access, production deployment, or unresolved high-risk
 tradeoff.
+
+Four actions are gated at the moment of action, every run, no matter what was
+approved earlier: **pushing to a remote, merging, migrating a shared
+environment, and anything that spends money.** Approval of a brief authorises
+the change, never its release. These leave the machine or touch state other
+people depend on, so a plan-time "yes" cannot cover them — the person saying
+yes has not seen the diff yet. Editing files, running checks, and committing
+locally are not in this set and need no separate approval.
 
 Approval is a document, not a paragraph. Scaffold the brief and fill it, then
 point the user at it:
@@ -222,6 +243,10 @@ node "$AE/scripts/forge.mjs" note --id <id> --role <role> \
   --result .dev/work/<id>/results/<role>.md
 ```
 
+After resolving or adjudicating a blocker, append that role's evidence and a
+follow-up note with its remaining severity (`none` if clear). Omitting severity
+does not clear an earlier blocker.
+
 Use these phases internally, omitting Plan only for quick work with no open
 design choice:
 
@@ -230,11 +255,10 @@ design choice:
 3. **Build:** edit the code and tests in small coherent steps.
 4. **Verify:** inspect the exact diff and run the project's relevant checks.
 5. **Repair:** fix valid findings and verify again, for at most two cycles.
-   The second cycle is **delta-only**: confirm each named blocker is closed,
-   and raise a new blocker only if the repair itself introduced it. A fresh
-   full re-review always yields new findings — that is a property of
-   re-reading, not of the candidate, and it is how a bounded loop stops
-   converging.
+   Keep the second cycle focused on the repair: confirm named blockers are
+   closed and check for regressions. Any newly discovered critical/high defect
+   within the accepted scope still blocks completion, even if it predates the
+   repair. At the two-cycle limit, report the blocker and stop.
 6. **Finish:** leave the repository in a coherent state and give one concise
    delivery report.
 
@@ -280,7 +304,7 @@ it is judgment the Verifier owns, but two are not negotiable:
 A refactor that rewrote its own tests has not demonstrated behaviour
 preservation, whatever the suite reports. If a test edit genuinely fixes a
 test defect rather than accommodating a behaviour change, say so in the report
-and pass `--tests-changed-justified`.
+and pass `--tests-changed-justified` to both `audit` and `finish`.
 
 `finish` refuses to close a run whose required steps did not happen: an
 unassessed risk set, an unrecorded lens selection, or a deterministic audit
@@ -344,6 +368,11 @@ It settles scope, credential patterns, migration presence, test movement,
 acceptance evidence and brief drift by exit code. It is not a verdict — the
 Verifier still owns whether the tests are meaningful, whether scope crept, and
 whether residual risk is acceptable.
+
+For a mechanical false positive, record the Verifier's explicit remaining
+severity after the current audit and pass `finish --audit-justification
+"<counter-evidence>"`. The rationale appears in the report; unresolved role
+findings cannot be waived this way.
 
 Render the report from the ledger rather than recalling the run:
 

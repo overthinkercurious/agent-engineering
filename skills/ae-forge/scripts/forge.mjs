@@ -429,13 +429,39 @@ function note() {
   if (severity && !['critical', 'high', 'medium', 'low', 'none'].includes(severity)) {
     die('severity must be critical, high, medium, low, or none')
   }
+  // A finding can be real, blocking-severity, and still not this run's to fix
+  // - a defect inherited from an earlier commit, or one whose repair is a
+  // product decision. Without a way to say that, the honest severity strands
+  // the run and the convenient one is a lie. Accepting is allowed; accepting
+  // silently is not, so the reason is required and lands in the report.
+  const residual = option('--residual')
+  if (residual && !severity) {
+    die('--residual requires --severity: name the severity you are accepting, then why', 2)
+  }
+  // Same principle finish() already applies to its own gaps: a step the model
+  // was asked to perform but can silently skip is not a step, it is a
+  // suggestion. SKILL.md instructs every expert to write a full result file;
+  // leaving --result optional is what let a run reach verification with the
+  // next role having nothing to read but the previous role's summary. An
+  // independent review of a one-line summary is a restatement, not a review.
+  const result = option('--result')
+  if (!result) {
+    die('--result is required', 2, {
+      expected: `.dev/work/${id}/results/${role}.md`,
+      resolve: 'write this expert\'s full result to that path, then pass it as --result',
+    })
+  }
+  const resultPath = resolve(root, result)
+  if (!inside(root, resultPath)) die('--result path escapes the project root', 2, { result })
+  if (!existsSync(resultPath)) die('--result file does not exist', 2, { result: resultPath })
   feature.run.contributions.push({
     role,
     phase: feature.run.phase,
     revision: feature.run.revision,
     summary,
     severity: severity ?? null,
-    result: option('--result'),
+    residual: residual ?? undefined,
+    result: relative(root, resultPath).split('\\').join('/'),
     at: new Date().toISOString(),
   })
   save(feature.path, feature.run)
@@ -561,6 +587,13 @@ function finish() {
         ? `the deterministic audit inspected revision ${feature.run.audit.revision}, not the current ${feature.run.revision}`
         : 'the deterministic audit never ran',
     })
+  } else if (feature.run.audit?.inspected_nothing) {
+    // The audit ran and read an empty diff. Ran-but-read-nothing must not
+    // close a run as quietly as ran-and-found-nothing.
+    gaps.push({
+      gap: 'audit',
+      why: 'the deterministic audit read an empty diff, so it proves nothing about the work; it inspected, and found, nothing',
+    })
   }
   const blockingGaps = gaps.filter((item) => !accepted.has(item.gap))
   if (blockingGaps.length) {
@@ -584,10 +617,34 @@ function finish() {
       die('selected named specialists must inspect the current candidate during verification', 5, { missing: missingCandidateReviews, revision: feature.run.revision })
     }
   }
-  const verifierReview = feature.run.contributions.find((item) =>
-    item.role === 'verifier' && item.phase === 'verify' && item.revision === feature.run.revision)
+  const verifierReview = feature.run.contributions.filter((item) =>
+    item.role === 'verifier' && item.phase === 'verify' && item.revision === feature.run.revision).at(-1)
   if (!verifierReview) {
     die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
+  }
+  // Keep findings until their owner explicitly records the remaining severity.
+  // A missing severity or a new revision does not silently resolve a blocker.
+  const unresolved = new Map()
+  const acceptedResiduals = []
+  for (const item of feature.run.contributions) {
+    if (item.residual && item.severity) {
+      unresolved.delete(item.role)
+      acceptedResiduals.push({ role: item.role, severity: item.severity, why: item.residual })
+    } else if (['critical', 'high'].includes(item.severity)) unresolved.set(item.role, item)
+    else if (item.severity) unresolved.delete(item.role)
+  }
+  feature.run.accepted_residuals = acceptedResiduals.length ? acceptedResiduals : undefined
+  const auditJustification = option('--audit-justification')?.trim()
+  const auditJustified = feature.run.audit?.blocking > 0 && auditJustification &&
+    ['none', 'low', 'medium'].includes(verifierReview.severity) &&
+    feature.run.audit.revision === feature.run.revision && verifierReview.at >= feature.run.audit.at
+  if (unresolved.size || (feature.run.audit?.blocking > 0 && !auditJustified)) {
+    die('unresolved blocking findings prevent completion', 5, {
+      id,
+      findings: [...unresolved.values()],
+      audit_blocking: feature.run.audit?.blocking ?? 0,
+      resolve: 'repair the findings and rerun the audit, or record explicit nonblocking Verifier severity after the current audit and pass --audit-justification with counter-evidence; role blockers still require resolution',
+    })
   }
   // Per-kind acceptance: most of it is judgment the Verifier owns, but a
   // refactor that rewrote its own tests is mechanically checkable, so check it.
@@ -607,7 +664,8 @@ function finish() {
   feature.run.status = 'done'
   feature.run.phase = 'done'
   feature.run.summary = summary
-  feature.run.verification = verification
+  feature.run.verification = auditJustified
+    ? `${verification} · Audit adjudication: ${auditJustification}` : verification
   feature.run.result = result
   save(feature.path, feature.run)
   output({ ok: true, id, status: 'done', summary, verification, result: feature.run.result })
@@ -753,6 +811,17 @@ function audit() {
     try { added.push(...readFileSync(join(root, name), 'utf8').split('\n')) } catch { /* binary or unreadable */ }
   }
 
+  // An empty diff is not a clean diff. When the baseline is already the
+  // current state - a run started after the work was committed, or before any
+  // edit - every check below reads nothing, and reporting that as "no blocking
+  // findings" is precisely the false clean this script exists to prevent. Say
+  // what was inspected, and let finish() treat it as a gap to be named.
+  const inspectedNothing = Boolean(from) && names.length === 0
+  if (inspectedNothing) {
+    add('inspected', 'UNKNOWN',
+      `nothing differs from baseline ${from}; the mechanical checks read an empty diff and prove nothing about the work`)
+  }
+
   // 1. Scope: every changed file should appear in the approved brief.
   const briefFile = briefPath(root, id)
   if (existsSync(briefFile) && names.length) {
@@ -790,9 +859,10 @@ function audit() {
   // 4. Tests. A refactor must not touch them; anything else probably should.
   const testsTouched = changedTestFiles(root, from) ?? []
   if (run.kind === 'refactor') {
-    add('tests', testsTouched.length ? 'FAIL' : 'OK',
-      testsTouched.length ? `refactor changed ${testsTouched.length} test file(s); behaviour preservation is unproven` : 'existing tests unmodified')
-    if (testsTouched.length) findings.push({ check: 'tests', severity: 'high', detail: 'a refactor changed its own tests' })
+    const justified = args.includes('--tests-changed-justified')
+    add('tests', testsTouched.length ? (justified ? 'REVIEW' : 'FAIL') : 'OK',
+      testsTouched.length ? (justified ? 'test edits declared justified; Verifier must inspect the rationale' : `refactor changed ${testsTouched.length} test file(s); behaviour preservation is unproven`) : 'existing tests unmodified')
+    if (testsTouched.length && !justified) findings.push({ check: 'tests', severity: 'high', detail: 'a refactor changed its own tests' })
   } else if (names.length) {
     add('tests', testsTouched.length ? 'OK' : 'REVIEW',
       testsTouched.length ? `${testsTouched.length} test file(s) changed` : 'no test file changed by this work')
@@ -836,8 +906,9 @@ function audit() {
     feature.run.audit = {
       revision: feature.run.revision,
       at: new Date().toISOString(),
-      verdict: blocking.length ? 'BLOCKING FINDINGS' : 'CLEAR',
+      verdict: blocking.length ? 'BLOCKING FINDINGS' : inspectedNothing ? 'INSPECTED NOTHING' : 'CLEAR',
       blocking: blocking.length,
+      inspected_nothing: inspectedNothing || undefined,
       checks: checks.map((c) => ({ check: c.check, status: c.status })),
     }
     save(feature.path, feature.run)
@@ -850,9 +921,14 @@ function audit() {
     changed_files: names.length,
     checks,
     findings,
-    verdict: blocking.length ? 'BLOCKING FINDINGS' : 'NO BLOCKING MECHANICAL FINDINGS',
-    note: 'Deterministic checks only. Whether the tests are meaningful, whether scope crept, and whether residual risk is acceptable remain the Verifier\'s judgment.',
+    verdict: blocking.length ? 'BLOCKING FINDINGS'
+      : inspectedNothing ? 'INSPECTED NOTHING - NOT A PASS'
+        : 'NO BLOCKING MECHANICAL FINDINGS',
+    note: inspectedNothing
+      ? `Nothing differs from baseline ${from}. These checks compare in-progress work against the baseline recorded at start; they cannot audit a change that was already committed before this run began. Read this as "not inspected", never as "clean".`
+      : 'Deterministic checks only. Whether the tests are meaningful, whether scope crept, and whether residual risk is acceptable remain the Verifier\'s judgment.',
   })
+  if (blocking.length) process.exitCode = 5
 }
 
 function cancel() {
@@ -876,14 +952,19 @@ Internal recovery ledger for the autonomous Forge workflow.
          [--tier quick|standard|deep]
   list
   status --id ID
-  note   --id ID --role ROLE --summary TEXT [--severity S] [--result PATH]
+  note   --id ID --role ROLE --summary TEXT --result PATH [--severity S]
+         [--residual TEXT]  (accept a blocking-severity finding this run will
+          not repair - an inherited defect, or one whose fix is a product
+          decision; requires --severity and is named in the delivery report)
   phase  --id ID --to PHASE --summary TEXT
   brief  --id ID [--force]
   lenses --id ID --json '<lens-select.mjs output>'
   approve --id ID [--by NAME] [--basis TEXT]
-  audit  --id ID          (deterministic release checks; input to Verifier)
+  audit  --id ID [--tests-changed-justified] (release checks; exit 5 on blockers)
   report --id ID
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]
+         [--audit-justification TEXT] (counter-evidence for audit false positives;
+          requires explicit nonblocking Verifier severity after the current audit)
          [--tests-changed-justified]   (refactor only; explain in the report)
          [--accept-gaps risk,lenses,audit]  (close without a required step;
           each accepted gap is named in the delivery report)

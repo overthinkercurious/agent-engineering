@@ -12,8 +12,23 @@ const project = mkdtempSync(join(tmpdir(), 'ae-forge-simple-'))
 let passed = 0
 let failed = 0
 
+// `note` requires a real result file on disk: the artifact the next role reads
+// instead of inheriting the previous role's reasoning. These cases exercise
+// ledger rules, not whether a caller remembered to write that file, so
+// synthesise one unless the case supplies its own --result. The invariant
+// itself is tested directly, below, by spawning without this helper.
+function withResult(argv) {
+  if (argv[0] !== 'note' || argv.includes('--result')) return argv
+  const id = argv[argv.indexOf('--id') + 1]
+  const role = argv[argv.indexOf('--role') + 1]
+  const relPath = `.dev/work/${id}/results/${role}.md`
+  const abs = join(project, relPath)
+  mkdirSync(dirname(abs), { recursive: true })
+  writeFileSync(abs, `# ${role}\n\nSynthesised by the test harness.\n`)
+  return [...argv, '--result', relPath]
+}
 function run(args) {
-  return spawnSync(process.execPath, [forge, ...args, '--root', project], { encoding: 'utf8' })
+  return spawnSync(process.execPath, [forge, ...withResult(args), '--root', project], { encoding: 'utf8' })
 }
 function check(name, condition, detail = '') {
   if (condition) { passed++; process.stdout.write(`  PASS  ${name}\n`) }
@@ -38,6 +53,17 @@ check('run cannot finish without implementation and verification', premature.sta
 
 const earlyBuild = run(['phase', '--id', 'profile', '--to', 'build', '--summary', 'Building.'])
 check('standard work requires Architect before build', earlyBuild.status === 5)
+
+// Spawned without withResult on purpose: this is the invariant, not a fixture.
+const bare = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+check('a contribution with no result file is refused',
+  bare(['note', '--id', 'profile', '--role', 'architect', '--summary', 'summary only']).status === 2)
+check('a contribution citing a result file that does not exist is refused',
+  bare(['note', '--id', 'profile', '--role', 'architect', '--summary', 'ghost',
+    '--result', '.dev/work/profile/results/absent.md']).status === 2)
+check('a result path outside the project is refused',
+  bare(['note', '--id', 'profile', '--role', 'architect', '--summary', 'escape',
+    '--result', '../outside.md']).status === 2)
 for (const [role, summary] of [['architect', 'Planned the smallest safe change.'], ['builder', 'Implemented the requested behavior.'], ['verifier', 'Reviewed the diff and checks passed.']]) {
   const note = run(['note', '--id', 'profile', '--role', role, '--summary', summary])
   check(`${role} contribution records`, note.status === 0)
@@ -73,15 +99,17 @@ check('deep work enters verification after build', run(['phase', '--id', 'tenant
 const earlyVerifier = run(['note', '--id', 'tenant-payments', '--role', 'verifier', '--summary', 'Verifier reviewed the integrated candidate.'])
 check('Verifier waits for specialist candidate review',
   earlyVerifier.status === 5 && body(earlyVerifier)?.missing?.includes('security'))
-run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Security completed its candidate review.'])
+run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Cross-tenant access remains open.', '--severity', 'high'])
 run(['note', '--id', 'tenant-payments', '--role', 'verifier', '--summary', 'Verifier reviewed the integrated candidate.'])
+check('a passing verifier summary cannot erase a specialist blocker',
+  run(['finish', '--id', 'tenant-payments', '--summary', 'Done', '--verification', 'Reviewed', '--accept-gaps', 'risk,lenses,audit']).status === 5)
 const failedVerdict = run(['finish', '--id', 'tenant-payments', '--summary', 'Not safe.', '--verification', 'Verifier found a blocker.', '--result', 'FAIL', '--accept-gaps', 'risk,lenses,audit'])
 check('a failed verifier verdict cannot close a run', failedVerdict.status === 2)
 
 run(['phase', '--id', 'tenant-payments', '--to', 'repair', '--summary', 'Repairing verifier finding.'])
 run(['note', '--id', 'tenant-payments', '--role', 'builder', '--summary', 'Builder repaired the finding.'])
 run(['phase', '--id', 'tenant-payments', '--to', 'verify', '--summary', 'Re-verifying repaired candidate.'])
-run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Security re-reviewed the repaired candidate.'])
+run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Security re-reviewed the repaired candidate; cross-tenant repro now fails as expected.', '--severity', 'none'])
 const staleFinish = run(['finish', '--id', 'tenant-payments', '--summary', 'Repair verified.', '--verification', 'Rechecked.', '--result', 'PASS', '--accept-gaps', 'risk,lenses,audit'])
 check('a repaired candidate cannot finish on a stale verifier review',
   staleFinish.status === 5 && body(staleFinish)?.error.includes('fresh review'))
@@ -173,7 +201,7 @@ check('the report warns when risk was never assessed',
 // change, so rewriting its own tests contradicts the claim. This is the rare
 // acceptance rule a script can settle, so a script settles it.
 {
-  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...withResult(argv), '--root', project], { encoding: 'utf8' })
   const git = (argv) => spawnSync('git', argv, { cwd: project, encoding: 'utf8' })
   git(['init', '-q'])
   git(['config', 'user.email', 't@t']); git(['config', 'user.name', 't'])
@@ -191,6 +219,9 @@ check('the report warns when risk was never assessed',
   const blocked = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)', '--accept-gaps', 'risk,lenses,audit'])
   check('a refactor that rewrote its own tests cannot finish',
     blocked.status === 5 && blocked.stdout.includes('behaviour preservation is unproven'))
+  check('refactor audit blocks changed tests unless their justification is declared',
+    rr(['audit', '--id', 'refactor-run']).status === 5 &&
+    rr(['audit', '--id', 'refactor-run', '--tests-changed-justified']).status === 0)
   git(['checkout', '--', 'tests/a.test.js'])
   const allowed = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)', '--accept-gaps', 'risk,lenses,audit'])
   check('the same refactor finishes once its tests are unmodified', allowed.status === 0)
@@ -199,7 +230,7 @@ check('the report warns when risk was never assessed',
 // Deterministic release audit: the questions a script can settle by exit code.
 // Everything else stays with the Verifier; this is input to that judgment.
 {
-  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...withResult(argv), '--root', project], { encoding: 'utf8' })
   const git = (argv) => spawnSync('git', argv, { cwd: project, encoding: 'utf8' })
   mkdirSync(join(project, 'db'), { recursive: true })
   writeFileSync(join(project, 'db', 'schema.sql'), 'CREATE TABLE t(id int);\n')
@@ -210,14 +241,15 @@ check('the report warns when risk was never assessed',
   writeFileSync(join(project, 'db', 'schema.sql'), 'CREATE TABLE t(id int, s text);\n')
   writeFileSync(join(project, 'leak.js'), 'const K = "sk-abcdefghijklmnopqrstuvwxyz012345678"\n')
 
-  const audited = JSON.parse(rr(['audit', '--id', 'audit-run']).stdout)
+  const auditResult = rr(['audit', '--id', 'audit-run'])
+  const audited = JSON.parse(auditResult.stdout)
   const status = (name) => audited.checks.find((c) => c.check === name)?.status
   check('audit flags a schema change with no migration', status('migration') === 'REVIEW')
   check('audit finds a credential in an UNTRACKED new file', status('secrets') === 'FAIL')
   check('audit flags acceptance criteria with no evidence', status('acceptance') === 'REVIEW')
   check('audit flags files the brief never named', status('scope') === 'REVIEW')
   check('audit blocks on critical or high findings only',
-    audited.ok === false && audited.findings.some((f) => f.severity === 'critical'))
+    auditResult.status === 5 && audited.ok === false && audited.findings.some((f) => f.severity === 'critical'))
   check('audit states that judgment remains the Verifier\'s',
     /Verifier/.test(audited.note))
 }
@@ -225,7 +257,7 @@ check('the report warns when risk was never assessed',
 // Workflow gates. A step the model was asked to perform but can silently skip
 // is a suggestion, not a step. Each of these is recordable, so each is checked.
 {
-  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...withResult(argv), '--root', project], { encoding: 'utf8' })
   const lensJson = JSON.stringify({ attached: { builder: ['test-automation'] }, unavailable: [], stale: [], assessed: true })
   const drive = (id, extra = []) => {
     rr(['start', '--title', `Gate ${id}`, '--kind', 'feature', '--risk', 'none', '--id', id, ...extra])
@@ -248,7 +280,26 @@ check('the report warns when risk was never assessed',
   check('recording lenses clears that gap but not the audit',
     JSON.parse(close('gate-a').stdout).gaps.map((g) => g.gap).join(',') === 'audit')
   rr(['audit', '--id', 'gate-a'])
-  check('running the audit clears the last gap and the run closes', close('gate-a').status === 0)
+  check('a blocking audit cannot finish even when audit gaps are accepted',
+    close('gate-a', ['--accept-gaps', 'audit']).status === 5 &&
+    body(rr(['status', '--id', 'gate-a'])).status === 'active')
+  // Remove the defects left by the preceding audit fixture, then recheck.
+  rmSync(join(project, 'leak.js'))
+  spawnSync('git', ['checkout', '--', 'db/schema.sql'], { cwd: project })
+  // A repaired candidate still carries its own work. Reverting to a bare tree
+  // would leave the audit nothing to read, which the script now reports as
+  // "inspected nothing" rather than as a pass - so keep a real change here,
+  // the way a genuine repair does.
+  writeFileSync(join(project, 'repaired-change.js'), 'export const repaired = true\n')
+  check('audit succeeds after its blocking defects are repaired', rr(['audit', '--id', 'gate-a']).status === 0)
+  for (const severity of ['critical', 'high']) {
+    rr(['note', '--id', 'gate-a', '--role', 'verifier', '--severity', severity, '--summary', 'Unresolved finding'])
+    check(`${severity} verifier finding prevents PASS despite a clear audit`, close('gate-a').status === 5)
+  }
+  rr(['note', '--id', 'gate-a', '--role', 'verifier', '--summary', 'Additional review context'])
+  check('a note without severity does not clear a blocker', close('gate-a').status === 5)
+  rr(['note', '--id', 'gate-a', '--role', 'verifier', '--severity', 'none', '--summary', 'Counter-evidence resolves the finding; inspected the relevant test'])
+  check('explicit resolution and a clear audit allow completion', close('gate-a').status === 0)
 
   // The audit is revision-pinned, exactly as the Verifier review is: a repair
   // makes the previous candidate's audit inapplicable.
