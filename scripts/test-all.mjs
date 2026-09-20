@@ -18,6 +18,10 @@ const checks = [
   [bash, ['scripts/validate-suite.sh']],
   [process.execPath, ['scripts/validate-forge.mjs']],
   [process.execPath, ['scripts/test-forge.mjs']],
+  // test-lens-selection was present but never run by the suite; a test nothing
+  // invokes is a test that cannot fail.
+  [process.execPath, ['scripts/test-lens-selection.mjs']],
+  [process.execPath, ['scripts/test-evals.mjs']],
   [process.execPath, ['scripts/test-packaging.mjs']],
   [process.execPath, ['scripts/test-docs-consistency.mjs']],
   [bash, ['scripts/test-scaffold.sh']],
