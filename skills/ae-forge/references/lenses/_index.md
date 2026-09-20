@@ -5,10 +5,18 @@ generically — platform, protocol, or standard-specific constraints. It never
 replaces a role's exclusive ownership; it narrows what that role must check
 within its own boundary.
 
-Selection is `team.md`'s job, driven by `team.json`'s `lenses` block. This
-file just lists what exists and what's still backlog, so a role or Forge can
-tell a real gap ("this signal fired but nothing covers it yet") from a normal
-"no lens applies" run.
+Selection is mechanical and project-driven. `lens-select.mjs` reads the
+survey's sensor dump and derives domain tags from what is actually in the
+repository — a React dependency attaches the web-performance and accessibility
+lenses whether or not anyone thought to ask. Supplied `--domain` words are
+merged on top, never required.
+
+Three outputs matter besides the attachments: `unavailable` (a domain fired
+but no lens exists yet), `stale` (an attached lens is past its review date),
+and `assessed: false` (no domain input at all — not the same as "nothing
+applies"). `validate-forge.mjs` proves every tag a detector can emit is
+handled by a lens, a role signal, or a backlog entry, so a detected domain
+can never be silently ignored.
 
 ## Built
 
@@ -22,6 +30,12 @@ tell a real gap ("this signal fired but nothing covers it yet") from a normal
 | `database-performance` | `lenses/database-performance.md` | data, architect, reliability | Access paths, lock behaviour and volume: what the planner does, what a migration locks, how both behave at real row counts |
 | `api-platform` | `lenses/api-platform.md` | architect, builder, verifier | Contract evolution: what a published interface promises, which changes break it, how a change reaches existing callers |
 | `test-automation` | `lenses/test-automation.md` | builder, verifier | Whether a passing test is evidence: fails for the right reason, covers real risk, stays deterministic, reports honestly |
+| `ai-llm` | `lenses/ai-llm.md` | security, architect, reliability, builder | Model-backed features and agents: untrusted model output, excessive agency, retrieval scoping, cost and loop ceilings |
+| `payments` | `lenses/payments.md` | security, data, reliability, builder | Money movement: exactly-once intent, exact amounts, append-only records, reconciliation and refunds |
+| `observability` | `lenses/observability.md` | reliability, architect, builder | Operator visibility: detectable, attributable, affordable, actionable |
+| `ios` | `lenses/ios.md` | architect, builder, verifier | Apple platform: lifecycle and background limits, permission declarations, interface conventions, review constraints |
+| `infrastructure` | `lenses/infrastructure.md` | architect, reliability, builder | Declared environment: what an apply really does, safe rollout, rollback, pipeline trust |
+| `privacy` | `lenses/privacy.md` | security, data, product | Personal data: justified collection, every destination, enforced retention and deletion, data-subject requests |
 
 ## Dated specifics, not durable method
 
@@ -52,7 +66,7 @@ itself a risk worth announcing* — not to enumerate every domain that could one
 day have a lens. A long backlog mostly announces absence, which is why this
 one is down to the single domain where a silent gap would be dangerous.
 
-`payments`.
+`internationalization`, `i18n`, `queue`.
 
 A signal naming one of these fires `LENS UNAVAILABLE` (see `team.md`) until
 it is written. That is not a bug — it is the mechanism that stops a role

@@ -74,6 +74,25 @@ for (const [name, contract] of Object.entries(lenses)) {
   check(lensIndex.includes('`' + name + '`'), `lens ${name} is in team.json but not listed in lenses/_index.md`)
 }
 
+// Coverage: every domain a detector can emit must be handled by SOMETHING -
+// a lens, a role's routing signals, or a declared backlog entry that will
+// announce itself as LENS UNAVAILABLE. A tag handled by nothing is a domain
+// the kit detects in a project and then silently ignores, which is the exact
+// "we missed it" failure the lens system exists to prevent.
+{
+  const emitted = new Set((team.domain_detectors || []).flatMap((rule) => rule.emit || []))
+  const handled = new Set([
+    ...Object.values(lenses).flatMap((lens) => (lens.signals || []).map((s) => s.toLowerCase())),
+    ...Object.values(team.signals || {}).flat().map((s) => s.toLowerCase()),
+    ...(team.lenses_backlog || []).map((s) => s.toLowerCase()),
+    ...Object.keys(team.risk || {}).map((s) => s.toLowerCase()),
+  ])
+  for (const tag of emitted) {
+    check(handled.has(tag.toLowerCase()),
+      `domain detector emits "${tag}" but no lens, role signal, or backlog entry handles it`)
+  }
+}
+
 for (const path of [
   'references/budgets.json', 'references/registry.json',
   'scripts/dispatch.mjs', 'scripts/codex-host.mjs',

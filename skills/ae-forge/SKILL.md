@@ -101,8 +101,13 @@ request never decides whether a review happens. **An empty risk set is not
 evidence of safety** — it records that you assessed and found none. Omitting
 `--risk` entirely is recorded as unassessed and reported to the user.
 
-Pass domain words — `android`, `react`, `postgres` — to `--domain`. Those
-attach lenses; a miss there costs depth, never a review.
+Domain depth adapts to the project on its own: `lens-select.mjs` reads the
+survey's sensor dump and derives domain tags from what the repository actually
+contains, so a Stripe dependency reaches the payments lens and an OpenAI
+dependency reaches the AI/LLM lens without anyone naming them. Pass `--domain`
+only for what the project cannot reveal — a target platform, a standard the
+team has adopted but not yet imported. A miss there costs depth, never a
+review.
 
 Use `status --id <id>` to resume. Never make the user manage this record. It
 is an internal recovery aid, not an approval bureaucracy.

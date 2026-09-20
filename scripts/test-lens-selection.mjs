@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { loadTeamContract, selectLenses } from '../skills/ae-forge/scripts/lens-select.mjs'
+import { deriveDomains, loadTeamContract, selectLenses } from '../skills/ae-forge/scripts/lens-select.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const forge = join(root, 'skills', 'ae-forge', 'scripts', 'forge.mjs')
@@ -88,11 +88,11 @@ function scenario(id, { title, kind, signals = [], stack = [] }) {
 // 6. Missing specialist guidance: a signal names a backlog (not-yet-written) lens.
 //    Must surface as LENS UNAVAILABLE, not silently ignored or improvised.
 {
-  const r = scenario('missing-lens', { title: 'Add a new checkout payment method', kind: 'feature', signals: ['payments'] })
+  const r = scenario('missing-lens', { title: 'Move email sending onto a worker queue', kind: 'feature', signals: ['queue'] })
   check('a backlog-lens signal is reported unavailable rather than silently dropped',
-    r.lenses.unavailable.includes('payments'), JSON.stringify(r.lenses))
+    r.lenses.unavailable.includes('queue'), JSON.stringify(r.lenses))
   check('an unavailable lens does not get invented as an attached lens',
-    Object.values(r.lenses.attached).every((list) => list.length === 0 || !list.includes('payments')), JSON.stringify(r.lenses))
+    Object.values(r.lenses.attached).every((list) => !list.includes('queue')), JSON.stringify(r.lenses))
 }
 
 rmSync(project, { recursive: true, force: true })
@@ -111,6 +111,42 @@ rmSync(project, { recursive: true, force: true })
       out.status === 0 && parsed?.attached?.experience?.includes('accessibility'),
       JSON.stringify(out.stdout.slice(0, 120)))
   }
+}
+
+// Project-driven derivation: the stack decides which lenses are relevant, so
+// nobody has to remember to ask. This is the "adapts to the project" contract.
+{
+  const teamJson = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..',
+    'skills', 'ae-forge', 'references', 'team.json'), 'utf8'))
+  const analysis = {
+    stack: { external_imports: { react: 12, stripe: 3, openai: 5 } },
+    inventory: { by_language: { javascript: { files: 9 } } },
+    schema_files: ['db/schema.sql'],
+    routes: [{ route: '/x' }],
+  }
+  const derived = deriveDomains(analysis, teamJson.domain_detectors)
+  for (const tag of ['web-performance', 'accessibility', 'ai-llm', 'payments', 'database-performance']) {
+    check(`derives ${tag} from the repository itself`, derived.tags.includes(tag), derived.tags.join(','))
+  }
+  check('records WHY each domain was derived', derived.because['ai-llm'] === 'imports openai')
+
+  const attached = selectLenses(teamJson, ['security', 'experience'], [], derived.tags)
+  check('a React project gets accessibility without anyone asking',
+    (attached.attached.experience || []).includes('accessibility'))
+  check('an OpenAI dependency reaches the Security expert',
+    (attached.attached.security || []).includes('ai-llm'))
+
+  // Fail-safe, the same distinction --risk draws for roles.
+  check('no domain input at all is reported as unassessed',
+    selectLenses(teamJson, ['builder'], [], []).assessed === false)
+  check('an explicit domain is reported as assessed',
+    selectLenses(teamJson, ['builder'], ['test'], []).assessed === true)
+
+  // Staleness is mechanical, not a prose instruction.
+  check('a lens past its review date reports stale',
+    selectLenses(teamJson, ['security'], ['prompt'], [], { today: new Date('2028-01-01') }).stale.includes('ai-llm'))
+  check('a lens inside its review window does not',
+    selectLenses(teamJson, ['security'], ['prompt'], [], { today: new Date('2026-09-20') }).stale.length === 0)
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)

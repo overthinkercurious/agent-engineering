@@ -76,13 +76,15 @@ exclusive ownership as stated in that role's own file. Selection is mechanical, 
 judgment call — run it rather than eyeballing `team.json`:
 
 ```bash
-node "$AE/scripts/lens-select.mjs" --team <selected-roles> --signals <request-signals> [--stack <survey-detected-signals>]
+node "$AE/scripts/lens-select.mjs" --team <selected-roles> [--domain <words>]
 ```
 
-1. Pass the exact team chosen above, and the domain words given to
-   `forge.mjs start` as `--domain` (plus any `--signals`). When
-   `.dev/knowledge/stack.md` exists, also pass its detected stack as
-   `--stack`.
+1. Pass the exact team chosen above. The script reads
+   `.dev/context/analysis.json` itself and derives domain tags from what is
+   actually in the repository, so a React dependency attaches the
+   web-performance and accessibility lenses whether or not anyone asked.
+   `--domain` adds anything the project cannot reveal — never a substitute
+   for the survey.
 2. The script attaches at most **2** matching lenses per role, ranked by
    signal-match count (`lenses[*].signals` scored against the combined
    request + stack signals; ties keep `team.json`'s declared order). A role
@@ -91,8 +93,15 @@ node "$AE/scripts/lens-select.mjs" --team <selected-roles> --signals <request-si
 3. Read only the attached lens files, the same way only selected role files
    are read — never the full catalog in `references/lenses/_index.md` beyond
    its own listing.
-4. The script's `unavailable` list names any request/stack signal that
-   matches `team.json`'s `lenses_backlog` (a lens named but not yet
-   written): record `LENS UNAVAILABLE` for the relevant role once and
-   continue without it. Never improvise the missing domain depth from
-   general knowledge presented as if it were checked.
+4. Read the three other fields, and act on each:
+   - `unavailable` — a domain fired but no lens exists. Record
+     `LENS UNAVAILABLE` for the relevant role once and continue without it.
+     Never improvise the missing depth from general knowledge presented as
+     if it were checked.
+   - `stale` — an attached lens is past its `review_after`. Record
+     `LENS STALE` and treat its thresholds as a starting point to verify,
+     not as current fact. A confidently quoted superseded threshold is worse
+     than an admitted gap.
+   - `assessed: false` — no domain input existed at all. That is not "no
+     lens applies"; it means the question was never asked. Say so in the
+     report, exactly as an unassessed `--risk` is reported.

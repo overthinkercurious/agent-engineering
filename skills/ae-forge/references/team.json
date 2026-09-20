@@ -269,10 +269,130 @@
         "integration",
         "regression"
       ]
+    },
+    "ai-llm": {
+      "owns": "Model-backed features and agents: untrusted model output, excessive agency, retrieval grounding and tenant scoping, cost and loop ceilings, evaluating a non-deterministic component",
+      "file": "lenses/ai-llm.md",
+      "attaches_to": [
+        "security",
+        "architect",
+        "reliability",
+        "builder"
+      ],
+      "signals": [
+        "ai-llm",
+        "prompt",
+        "agent",
+        "rag",
+        "embedding",
+        "tool-call",
+        "mcp",
+        "fine-tune",
+        "llm"
+      ],
+      "verified": "2026-09-20",
+      "review_after": "2027-03-20"
+    },
+    "payments": {
+      "owns": "Money movement: exactly-once intent, exact amounts, append-only financial record, reconciliation and refund invariants",
+      "file": "lenses/payments.md",
+      "attaches_to": [
+        "security",
+        "data",
+        "reliability",
+        "builder"
+      ],
+      "signals": [
+        "payments",
+        "charge",
+        "refund",
+        "invoice",
+        "subscription",
+        "checkout",
+        "payout",
+        "ledger"
+      ]
+    },
+    "observability": {
+      "owns": "Operator visibility: whether a failure is detectable, attributable, affordable to collect, and actionable",
+      "file": "lenses/observability.md",
+      "attaches_to": [
+        "reliability",
+        "architect",
+        "builder"
+      ],
+      "signals": [
+        "observability",
+        "telemetry",
+        "logging",
+        "metrics",
+        "tracing",
+        "alert",
+        "slo",
+        "incident"
+      ]
+    },
+    "ios": {
+      "owns": "Apple platform behaviour: lifecycle and background limits, permission and privacy declarations, interface conventions, and review constraints",
+      "file": "lenses/ios.md",
+      "attaches_to": [
+        "architect",
+        "builder",
+        "verifier"
+      ],
+      "signals": [
+        "ios",
+        "swift",
+        "swiftui",
+        "uikit",
+        "xcode",
+        "app-store",
+        "testflight"
+      ]
+    },
+    "infrastructure": {
+      "owns": "Declared environment and deployment: what an apply actually does, safe rollout, rollback, and pipeline trust",
+      "file": "lenses/infrastructure.md",
+      "attaches_to": [
+        "architect",
+        "reliability",
+        "builder"
+      ],
+      "signals": [
+        "infrastructure",
+        "deployment",
+        "terraform",
+        "kubernetes",
+        "helm",
+        "docker",
+        "ci",
+        "pipeline"
+      ]
+    },
+    "privacy": {
+      "owns": "Personal data: justification for collection, every destination it reaches, enforced retention and deletion, and data-subject requests",
+      "file": "lenses/privacy.md",
+      "attaches_to": [
+        "security",
+        "data",
+        "product"
+      ],
+      "signals": [
+        "privacy",
+        "pii",
+        "gdpr",
+        "consent",
+        "retention",
+        "deletion",
+        "data-subject",
+        "anonymize"
+      ]
     }
   },
   "lenses_backlog": [
-    "payments"
+    "internationalization",
+    "i18n",
+    "queue"
   ],
   "acceptance": {
     "feature": {
@@ -313,5 +433,239 @@
       "means": "findings are evidenced and no code changed",
       "requires": []
     }
-  }
+  },
+  "domain_detectors": [
+    {
+      "when_imports": [
+        "react",
+        "react-dom",
+        "next",
+        "vue",
+        "nuxt",
+        "svelte",
+        "@angular/core",
+        "solid-js"
+      ],
+      "emit": [
+        "web-performance",
+        "accessibility",
+        "hydration"
+      ]
+    },
+    {
+      "when_languages": [
+        "kotlin"
+      ],
+      "emit": [
+        "android"
+      ]
+    },
+    {
+      "when_paths": [
+        "build\\.gradle",
+        "androidmanifest\\.xml"
+      ],
+      "emit": [
+        "android"
+      ]
+    },
+    {
+      "when_languages": [
+        "swift",
+        "objective-c"
+      ],
+      "emit": [
+        "ios"
+      ]
+    },
+    {
+      "when_paths": [
+        "\\.xcodeproj",
+        "podfile",
+        "package\\.swift"
+      ],
+      "emit": [
+        "ios"
+      ]
+    },
+    {
+      "when_imports": [
+        "openai",
+        "anthropic",
+        "@anthropic-ai/sdk",
+        "langchain",
+        "llamaindex",
+        "@langchain/core",
+        "ollama",
+        "cohere"
+      ],
+      "emit": [
+        "ai-llm",
+        "prompt",
+        "agent",
+        "rag"
+      ]
+    },
+    {
+      "when_imports": [
+        "stripe",
+        "braintree",
+        "adyen",
+        "razorpay",
+        "paypal",
+        "square"
+      ],
+      "emit": [
+        "payments"
+      ]
+    },
+    {
+      "when_imports": [
+        "prisma",
+        "@prisma/client",
+        "sequelize",
+        "typeorm",
+        "knex",
+        "sqlalchemy",
+        "gorm",
+        "activerecord"
+      ],
+      "emit": [
+        "database-performance",
+        "query",
+        "index"
+      ]
+    },
+    {
+      "when_schema": true,
+      "emit": [
+        "database-performance",
+        "query",
+        "schema"
+      ]
+    },
+    {
+      "when_routes": true,
+      "emit": [
+        "api",
+        "contract",
+        "endpoint"
+      ]
+    },
+    {
+      "when_imports": [
+        "express",
+        "fastify",
+        "koa",
+        "hapi",
+        "nestjs",
+        "@nestjs/core",
+        "flask",
+        "django",
+        "fastapi",
+        "gin",
+        "rails"
+      ],
+      "emit": [
+        "api",
+        "endpoint"
+      ]
+    },
+    {
+      "when_paths": [
+        "\\.tf$",
+        "\\.tfvars$",
+        "dockerfile",
+        "docker-compose",
+        "(^|/)k8s/",
+        "(^|/)helm/",
+        "(^|/)charts/",
+        "serverless\\.yml"
+      ],
+      "emit": [
+        "infrastructure",
+        "deployment",
+        "runtime"
+      ]
+    },
+    {
+      "when_imports": [
+        "opentelemetry",
+        "@opentelemetry/api",
+        "prom-client",
+        "datadog",
+        "dd-trace",
+        "sentry",
+        "@sentry/node",
+        "winston",
+        "pino"
+      ],
+      "emit": [
+        "observability",
+        "telemetry"
+      ]
+    },
+    {
+      "when_imports": [
+        "i18next",
+        "react-i18next",
+        "vue-i18n",
+        "formatjs",
+        "@lingui/core",
+        "gettext"
+      ],
+      "emit": [
+        "internationalization",
+        "i18n"
+      ]
+    },
+    {
+      "when_imports": [
+        "bullmq",
+        "celery",
+        "sidekiq",
+        "kafkajs",
+        "amqplib",
+        "@aws-sdk/client-sqs",
+        "rabbitmq"
+      ],
+      "emit": [
+        "queue",
+        "runtime",
+        "concurrency"
+      ]
+    },
+    {
+      "when_imports": [
+        "jest",
+        "vitest",
+        "mocha",
+        "pytest",
+        "playwright",
+        "@playwright/test",
+        "cypress",
+        "junit"
+      ],
+      "emit": [
+        "test-automation",
+        "test"
+      ]
+    },
+    {
+      "when_imports": [
+        "jsonwebtoken",
+        "passport",
+        "next-auth",
+        "@auth/core",
+        "authlib",
+        "devise",
+        "pyjwt"
+      ],
+      "emit": [
+        "auth",
+        "auth",
+        "secret"
+      ]
+    }
+  ]
 }
