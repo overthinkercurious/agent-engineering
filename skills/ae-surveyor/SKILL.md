@@ -22,7 +22,7 @@ Resolve the installed skill directory and this host's dispatch capability
 once, at the top of every run:
 
 ```bash
-SV="${CLAUDE_SKILL_DIR:-}"
+SV="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
 [ -n "$SV" ] || for d in .claude/skills/ae-surveyor .agents/skills/ae-surveyor; do
   [ -f "$d/SKILL.md" ] && SV="$d" && break
 done

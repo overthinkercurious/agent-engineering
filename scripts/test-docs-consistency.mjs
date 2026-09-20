@@ -15,7 +15,7 @@ const check = (condition, message) => { if (!condition) failures.push(message) }
 for (const role of Object.keys(team.roles)) {
   check(new RegExp(role.replace('-', ' '), 'i').test(readme), `README does not describe ${role}`)
 }
-for (const command of ['start', 'list', 'status', 'note', 'phase', 'approve', 'finish', 'cancel']) {
+for (const command of ['start', 'brief', 'list', 'status', 'note', 'phase', 'approve', 'report', 'finish', 'cancel']) {
   check(new RegExp(`\\| ${command} \\|`).test(readme), `README does not document ${command}`)
 }
 check(/not a prerequisite/i.test(readme), 'README must say initialization is optional')

@@ -169,14 +169,109 @@
         "focus"
       ],
       "verified": "2026-09-20"
+    },
+    "secrets-hygiene": {
+      "owns": "Credential lifecycle and exposure: origin, transport, accidental persistence in logs or history, rotation, and fail-closed behaviour on a missing secret",
+      "file": "lenses/secrets-hygiene.md",
+      "attaches_to": [
+        "security",
+        "builder",
+        "verifier"
+      ],
+      "signals": [
+        "secret",
+        "credential",
+        "token",
+        "api-key",
+        "env",
+        "vault",
+        "rotation",
+        "signing"
+      ]
+    },
+    "web-performance": {
+      "owns": "Field performance metrics and their thresholds: which metric describes the problem, what counts as good, and what a measurement must control for",
+      "file": "lenses/web-performance.md",
+      "attaches_to": [
+        "reliability",
+        "experience",
+        "builder"
+      ],
+      "signals": [
+        "web-performance",
+        "core-web-vitals",
+        "lcp",
+        "inp",
+        "cls",
+        "bundle",
+        "lighthouse",
+        "page-load",
+        "hydration"
+      ],
+      "verified": "2026-09-20"
+    },
+    "database-performance": {
+      "owns": "Access paths, lock behaviour and volume: what the planner actually does, what a migration locks and for how long, and how both behave at real row counts",
+      "file": "lenses/database-performance.md",
+      "attaches_to": [
+        "data",
+        "architect",
+        "reliability"
+      ],
+      "signals": [
+        "database-performance",
+        "query",
+        "index",
+        "slow-query",
+        "n+1",
+        "explain",
+        "lock",
+        "replica",
+        "vacuum"
+      ]
+    },
+    "api-platform": {
+      "owns": "Contract evolution: what a published interface promises, which changes break it, and how a change reaches existing callers safely",
+      "file": "lenses/api-platform.md",
+      "attaches_to": [
+        "architect",
+        "builder",
+        "verifier"
+      ],
+      "signals": [
+        "api",
+        "endpoint",
+        "contract",
+        "schema-change",
+        "versioning",
+        "openapi",
+        "graphql",
+        "grpc",
+        "webhook",
+        "sdk"
+      ]
+    },
+    "test-automation": {
+      "owns": "Whether a passing test is evidence: failing for the right reason, covering real risk, staying deterministic, and reporting honestly what ran",
+      "file": "lenses/test-automation.md",
+      "attaches_to": [
+        "builder",
+        "verifier"
+      ],
+      "signals": [
+        "test-automation",
+        "test",
+        "flaky",
+        "coverage",
+        "fixture",
+        "mock",
+        "e2e",
+        "integration",
+        "regression"
+      ]
     }
   },
   "lenses_backlog": [
-    "secrets-hygiene",
-    "web-performance",
-    "database-performance",
-    "api-platform",
-    "test-automation",
     "payments"
   ],
   "acceptance": {

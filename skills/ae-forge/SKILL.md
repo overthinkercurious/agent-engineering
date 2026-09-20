@@ -44,7 +44,7 @@ when a decision would materially change the outcome or requires new authority.
 Resolve the installed skill directory once:
 
 ```bash
-AE="${CLAUDE_SKILL_DIR:-}"
+AE="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
 [ -n "$AE" ] || for d in .claude/skills/ae-forge .agents/skills/ae-forge; do
   [ -f "$d/SKILL.md" ] && AE="$d" && break
 done
