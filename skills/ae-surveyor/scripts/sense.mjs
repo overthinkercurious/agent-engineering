@@ -130,7 +130,12 @@ export function sense(paths, read) {
         for (const [name, raw] of Object.entries(json.scripts || json.tasks || {})) {
           const body = typeof raw === 'string' ? raw : raw?.command
           if (typeof body !== 'string') continue
-          const command = `${pm}${kind === 'deno' ? ' task' : ' run'} ${JSON.stringify(name)}`
+          // JSON.stringify always adds quote characters, so a plain script
+          // name like "test" rendered as the literal text `npm run "test"` -
+          // wrong on the terminal and unmatchable by anything grepping for
+          // the real invocation. Quote only when the name actually needs it.
+          const safeName = /^[\w:.-]+$/.test(name) ? name : JSON.stringify(name)
+          const command = `${pm}${kind === 'deno' ? ' task' : ' run'} ${safeName}`
           const entry = { id: `${file}:${name}`, name, command, body: redact(body), cwd: root, source: file,
             kind: commandKind(`${name} ${body}`), shell: 'project package manager', env_names: [...body.matchAll(/\b([A-Z_][A-Z0-9_]*)\s*=/g)].map((m) => m[1]),
             origin: 'manifest', execution_context: 'local', prerequisites: [`Install ${pm} and this component's dependencies`], runnable: true }
