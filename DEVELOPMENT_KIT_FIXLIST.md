@@ -1,7 +1,12 @@
 # Development Kit — Fix List
 
 Consolidated, actionable issue list from `DEVELOPMENT_KIT_ARCHITECTURE_REVIEW.md`.
-Every row is measured against the current repo (v1.1.2, `4015f90`), not inferred.
+Every row was measured against v1.1.2 (`4015f90`), not inferred.
+
+> **Status: all 24 resolved** on branch `fix/architecture-review`, in seven
+> commits. `npm test` went from **6 failures** to **0**, and from 143 to **288
+> assertions** across seven suites (two of which were not being run at all).
+> One bug was found by the new eval harness rather than by reading: see #21.
 
 **Criterion key:** `SIM` simplicity · `ARC` architecture · `DEP` depth · `CST` cost · `QUA` quality
 
