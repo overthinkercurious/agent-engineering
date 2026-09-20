@@ -44,7 +44,7 @@ for (const [role, summary] of [['architect', 'Planned the smallest safe change.'
   if (role === 'architect') check('planned standard work can build', run(['phase', '--id', 'profile', '--to', 'build', '--summary', 'Building planned scope.']).status === 0)
   if (role === 'builder') check('implemented work can enter verification', run(['phase', '--id', 'profile', '--to', 'verify', '--summary', 'Verifying candidate.']).status === 0)
 }
-const finish = run(['finish', '--id', 'profile', '--summary', 'Profile editing delivered.', '--verification', 'Focused tests passed; verifier PASS.'])
+const finish = run(['finish', '--id', 'profile', '--summary', 'Profile editing delivered.', '--verification', 'Focused tests passed; verifier PASS.', '--accept-gaps', 'risk,lenses,audit'])
 check('implemented and verified run finishes', finish.status === 0 && body(finish)?.status === 'done')
 
 const quick = body(run(['start', '--title', 'Fix copy', '--kind', 'feature', '--signals', 'copy,local', '--id', 'copy-fix']))
@@ -75,18 +75,18 @@ check('Verifier waits for specialist candidate review',
   earlyVerifier.status === 5 && body(earlyVerifier)?.missing?.includes('security'))
 run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Security completed its candidate review.'])
 run(['note', '--id', 'tenant-payments', '--role', 'verifier', '--summary', 'Verifier reviewed the integrated candidate.'])
-const failedVerdict = run(['finish', '--id', 'tenant-payments', '--summary', 'Not safe.', '--verification', 'Verifier found a blocker.', '--result', 'FAIL'])
+const failedVerdict = run(['finish', '--id', 'tenant-payments', '--summary', 'Not safe.', '--verification', 'Verifier found a blocker.', '--result', 'FAIL', '--accept-gaps', 'risk,lenses,audit'])
 check('a failed verifier verdict cannot close a run', failedVerdict.status === 2)
 
 run(['phase', '--id', 'tenant-payments', '--to', 'repair', '--summary', 'Repairing verifier finding.'])
 run(['note', '--id', 'tenant-payments', '--role', 'builder', '--summary', 'Builder repaired the finding.'])
 run(['phase', '--id', 'tenant-payments', '--to', 'verify', '--summary', 'Re-verifying repaired candidate.'])
 run(['note', '--id', 'tenant-payments', '--role', 'security', '--summary', 'Security re-reviewed the repaired candidate.'])
-const staleFinish = run(['finish', '--id', 'tenant-payments', '--summary', 'Repair verified.', '--verification', 'Rechecked.', '--result', 'PASS'])
+const staleFinish = run(['finish', '--id', 'tenant-payments', '--summary', 'Repair verified.', '--verification', 'Rechecked.', '--result', 'PASS', '--accept-gaps', 'risk,lenses,audit'])
 check('a repaired candidate cannot finish on a stale verifier review',
   staleFinish.status === 5 && body(staleFinish)?.error.includes('fresh review'))
 run(['note', '--id', 'tenant-payments', '--role', 'verifier', '--summary', 'Verifier re-reviewed the repaired candidate.'])
-const freshFinish = run(['finish', '--id', 'tenant-payments', '--summary', 'Repair verified.', '--verification', 'Rechecked after repair.', '--result', 'PASS'])
+const freshFinish = run(['finish', '--id', 'tenant-payments', '--summary', 'Repair verified.', '--verification', 'Rechecked after repair.', '--result', 'PASS', '--accept-gaps', 'risk,lenses,audit'])
 check('a fresh verifier review after repair allows finish', freshFinish.status === 0)
 
 
@@ -101,7 +101,7 @@ for (const role of audit.team.filter((role) => role !== 'verifier')) {
 }
 check('audit can enter verification without implementation', run(['phase', '--id', 'auth-audit', '--to', 'verify', '--summary', 'Finalizing audit.']).status === 0)
 run(['note', '--id', 'auth-audit', '--role', 'verifier', '--summary', 'Verifier completed the audit.'])
-check('audit can finish without Builder', run(['finish', '--id', 'auth-audit', '--summary', 'Authorization audit complete.', '--verification', 'Verifier reviewed findings.']).status === 0)
+check('audit can finish without Builder', run(['finish', '--accept-gaps', 'risk,lenses,audit', '--id', 'auth-audit', '--summary', 'Authorization audit complete.', '--verification', 'Verifier reviewed findings.']).status === 0)
 
 const data = body(run(['start', '--title', 'Migrate account status', '--kind', 'feature', '--signals', 'schema,migration', '--id', 'data-change']))
 check('schema work selects only the named Data expert', data?.team.includes('data') && !data?.team.includes('security'))
@@ -188,11 +188,11 @@ check('the report warns when risk was never assessed',
   writeFileSync(join(project, 'tests', 'a.test.js'), 'test("a",()=>{/* rewritten */})\n')
   rr(['phase', '--id', 'refactor-run', '--to', 'verify', '--summary', 'v'])
   rr(['note', '--id', 'refactor-run', '--role', 'verifier', '--summary', 'ok'])
-  const blocked = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)'])
+  const blocked = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)', '--accept-gaps', 'risk,lenses,audit'])
   check('a refactor that rewrote its own tests cannot finish',
     blocked.status === 5 && blocked.stdout.includes('behaviour preservation is unproven'))
   git(['checkout', '--', 'tests/a.test.js'])
-  const allowed = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)'])
+  const allowed = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)', '--accept-gaps', 'risk,lenses,audit'])
   check('the same refactor finishes once its tests are unmodified', allowed.status === 0)
 }
 
@@ -222,8 +222,68 @@ check('the report warns when risk was never assessed',
     /Verifier/.test(audited.note))
 }
 
+// Workflow gates. A step the model was asked to perform but can silently skip
+// is a suggestion, not a step. Each of these is recordable, so each is checked.
+{
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const lensJson = JSON.stringify({ attached: { builder: ['test-automation'] }, unavailable: [], stale: [], assessed: true })
+  const drive = (id, extra = []) => {
+    rr(['start', '--title', `Gate ${id}`, '--kind', 'feature', '--risk', 'none', '--id', id, ...extra])
+    rr(['note', '--id', id, '--role', 'architect', '--summary', 'plan'])
+    rr(['phase', '--id', id, '--to', 'build', '--summary', 'b'])
+    rr(['note', '--id', id, '--role', 'builder', '--summary', 'built'])
+    rr(['phase', '--id', id, '--to', 'verify', '--summary', 'v'])
+    rr(['note', '--id', id, '--role', 'verifier', '--summary', 'ok'])
+  }
+  const close = (id, extra = []) => rr(['finish', '--id', id, '--summary', 's', '--verification', 'tests (0)', ...extra])
+
+  drive('gate-a')
+  const noSteps = close('gate-a')
+  const reported = JSON.parse(noSteps.stdout).gaps.map((g) => g.gap)
+  check('finish refuses when required workflow steps never happened', noSteps.status === 5)
+  check('it names lenses and audit as the missing steps',
+    reported.includes('lenses') && reported.includes('audit'), reported.join(','))
+
+  rr(['lenses', '--id', 'gate-a', '--json', lensJson])
+  check('recording lenses clears that gap but not the audit',
+    JSON.parse(close('gate-a').stdout).gaps.map((g) => g.gap).join(',') === 'audit')
+  rr(['audit', '--id', 'gate-a'])
+  check('running the audit clears the last gap and the run closes', close('gate-a').status === 0)
+
+  // The audit is revision-pinned, exactly as the Verifier review is: a repair
+  // makes the previous candidate's audit inapplicable.
+  drive('gate-b')
+  rr(['lenses', '--id', 'gate-b', '--json', lensJson])
+  rr(['audit', '--id', 'gate-b'])
+  rr(['phase', '--id', 'gate-b', '--to', 'repair', '--summary', 'r'])
+  rr(['note', '--id', 'gate-b', '--role', 'builder', '--summary', 'repaired'])
+  rr(['phase', '--id', 'gate-b', '--to', 'verify', '--summary', 'v2'])
+  rr(['note', '--id', 'gate-b', '--role', 'verifier', '--summary', 'ok'])
+  const stale = close('gate-b')
+  check('a repaired candidate cannot close on a stale audit',
+    stale.status === 5 && stale.stdout.includes('not the current'))
+  rr(['audit', '--id', 'gate-b'])
+  check('re-running the audit on the repaired candidate closes it', close('gate-b').status === 0)
+
+  // An unassessed risk set is its own gap, and an accepted gap stays visible.
+  rr(['start', '--title', 'Unassessed gate', '--kind', 'feature', '--id', 'gate-c'])
+  rr(['note', '--id', 'gate-c', '--role', 'architect', '--summary', 'plan'])
+  rr(['phase', '--id', 'gate-c', '--to', 'build', '--summary', 'b'])
+  rr(['note', '--id', 'gate-c', '--role', 'builder', '--summary', 'built'])
+  rr(['phase', '--id', 'gate-c', '--to', 'verify', '--summary', 'v'])
+  rr(['note', '--id', 'gate-c', '--role', 'verifier', '--summary', 'ok'])
+  check('an unassessed risk set is reported as a gap',
+    JSON.parse(close('gate-c').stdout).gaps.some((g) => g.gap === 'risk'))
+  check('a run can close by naming its gaps deliberately',
+    close('gate-c', ['--accept-gaps', 'risk,lenses,audit']).status === 0)
+  check('an accepted gap is named in the delivery report',
+    rr(['report', '--id', 'gate-c']).stdout.includes('Accepted gap: risk'))
+  check('an unknown gap name is rejected',
+    close('gate-a', ['--accept-gaps', 'everything']).status === 2)
+}
+
 const listed = body(run(['list']))
-check('list reports runs', Array.isArray(listed) && listed.length === 15)
+check('list reports runs', Array.isArray(listed) && listed.length === 18)
 
 rmSync(project, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)

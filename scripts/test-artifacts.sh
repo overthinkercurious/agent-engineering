@@ -234,6 +234,23 @@ node "$KNOW" --root "$P" --in "$J" --out "$KB" --quiet >/dev/null 2>&1; rc=$?
 check "exits non-zero"               "[ $rc -ne 0 ]"
 check "leaves the file untouched"    "grep -q 'broken' '$KB/stack.md'"
 
+head_ "stage 5: citations resolve"
+CITE="$KIT/skills/ae-surveyor/scripts/verify-citations.mjs"
+printf '
+## Notes
+- OBSERVED `src/auth.js:1` real line
+' >> "$KB/architecture.md"
+( cd "$P" && node "$CITE" --dir "$KB" --quiet ) >/dev/null 2>&1
+check "a resolving citation passes"   "[ $? -eq 0 ]"
+printf -- '- OBSERVED `src/auth.js:9999` past end of file
+' >> "$KB/architecture.md"
+( cd "$P" && node "$CITE" --dir "$KB" --quiet ) >/dev/null 2>&1
+check "an out-of-range line fails"    "[ $? -ne 0 ]"
+OUTC="$WORK/cite.txt"; ( cd "$P" && node "$CITE" --dir "$KB" ) > "$OUTC" 2>&1
+check "it names the broken citation"  "grep -q 'OUT OF RANGE' '$OUTC'"
+check "it does not flag a command"    "! grep -q 'npm run' '$OUTC'"
+check "citation check refuses to escape the root" "! ( cd '$P' && node \"$CITE\" --dir /etc >/dev/null 2>&1 )"
+
 head_ "stage 4: rules"
 RULEOUT="$P/.dev/rules"
 node "$RULES" --root "$P" --in "$J" --out "$RULEOUT" --quiet >/dev/null 2>&1; rc=$?

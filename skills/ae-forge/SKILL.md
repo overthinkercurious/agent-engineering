@@ -282,6 +282,12 @@ preservation, whatever the suite reports. If a test edit genuinely fixes a
 test defect rather than accommodating a behaviour change, say so in the report
 and pass `--tests-changed-justified`.
 
+`finish` refuses to close a run whose required steps did not happen: an
+unassessed risk set, an unrecorded lens selection, or a deterministic audit
+that never ran or inspected an earlier revision. Do the step. When one is
+genuinely not applicable, close with `--accept-gaps <names>` — each accepted
+gap is named in the delivery report rather than disappearing.
+
 Finish a delivery record only after implementation and verification both
 contributed. An audit-only record requires the Verifier and no code change:
 

@@ -42,7 +42,7 @@ says otherwise). Never assume a tier a targets.yml row has not verified.
 | 2. Analyze | `node "$SV/scripts/analyze.mjs"` | `.dev/context/analysis.json` — the sensor dump |
 | 3. Knowledge | model pass, guided by `references/stages/knowledge.md` | `.dev/knowledge/{stack,architecture,schema,commands,decisions}.md` |
 | 4. Rules | model pass, guided by `references/stages/rules.md`, plus `node "$SV/scripts/rules.mjs"` for the enforced half | `.dev/rules/` and the host's rules directory |
-| 5. Verify | model pass (isolated per dispatch tier) plus `bash "$SV/scripts/doctor.sh"` | readiness verdict |
+| 5. Verify | `bash "$SV/scripts/doctor.sh"` + `node "$SV/scripts/verify-citations.mjs"`, then a model pass (isolated per dispatch tier) | readiness verdict |
 | 6. Index | model pass | `.dev/knowledge/00-index.md` |
 
 ### 1. Scaffold
@@ -119,15 +119,21 @@ marker/snapshot convention in `scripts/artifact-support.mjs` (`stamp`,
 
 ```bash
 bash "$SV/scripts/doctor.sh"
+node "$SV/scripts/verify-citations.mjs"
 ```
 
-`doctor.sh` checks structure and detectable consistency; it cannot prove a
-model's claims. Beyond it, an independent pass — isolated when the dispatch
-tier allows it, sequential and disclosed as non-independent when it does
-not — re-checks:
+`verify-citations.mjs` resolves every `path:line` in the knowledge base: the
+file exists and the line is in range. It exits non-zero when one does not,
+because a claim whose citation does not resolve is not `OBSERVED` — repair the
+citation or downgrade the claim to `UNKNOWN`, never leave it tagged.
 
-- every `path:line` citation in the five knowledge files actually resolves
-  (mechanical: file exists, line is in range)
+Resolving proves the line exists, not that it says what the claim says.
+`doctor.sh` likewise checks structure and detectable consistency; neither can
+prove a model's judgment. Beyond them, an independent pass — isolated when the
+dispatch tier allows it, sequential and disclosed as non-independent when it
+does not — re-checks:
+
+- that each cited line actually supports the claim made about it
 - the five files do not contradict each other on the same fact
 - component coverage, claimed enforcement, and usefulness for a realistic
   request

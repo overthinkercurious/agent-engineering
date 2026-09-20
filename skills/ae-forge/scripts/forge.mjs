@@ -531,10 +531,46 @@ function finish() {
   if (!['PASS', 'PASS WITH RESIDUAL RISK'].includes(result)) {
     die('--result must be PASS or PASS WITH RESIDUAL RISK')
   }
+  const accepted = new Set(String(option('--accept-gaps', ''))
+    .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))
+  const GAPS = ['risk', 'lenses', 'audit']
+  const unknownGap = [...accepted].filter((value) => !GAPS.includes(value))
+  if (unknownGap.length) die(`unknown gap(s): ${unknownGap.join(', ')}`, 2, { allowed: GAPS })
+
   const feature = load(root, id)
   ensureActive(feature.run)
   if (feature.run.phase !== 'verify') die('run must be in verify phase before finish', 5, { phase: feature.run.phase })
   if (feature.run.approval_required && !feature.run.approval) die('material approval is missing', 5, { id })
+
+  // The kit's own principle, applied to its newest surface: a workflow step
+  // the model was asked to perform but can silently skip is not a step, it is
+  // a suggestion. Each of these is recordable, so each is checked. A run may
+  // still close without one - deliberately, by naming it - and the bypass
+  // lands in the delivery report rather than disappearing.
+  const gaps = []
+  if (feature.run.routing?.risk_assessed === false) {
+    gaps.push({ gap: 'risk', why: 'risk was never assessed, so specialists were selected by keyword alone' })
+  }
+  if (!feature.run.lenses) {
+    gaps.push({ gap: 'lenses', why: 'lens selection was never recorded, so no domain depth is evidenced' })
+  }
+  if (feature.run.audit?.revision !== feature.run.revision) {
+    gaps.push({
+      gap: 'audit',
+      why: feature.run.audit
+        ? `the deterministic audit inspected revision ${feature.run.audit.revision}, not the current ${feature.run.revision}`
+        : 'the deterministic audit never ran',
+    })
+  }
+  const blockingGaps = gaps.filter((item) => !accepted.has(item.gap))
+  if (blockingGaps.length) {
+    die('required workflow steps did not happen', 5, {
+      id,
+      gaps: blockingGaps,
+      resolve: `perform the missing step, or re-run finish with --accept-gaps ${blockingGaps.map((g) => g.gap).join(',')} to close anyway; every accepted gap is named in the delivery report`,
+    })
+  }
+  feature.run.accepted_gaps = gaps.length ? gaps : undefined
   const roles = new Set(feature.run.contributions.map((item) => item.role))
   const missing = feature.run.team.filter((role) => !roles.has(role))
   if (missing.length) die('every selected expert must contribute before completion', 5, { missing })
@@ -643,6 +679,11 @@ function report() {
     out.push(`**Skipped** · ${skipped.map(([role, why]) => `\`${role}\` (${why})`).join(' · ')}`, '')
   }
 
+  if (run.audit) {
+    const failed = (run.audit.checks ?? []).filter((c) => c.status !== 'OK')
+    out.push(`**Audit** · revision ${run.audit.revision} · ${run.audit.verdict}`
+      + (failed.length ? ` · needs review: ${failed.map((c) => c.check).join(', ')}` : ''))
+  }
   if (run.verification) out.push(`**Checks** · ${run.verification}`)
   const cycles = Math.max(0, (run.revision ?? 1) - 1)
   out.push(`**Loop** · ${run.revision} revision(s) · repair cycle ${cycles} of 2`)
@@ -650,6 +691,9 @@ function report() {
 
   if (run.approval?.brief_sha && run.brief_sha_at_finish && run.approval.brief_sha !== run.brief_sha_at_finish) {
     out.push('', '> **Scope note.** The brief changed after approval. Compare the delivered change against what was approved before releasing.')
+  }
+  for (const item of run.accepted_gaps ?? []) {
+    out.push('', `> **Accepted gap: ${item.gap}.** ${item.why}. This run was closed without it, deliberately.`)
   }
   if (run.routing?.risk_assessed === false) {
     out.push('', '> **Routing note.** Risk was never assessed for this run, so specialists were selected by keyword alone. Treat any absent review as unverified rather than unnecessary.')
@@ -783,6 +827,22 @@ function audit() {
   }
 
   const blocking = findings.filter((f) => ['critical', 'high'].includes(f.severity))
+
+  // Pin the audit to the revision it inspected, exactly as a Verifier review
+  // is pinned. A repair increments the revision, so an audit of the previous
+  // candidate cannot be carried forward to close the repaired one.
+  const feature = load(root, id)
+  if (feature.run.status === 'active') {
+    feature.run.audit = {
+      revision: feature.run.revision,
+      at: new Date().toISOString(),
+      verdict: blocking.length ? 'BLOCKING FINDINGS' : 'CLEAR',
+      blocking: blocking.length,
+      checks: checks.map((c) => ({ check: c.check, status: c.status })),
+    }
+    save(feature.path, feature.run)
+  }
+
   output({
     ok: blocking.length === 0,
     id,
@@ -825,6 +885,8 @@ Internal recovery ledger for the autonomous Forge workflow.
   report --id ID
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]
          [--tests-changed-justified]   (refactor only; explain in the report)
+         [--accept-gaps risk,lenses,audit]  (close without a required step;
+          each accepted gap is named in the delivery report)
   cancel --id ID [--reason TEXT]
 
 --risk is the router. Answer the behavioural questions in team.json and pass

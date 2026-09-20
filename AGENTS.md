@@ -40,6 +40,7 @@ Everything a skill needs at runtime must live inside its own directory.
     node scripts/test-packaging.mjs
     node scripts/test-docs-consistency.mjs
     node scripts/test-lens-selection.mjs
+    node skills/ae-surveyor/scripts/verify-citations.mjs
     bash scripts/test-scaffold.sh
     bash scripts/test-artifacts.sh
 
