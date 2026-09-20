@@ -174,6 +174,13 @@ Forge is the sole coordinator. Planning and review roles are read-only. Builder
 is the only role that edits application code. Do not run Builder and Verifier
 concurrently, and do not let experts mutate the recovery record.
 
+Record what the lenses decided, so lens routing is as measurable as role
+routing — the report renders from this:
+
+```bash
+node "$AE/scripts/forge.mjs" lenses --id <id>   --json "$(node "$AE/scripts/lens-select.mjs" --team <roles> [--domain <words>])"
+```
+
 Record material contributions with:
 
 ```bash

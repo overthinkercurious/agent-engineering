@@ -62,8 +62,18 @@ and "add RBAC" all reach the Security expert.
 Depth inside a boundary comes from **lenses** rather than more experts. A lens
 attaches to an expert already working — it costs no extra dispatch — and
 carries the domain specifics that go out of date, each with the date it was
-last verified. Eight ship today, covering accessibility, secrets, web and
-database performance, API contracts, test quality, Android, and UI finish.
+last verified. Fourteen ship today: accessibility, AI/LLM, payments, privacy,
+secrets, web and database performance, observability, infrastructure, API
+contracts, test quality, Android, iOS, and UI finish.
+
+**The kit adapts to your project without being told.** It reads the survey's
+sensor dump and derives the relevant domains from what the repository actually
+contains — a Stripe dependency reaches the payments lens, an OpenAI dependency
+reaches the AI/LLM lens, a React dependency reaches accessibility and web
+performance. The change you asked for ranks first; the project fills what is
+left. A domain it detects but has no lens for is reported as unavailable
+rather than silently improvised, and a lens past its review date says so
+instead of quoting a threshold nobody rechecked.
 
 Audit-only requests use Verifier plus only the relevant Architect or named
 specialist, and do not modify code.
@@ -261,6 +271,7 @@ The bundled runner supports:
 |---|---|
 | start | Create a run, assess risk, and select the team |
 | brief | Scaffold the reviewable plan, sized to the risk tier |
+| lenses | Record which domain lenses attached, and why |
 | list | List current and completed runs |
 | status | Read one run |
 | note | Record an expert's contribution, severity, and result file |

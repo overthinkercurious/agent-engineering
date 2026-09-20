@@ -84,22 +84,37 @@ export function deriveDomains(analysis, detectors = []) {
  * @param {object} [options] - { assessed: boolean, today: Date }
  */
 export function selectLenses(team, roles, signals, stackSignals = [], options = {}) {
-  const allSignals = new Set([...signals, ...stackSignals].map((s) => s.toLowerCase()))
+  // Request signals describe THIS CHANGE; derived tags describe the PROJECT.
+  // Both are useful, but they are not equal: a checkout change in a repository
+  // that happens to import an LLM SDK should get the payments lens, not the
+  // AI one. Weighting the request higher lets derived tags fill the remaining
+  // slots without crowding out what the change is actually about.
+  const requested = new Set(signals.map((s) => s.toLowerCase()))
+  const derived = new Set(stackSignals.map((s) => s.toLowerCase()))
+  const allSignals = new Set([...requested, ...derived])
   const lenses = team.lenses || {}
   const attached = {}
 
   for (const role of roles) {
     const scored = Object.entries(lenses)
       .filter(([, lens]) => (lens.attaches_to || []).includes(role))
-      .map(([name, lens]) => ({
-        name,
-        score: (lens.signals || []).filter((s) => allSignals.has(s.toLowerCase())).length,
-      }))
+      .map(([name, lens]) => {
+        const own = (lens.signals || []).map((s) => s.toLowerCase())
+        const byRequest = own.filter((s) => requested.has(s)).length
+        const byProject = own.filter((s) => derived.has(s) && !requested.has(s)).length
+        return { name, byRequest, byProject, score: byRequest + byProject }
+      })
       .filter((m) => m.score > 0)
-      // Strongest signal match first; ties break on declared team.json order
-      // (Object.entries preserves insertion order), never on name alone, so
-      // adding a new lens can't silently reorder an existing tie.
-      .sort((a, b) => b.score - a.score)
+      // Lexicographic, not a weighted sum: ANY lens the request asked for
+      // outranks every lens the project merely suggests. A weighted sum lets a
+      // lens matching many project tags beat the one the change is actually
+      // about. Ties break on declared team.json order (Object.entries
+      // preserves insertion order), never on name, so adding a lens cannot
+      // silently reorder an existing tie.
+      .sort((a, b) =>
+        (b.byRequest > 0) - (a.byRequest > 0)
+        || b.byRequest - a.byRequest
+        || b.byProject - a.byProject)
 
     if (scored.length) attached[role] = scored.slice(0, 2).map((m) => m.name)
   }
@@ -148,8 +163,11 @@ function runCli() {
     } catch { /* an unreadable survey is a missing survey, not a hard failure */ }
   }
 
+  // --domain and --signals are both statements about THIS CHANGE, so they
+  // carry request weight. Only what the sensor observed about the repository
+  // is project-derived.
   const assessed = supplied.length > 0 || signals.length > 0 || derived.tags.length > 0
-  const result = selectLenses(team, roles, signals, [...supplied, ...derived.tags], { assessed })
+  const result = selectLenses(team, roles, [...signals, ...supplied], derived.tags, { assessed })
   process.stdout.write(`${JSON.stringify({
     ...result,
     derived_from_project: derived.tags,

@@ -479,6 +479,30 @@ function phase() {
   output({ ok: true, id, phase: to })
 }
 
+// Lens attachment is part of routing, so it belongs in the record that the
+// report renders from. Without this, a lens that never attaches - or one that
+// is quietly stale - is invisible in exactly the summary meant to prove
+// routing works.
+function lenses() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const feature = load(root, id)
+  ensureActive(feature.run)
+  let parsed
+  try { parsed = JSON.parse(option('--json') ?? '') } catch {
+    die('--json must be the JSON object printed by lens-select.mjs')
+  }
+  feature.run.lenses = {
+    attached: parsed.attached ?? {},
+    unavailable: parsed.unavailable ?? [],
+    stale: parsed.stale ?? [],
+    assessed: parsed.assessed ?? false,
+    derived_from_project: parsed.derived_from_project ?? [],
+  }
+  save(feature.path, feature.run)
+  output({ ok: true, id, lenses: feature.run.lenses })
+}
+
 function approve() {
   const root = projectRoot()
   const id = safeId(option('--id'))
@@ -591,6 +615,27 @@ function report() {
       out.push(`- ${item.role} r${item.revision} — ${item.summary} _(${item.severity})_`)
     }
     out.push('')
+  }
+
+  const lens = run.lenses
+  if (lens) {
+    const pairs = Object.entries(lens.attached ?? {})
+    if (pairs.length) {
+      out.push(`**Lenses** · ${pairs.map(([role, list]) => `${list.join(' + ')} → ${role}`).join(' · ')}`)
+      if (lens.derived_from_project?.length) {
+        out.push(`  _derived from the project: ${lens.derived_from_project.slice(0, 8).join(', ')}_`)
+      }
+      out.push('')
+    }
+    if (lens.unavailable?.length) {
+      out.push(`> **Lens unavailable.** ${lens.unavailable.join(', ')} — the domain was detected but no lens covers it. Any depth claimed there was not checked against a source.`, '')
+    }
+    if (lens.stale?.length) {
+      out.push(`> **Lens stale.** ${lens.stale.join(', ')} — past its review date. Treat its thresholds as unverified.`, '')
+    }
+    if (lens.assessed === false) {
+      out.push('> **Lens note.** No domain input and no survey, so no domain depth was applied. That is untested, not clean.', '')
+    }
   }
 
   const skipped = Object.entries(run.routing?.skipped ?? {})
@@ -774,6 +819,7 @@ Internal recovery ledger for the autonomous Forge workflow.
   note   --id ID --role ROLE --summary TEXT [--severity S] [--result PATH]
   phase  --id ID --to PHASE --summary TEXT
   brief  --id ID [--force]
+  lenses --id ID --json '<lens-select.mjs output>'
   approve --id ID [--by NAME] [--basis TEXT]
   audit  --id ID          (deterministic release checks; input to Verifier)
   report --id ID
@@ -795,6 +841,6 @@ All commands accept --root DIR. Users do not need to run these commands.
 `)
 }
 
-const handlers = { help, start, brief, list, status, note, phase, approve, audit, report, finish, cancel }
+const handlers = { help, start, brief, lenses, list, status, note, phase, approve, audit, report, finish, cancel }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()

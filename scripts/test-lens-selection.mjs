@@ -149,5 +149,26 @@ rmSync(project, { recursive: true, force: true })
     selectLenses(teamJson, ['security'], ['prompt'], [], { today: new Date('2026-09-20') }).stale.length === 0)
 }
 
+// The change leads, the project fills the remaining slots. A repository that
+// merely imports an LLM SDK must not crowd out the payments lens on a
+// checkout change - that is a weighted-sum failure, so ranking is
+// lexicographic instead.
+{
+  const teamJson = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..',
+    'skills', 'ae-forge', 'references', 'team.json'), 'utf8'))
+  const projectTags = ['ai-llm', 'prompt', 'agent', 'rag', 'payments', 'web-performance', 'accessibility']
+  const checkout = selectLenses(teamJson, ['security'], ['payments'], projectTags)
+  check('a requested lens outranks every project-suggested one',
+    checkout.attached.security[0] === 'payments', JSON.stringify(checkout.attached))
+  check('project-suggested lenses still fill the remaining slot',
+    checkout.attached.security.includes('ai-llm'), JSON.stringify(checkout.attached))
+  const agentWork = selectLenses(teamJson, ['security'], ['prompt'], projectTags)
+  check('a different change reorders the same project',
+    agentWork.attached.security[0] === 'ai-llm', JSON.stringify(agentWork.attached))
+  check('at most two lenses attach to a role however many match',
+    Object.values(selectLenses(teamJson, ['builder'], [], projectTags).attached)
+      .every((list) => list.length <= 2))
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
 if (failed) process.exit(1)
