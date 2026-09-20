@@ -29,6 +29,8 @@ files.
 1. Confirm the working tree and preserve unrelated user changes.
 2. Re-open the exact plan step and relevant current code.
 3. Prefer no change, reuse, deletion, or the smallest shared-origin repair.
+   Before changing shared logic, sweep every caller, classify each affected or
+   safe, and place the repair at the shared origin once.
 4. Implement one coherent step without drive-by cleanup or speculative layers.
 5. Add or update the smallest test that fails without the behavior.
 6. Run the narrow check for the step before continuing.

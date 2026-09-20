@@ -149,34 +149,34 @@
         "pixel",
         "icon-system"
       ]
+    },
+    "accessibility": {
+      "owns": "WCAG conformance depth: keyboard operability, name/role/state exposure, reflow and zoom, user-preference modes, and the AA thresholds themselves",
+      "file": "lenses/accessibility.md",
+      "attaches_to": [
+        "experience",
+        "verifier",
+        "builder"
+      ],
+      "signals": [
+        "accessibility",
+        "a11y",
+        "wcag",
+        "screen-reader",
+        "keyboard",
+        "contrast",
+        "aria",
+        "focus"
+      ],
+      "verified": "2026-09-20"
     }
   },
   "lenses_backlog": [
-    "ios",
-    "mobile-release",
-    "internationalization",
-    "cloud-security",
-    "identity-access",
-    "ai-generated-code-audit",
     "secrets-hygiene",
-    "compliance",
-    "privacy",
+    "web-performance",
     "database-performance",
-    "database-reliability",
-    "payments",
-    "accessibility",
-    "data-visualization",
-    "realtime-collaboration",
-    "sre-observability",
-    "finops",
-    "release-pipeline",
-    "test-automation",
     "api-platform",
-    "multi-agent-architecture",
-    "prompt-engineering",
-    "rag-pipeline",
-    "mcp-builder",
-    "technical-writing",
-    "developer-tooling"
+    "test-automation",
+    "payments"
   ]
 }

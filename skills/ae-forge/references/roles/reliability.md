@@ -28,7 +28,9 @@ breakers, telemetry, rollout, or operational recovery.
 1. Enumerate dependency and internal failure modes across the runtime path.
 2. Check timeouts, cancellation, bounded retries, backoff, and retry safety.
 3. Check duplicate, reordered, delayed, and concurrent execution.
-4. Establish a measurement baseline before performance recommendations.
+4. Establish a measurement baseline before performance recommendations. State
+   latency as a percentile with its sample size and conditions; a mean hides
+   exactly the tail that users experience and is not a latency claim.
 5. Identify saturation point and resource bounds only from available evidence.
 6. Define degradation, operator-visible signals, and actionable diagnostics.
 7. Define rollout, rollback, and recovery for partial or failed operation.

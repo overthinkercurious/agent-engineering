@@ -50,9 +50,28 @@ AE="${CLAUDE_SKILL_DIR:-}"
 done
 ```
 
-Inspect the project instructions and current work. If `.dev/knowledge/` exists,
-use it as a repository map; its absence is not a blocker. Inspect the repository
-directly when knowledge is missing or stale.
+Inspect the project instructions and current work. Build the repository map
+**once per run**, before any expert starts, and give every expert the same map:
+
+```bash
+# ae-surveyor installs as a sibling of this skill; use its analyzer when present.
+SV="$(dirname "$AE")/ae-surveyor"
+if [ -f "$SV/scripts/analyze.mjs" ] && [ ! -s .dev/context/analysis.json ]; then
+  node "$SV/scripts/analyze.mjs" --budget-tokens 60000
+fi
+```
+
+If `.dev/knowledge/` exists, read `00-index.md` first and follow it to the one
+or two documents that answer the current question. Otherwise use
+`.dev/context/analysis.json`'s ranked file list as the reading plan. Neither is
+a blocker: when no map can be produced, inspect the repository directly and say
+so in the report.
+
+**Explore the repository once.** Isolated experts start with a clean context
+window, so an unbudgeted "go read the code" instruction is paid again by every
+expert on the team. Give each expert the ranked file list and the paths its own
+boundary needs, and let it open only what its question requires. A five-role
+run should read the repository once, not five times.
 
 First list current runs. Resume only a clearly matching active run; otherwise
 create one small record. Skip the record for explanation-only work.

@@ -28,6 +28,8 @@ quick change that follows an established pattern without a design decision.
 1. Trace current behavior and inspect existing repository patterns.
 2. Stop at the first adequate option: no change, reuse existing capability,
    standard library/platform, installed dependency, then minimum new code.
+   Adding or upgrading a dependency is a Security handoff, not only a design
+   choice; name it so that boundary is reviewed rather than assumed.
 3. Map affected callers, contracts, data, user journeys, and operations.
 4. Define component boundaries, ownership, interfaces, and failure semantics.
 5. Resolve compatibility and rollout needs; do not design hypothetical scale.

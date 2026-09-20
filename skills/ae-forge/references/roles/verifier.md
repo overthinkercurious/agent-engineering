@@ -33,11 +33,15 @@ from summaries without the underlying repository and command evidence.
 5. Re-run required project gates independently; record exact command and exit.
 6. Exercise unhappy paths and the boundaries changed by the candidate.
 7. Confirm critical/high specialist findings are resolved or fail the candidate.
-8. For user-facing work, inspect rendered loading, empty, error, and success
+   An upstream report of zero findings is a reason to sample its evidence, not
+   to relax the verdict.
+8. Re-run gates in the project's required clean form where one exists; a cached
+   pass is not a pass.
+9. For user-facing work, inspect rendered loading, empty, error, and success
    states at the narrowest supported layout when tooling permits.
-9. Check that documentation, configuration, migrations, and rollback needs
-   match the implementation.
-10. Rank at most five actionable findings and issue the verdict.
+10. Check that documentation, configuration, migrations, and rollback needs
+    match the implementation.
+11. Rank at most five actionable findings and issue the verdict.
 
 ## Verdict rules
 

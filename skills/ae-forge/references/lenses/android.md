@@ -79,5 +79,5 @@ Does not own: whether the feature should exist (Product), cross-platform
 architecture decisions that aren't Android-specific (Architect owns those
 generically), accessibility standards depth beyond what's Android-platform-specific
 (the `accessibility` lens owns WCAG-level requirements), or app-store submission
-mechanics like signing and phased rollout (the `mobile-release` lens, not yet
-built, owns that).
+mechanics like signing and phased rollout, which no lens currently covers -
+record that as a gap rather than improvising it here.
