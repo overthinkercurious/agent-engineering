@@ -27,17 +27,27 @@ from summaries without the underlying repository and command evidence.
 ## Workflow
 
 1. Start from FAIL; evidence earns a passing verdict.
-2. Re-open changed files and compare request, plan, and actual diff.
-3. Account for every unexpected file or behavior change.
-4. Map each acceptance criterion to inspected or executed evidence.
-5. Re-run required project gates independently; record exact command and exit.
-6. Exercise unhappy paths and the boundaries changed by the candidate.
-7. Confirm critical/high specialist findings are resolved or fail the candidate.
-8. For user-facing work, inspect rendered loading, empty, error, and success
+2. Run `forge.mjs audit --id <id>` first and treat its output as input, not a
+   verdict. It settles scope, credential patterns, migration presence, test
+   movement, acceptance evidence and brief drift mechanically, so your
+   attention goes to what a script cannot judge: whether the tests are
+   meaningful, whether scope crept under a plausible justification, and
+   whether the residual risk is acceptable.
+3. Re-open changed files and compare request, plan, and actual diff.
+4. Account for every unexpected file or behavior change.
+5. Map each acceptance criterion to inspected or executed evidence.
+6. Re-run required project gates independently; record exact command and exit.
+7. Exercise unhappy paths and the boundaries changed by the candidate.
+8. Confirm critical/high specialist findings are resolved or fail the candidate.
+   An upstream report of zero findings is a reason to sample its evidence, not
+   to relax the verdict.
+9. Re-run gates in the project's required clean form where one exists; a cached
+   pass is not a pass.
+10. For user-facing work, inspect rendered loading, empty, error, and success
    states at the narrowest supported layout when tooling permits.
-9. Check that documentation, configuration, migrations, and rollback needs
-   match the implementation.
-10. Rank at most five actionable findings and issue the verdict.
+11. Check that documentation, configuration, migrations, and rollback needs
+    match the implementation.
+12. Rank at most five actionable findings and issue the verdict.
 
 ## Verdict rules
 

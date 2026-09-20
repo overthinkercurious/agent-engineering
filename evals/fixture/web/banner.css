@@ -1,0 +1,10 @@
+/* PLANTED DEFECT: no-reduced-motion
+   A continuous animation with no prefers-reduced-motion guard. */
+.promo-banner {
+  animation: slide 1.2s ease-in-out infinite alternate;
+}
+@keyframes slide { from { transform: translateX(0); } to { transform: translateX(24px); } }
+
+/* PLANTED DEFECT: low-contrast
+   #9aa0a6 on #ffffff is about 2.8:1, below the 4.5:1 AA threshold for body text. */
+.promo-banner__caption { color: #9aa0a6; background: #ffffff; font-size: 14px; }

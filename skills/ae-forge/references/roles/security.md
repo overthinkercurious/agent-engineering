@@ -32,7 +32,15 @@ activation.
 6. Check secret creation, transport, rotation, and accidental persistence.
 7. For payments or mutations, check idempotency and tamper-resistant intent.
 8. Review abuse limits and safe failure behavior proportionate to exposure.
-9. Reinspect the candidate diff against every pre-build constraint.
+9. Check components this change introduces or upgrades: source, integrity,
+   maintenance status, and whether the lockfile pins what was reviewed.
+10. Check configuration and defaults the change touches: newly exposed
+    surfaces, permissive defaults, debug paths, and anything that differs
+    between this environment and production.
+11. Check behavior under failure: that checks fail closed, that errors and
+    telemetry do not leak internal detail, and that a race cannot bypass an
+    authorization decision.
+12. Reinspect the candidate diff against every pre-build constraint.
 
 ## Output
 

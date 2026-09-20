@@ -9,7 +9,7 @@
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 
@@ -69,4 +69,8 @@ function runCli() {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) runCli()
+// Compare resolved file URLs, not a hand-built `file://` + argv[1]. argv[1] is
+// the path AS TYPED (often relative), and on Windows a real module URL is
+// file:///D:/... - so the naive form never matched and this CLI silently
+// printed nothing, while team.md instructed the model to run it.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) runCli()

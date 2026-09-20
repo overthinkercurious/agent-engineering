@@ -44,23 +44,65 @@ when a decision would materially change the outcome or requires new authority.
 Resolve the installed skill directory once:
 
 ```bash
-AE="${CLAUDE_SKILL_DIR:-}"
+AE="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
 [ -n "$AE" ] || for d in .claude/skills/ae-forge .agents/skills/ae-forge; do
   [ -f "$d/SKILL.md" ] && AE="$d" && break
 done
 ```
 
-Inspect the project instructions and current work. If `.dev/knowledge/` exists,
-use it as a repository map; its absence is not a blocker. Inspect the repository
-directly when knowledge is missing or stale.
+Inspect the project instructions and current work. Build the repository map
+**once per run**, before any expert starts, and give every expert the same map:
+
+```bash
+# ae-surveyor installs as a sibling of this skill; use its analyzer when present.
+SV="$(dirname "$AE")/ae-surveyor"
+if [ -f "$SV/scripts/analyze.mjs" ] && [ ! -s .dev/context/analysis.json ]; then
+  node "$SV/scripts/analyze.mjs" --budget-tokens 60000
+fi
+```
+
+If `.dev/knowledge/` exists, read `00-index.md` first and follow it to the one
+or two documents that answer the current question. Otherwise use
+`.dev/context/analysis.json`'s ranked file list as the reading plan. Neither is
+a blocker: when no map can be produced, inspect the repository directly and say
+so in the report.
+
+**Explore the repository once.** Isolated experts start with a clean context
+window, so an unbudgeted "go read the code" instruction is paid again by every
+expert on the team. Give each expert the ranked file list and the paths its own
+boundary needs, and let it open only what its question requires. A five-role
+run should read the repository once, not five times.
 
 First list current runs. Resume only a clearly matching active run; otherwise
 create one small record. Skip the record for explanation-only work.
 
 ```bash
 node "$AE/scripts/forge.mjs" list
-node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> --signals <comma-list>
+node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
+  --risk <comma-list|none> [--domain <comma-list>]
 ```
+
+### Assess risk before starting
+
+`--risk` is the router, and it is not optional. Answer each question about the
+behavior the change introduces, not about filenames, and pass every flag that
+is true — or `none` when none are:
+
+| Flag | Answer yes when the change… |
+|---|---|
+| `access` | changes who can read, do, or reach anything — authentication, authorization, tenancy, secrets, payments |
+| `stored-shape` | changes the shape of persisted data, or moves or deletes existing data |
+| `rendered` | changes a rendered surface or a user journey |
+| `runtime` | changes external calls, concurrency, retries, or a performance budget |
+| `irreversible` | is destructive, production-affecting, spends money, or changes a public contract |
+
+Each flag deterministically selects its expert, so the vocabulary of the
+request never decides whether a review happens. **An empty risk set is not
+evidence of safety** — it records that you assessed and found none. Omitting
+`--risk` entirely is recorded as unassessed and reported to the user.
+
+Pass domain words — `android`, `react`, `postgres` — to `--domain`. Those
+attach lenses; a miss there costs depth, never a review.
 
 Use `status --id <id>` to resume. Never make the user manage this record. It
 is an internal recovery aid, not an approval bureaucracy.
@@ -83,6 +125,24 @@ Classify by behavior and risk, not filenames:
 Three roles are the normal team. Five is the maximum without telling the user
 why multiple independent risk boundaries require more. Do not run every expert,
 every checklist, or a separate critic merely because they exist.
+
+### Print the routing decision
+
+Before any expert works, print the routing block from `start`'s output — six
+lines, once, then stay quiet:
+
+```text
+Routing · deep · Architect → Security → Experience → Builder → Verifier
+Why     · risk=access (changes who may authenticate), risk=rendered (new login journey)
+Skipped · data (no stored-shape risk declared) · reliability (no runtime risk declared)
+        · investigator (no undiagnosed defect) · product (outcome already specified)
+Lenses  · ui-finish → experience, builder
+Approval· required before build (external provider registration)
+```
+
+The `Skipped` line is required. A review the team decided not to run is the
+one thing the user cannot infer from the result, and it is how a wrong routing
+decision gets caught on the first run instead of the tenth.
 
 An audit-only request is different: select Verifier and only the relevant
 Architect, Security, Data, Experience, or Reliability expert. Do not add
@@ -123,9 +183,32 @@ material product choice, irreversible or destructive action, external side
 effect, new spending/access, production deployment, or unresolved high-risk
 tradeoff.
 
-For material approval, summarize the outcome, important tradeoffs, and risk in
-plain language. After the user approves, record it with `approve`. Do not ask
-for approval merely because a workflow stage exists.
+Approval is a document, not a paragraph. Scaffold the brief and fill it, then
+point the user at it:
+
+```bash
+node "$AE/scripts/forge.mjs" brief --id <id>
+```
+
+The brief carries only the sections its tier calls for — a section outside the
+tier is omitted, never filled with "N/A". A quick brief is four sections; a
+four-page plan for a one-line fix is a defect, not thoroughness.
+
+After the user approves, record it with `approve`. That freezes the brief: it
+becomes the contract the release audit compares the delivered change against,
+so do not rewrite it afterwards. Do not ask for approval merely because a
+workflow stage exists.
+
+Write each expert's full result to `.dev/work/<id>/results/<role>.md` and pass
+the path to `note`. Downstream experts receive **paths and findings, never
+transcripts** — that is what keeps coordination context bounded as the team
+grows. Record a severity when an expert finds something:
+
+```bash
+node "$AE/scripts/forge.mjs" note --id <id> --role <role> \
+  --summary "<result>" --severity <critical|high|medium|low|none> \
+  --result .dev/work/<id>/results/<role>.md
+```
 
 Use these phases internally, omitting Plan only for quick work with no open
 design choice:
@@ -135,6 +218,11 @@ design choice:
 3. **Build:** edit the code and tests in small coherent steps.
 4. **Verify:** inspect the exact diff and run the project's relevant checks.
 5. **Repair:** fix valid findings and verify again, for at most two cycles.
+   The second cycle is **delta-only**: confirm each named blocker is closed,
+   and raise a new blocker only if the repair itself introduced it. A fresh
+   full re-review always yields new findings — that is a property of
+   re-reading, not of the candidate, and it is how a bounded loop stops
+   converging.
 6. **Finish:** leave the repository in a coherent state and give one concise
    delivery report.
 
@@ -160,6 +248,27 @@ node "$AE/scripts/forge.mjs" phase --id <id> --to <understand|plan|build|verify|
 - Critical or high findings block completion. Medium and low findings may be
   reported as residual risk when repair would exceed the request.
 - Stop after two unsuccessful repair cycles and explain the blocker.
+- A role may return DISPUTED **once**, with `VERIFIED (path:line)`
+  counter-evidence, instead of complying with a finding it can show is wrong.
+  Forge adjudicates: if the counter-evidence resolves and the finding's does
+  not, drop the finding and record why. Never resolve a dispute by asking the
+  reviewer to look again — that is how a bounded loop becomes an open one.
+
+## What "done" means for this kind
+
+`references/team.json`'s `acceptance` block defines the bar per kind. Most of
+it is judgment the Verifier owns, but two are not negotiable:
+
+| Kind | Done means | Non-negotiable |
+|---|---|---|
+| `bug` | the original reproduction now passes | re-run the **original** repro, not a new test that happens to pass; sweep callers |
+| `refactor` | **behaviour is unchanged** | existing tests pass **unmodified** — `finish` refuses otherwise |
+| `performance` | measured improvement under identical conditions | a before **and** after measurement; a percentile, not a mean |
+
+A refactor that rewrote its own tests has not demonstrated behaviour
+preservation, whatever the suite reports. If a test edit genuinely fixes a
+test defect rather than accommodating a behaviour change, say so in the report
+and pass `--tests-changed-justified`.
 
 Finish a delivery record only after implementation and verification both
 contributed. An audit-only record requires the Verifier and no code change:
@@ -168,12 +277,68 @@ contributed. An audit-only record requires the Verifier and no code change:
 node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" --verification "<checks and independent verdict>"
 ```
 
+## Stay quiet while working
+
+The user reads the routing block, then the result. Between them, keep output
+to a hard minimum:
+
+| Moment | Allowed | Cap |
+|---|---|---|
+| After routing | the routing block | 6 lines |
+| Phase transition | `plan → build` plus a half-line of current truth | 1 line |
+| An expert finishes | **nothing** — it goes to `results/<role>.md` | 0 lines |
+| A blocking finding | severity and the affected behavior | 1 line |
+| Approval needed | the brief's path and the decision being asked | the brief |
+| Completion | the delivery report | ~20 lines |
+
+A five-role deep run should produce about ten lines of chat before the final
+report, however much work happened underneath. Never narrate file-by-file
+progress, expert reasoning, ledger commands, or phase vocabulary.
+
+## Leave the project smarter than you found it
+
+When a run accepts a material design decision — one a future Architect would
+otherwise rediscover — append one entry to `.dev/knowledge/decisions.md`,
+below its managed block, before finishing:
+
+```markdown
+- **2026-09-20 · Session storage for OAuth.** Reused the existing session
+  store rather than adding a token table.
+  **Evidence:** VERIFIED `src/session/store.ts:41`
+  **Rejected:** a dedicated token table — a second source of session truth.
+```
+
+That file is already committed and already names Architect as its reader. One
+line per genuine decision is the difference between a workflow and an
+organization: without it every run re-derives what the last run already
+settled. Do not log routine choices, and never rewrite an existing entry.
+
 ## Final response
 
-Lead with the delivered outcome. Include the important files or behavior,
-checks performed, and any residual risk or user action. Do not expose internal
-role transcripts, state-machine terminology, token accounting, or generated
-coordination files unless the user asks.
+Before the Verifier issues its verdict, run the deterministic checks and hand
+them over as input:
+
+```bash
+node "$AE/scripts/forge.mjs" audit --id <id>
+```
+
+It settles scope, credential patterns, migration presence, test movement,
+acceptance evidence and brief drift by exit code. It is not a verdict — the
+Verifier still owns whether the tests are meaningful, whether scope crept, and
+whether residual risk is acceptable.
+
+Render the report from the ledger rather than recalling the run:
+
+```bash
+node "$AE/scripts/forge.mjs" report --id <id>
+```
+
+Add at most two sentences of plain-language outcome above it, then stop. The
+report is generated from what was actually recorded — routing, each expert's
+contribution, what each one caught, what was skipped and why, checks, and
+repair cycles — so it cannot drift from the run the way a recalled summary
+can. Do not paste role transcripts, state-machine terminology, token
+accounting, or coordination files alongside it.
 
 ## Hard stops
 

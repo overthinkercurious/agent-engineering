@@ -1,0 +1,190 @@
+{
+  "$comment": [
+    "Golden cases for the Agent Engineering kit. One file, two layers.",
+    "",
+    "LAYER A (deterministic, runs in npm test via scripts/test-evals.mjs):",
+    "  Given a case's risk flags, forge.mjs start must produce the expected",
+    "  tier, team and skip set. This is a pure function of its inputs, so it",
+    "  is a real regression suite for the router - change chooseTeam and these",
+    "  cases fail.",
+    "",
+    "LAYER B (needs a model; graded against this same file):",
+    "  Run the request against the fixture repository with a real model and",
+    "  grade two things Layer A cannot reach:",
+    "    1. routing judgment - did the model choose expect_risk itself?",
+    "    2. specialist depth - did the selected expert CATCH the planted",
+    "       defect in its own boundary?",
+    "  Layer A proves the right specialist was called. Only Layer B proves the",
+    "  specialist was deep enough to find anything, which is the difference",
+    "  between a routing failure and a depth failure - they are fixed in",
+    "  completely different places.",
+    "",
+    "Planted defects live in evals/fixture/ and are labelled in-file."
+  ],
+  "fixture": "evals/fixture",
+  "cases": [
+    {
+      "id": "oauth-login",
+      "request": "Add OAuth login so users can sign in with Google",
+      "kind": "feature",
+      "expect_risk": ["access", "rendered"],
+      "expect": {
+        "tier": "deep",
+        "team_includes": ["architect", "security", "experience", "builder", "verifier"],
+        "team_excludes": ["data", "reliability"],
+        "skipped_includes": ["data", "reliability"],
+        "approval_required": false
+      },
+      "note": "The original P2 defect. The natural vocabulary here (oauth, login, sso) matched no keyword, so this routed with no Security expert at all."
+    },
+    {
+      "id": "footer-typo",
+      "request": "The footer still says 2024, fix the copyright year",
+      "kind": "feature",
+      "expect_risk": [],
+      "signals": ["copy", "local"],
+      "expect": {
+        "tier": "quick",
+        "team_includes": ["builder", "verifier"],
+        "team_excludes": ["architect", "security", "experience", "data", "reliability"],
+        "approval_required": false
+      },
+      "note": "The kit must not run enterprise ceremony for a one-line fix. Two roles, no brief sections beyond four."
+    },
+    {
+      "id": "order-idor",
+      "request": "Users report they can see other people's orders by changing the id in the URL",
+      "kind": "bug",
+      "expect_risk": ["access"],
+      "expect": {
+        "tier": "deep",
+        "team_includes": ["investigator", "architect", "security", "builder", "verifier"],
+        "skipped_includes": ["experience"]
+      },
+      "planted": [
+        {
+          "defect": "idor",
+          "file": "src/orders.js",
+          "owner": "security",
+          "must_catch": "getOrder reads by id with no ownership or tenant check",
+          "min_severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "slow-order-list",
+      "request": "The orders page takes 8 seconds to load in production",
+      "kind": "performance",
+      "expect_risk": ["runtime"],
+      "expect": {
+        "tier": "deep",
+        "team_includes": ["investigator", "reliability", "architect", "builder", "verifier"],
+        "skipped_includes": ["security"]
+      },
+      "planted": [
+        {
+          "defect": "unbounded-query",
+          "file": "src/orders.js",
+          "owner": "reliability",
+          "must_catch": "listAllOrders has no LIMIT or pagination on a growing table",
+          "min_severity": "high"
+        }
+      ],
+      "acceptance_note": "kind=performance requires a before AND after measurement, stated as a percentile."
+    },
+    {
+      "id": "duplicate-charges",
+      "request": "Some customers were charged twice last night",
+      "kind": "bug",
+      "expect_risk": ["access", "runtime"],
+      "expect": {
+        "tier": "deep",
+        "team_includes": ["investigator", "security", "reliability", "builder", "verifier"]
+      },
+      "planted": [
+        {
+          "defect": "non-idempotent-retry",
+          "file": "src/payments.js",
+          "owner": "reliability",
+          "must_catch": "chargeWithRetry re-POSTs with no idempotency key, so a timeout that succeeded upstream double-charges",
+          "min_severity": "critical"
+        }
+      ]
+    },
+    {
+      "id": "promo-banner",
+      "request": "Make the promo banner look nicer on mobile",
+      "kind": "feature",
+      "expect_risk": ["rendered"],
+      "domain": ["accessibility", "css"],
+      "expect": {
+        "tier": "deep",
+        "team_includes": ["experience", "architect", "builder", "verifier"],
+        "team_excludes": ["security", "data"],
+        "lenses_include": { "experience": "accessibility" }
+      },
+      "planted": [
+        {
+          "defect": "no-reduced-motion",
+          "file": "web/banner.css",
+          "owner": "experience",
+          "must_catch": "infinite animation with no prefers-reduced-motion guard",
+          "min_severity": "medium"
+        },
+        {
+          "defect": "low-contrast",
+          "file": "web/banner.css",
+          "owner": "experience",
+          "must_catch": "#9aa0a6 on #ffffff is ~2.8:1, below the 4.5:1 AA threshold",
+          "min_severity": "medium"
+        }
+      ]
+    },
+    {
+      "id": "add-column",
+      "request": "Add a nullable status column to orders and backfill it",
+      "kind": "feature",
+      "expect_risk": ["stored-shape", "irreversible"],
+      "expect": {
+        "tier": "deep",
+        "team_includes": ["architect", "data", "builder", "verifier"],
+        "team_excludes": ["security", "experience"],
+        "approval_required": true
+      },
+      "note": "irreversible must demand approval before build, and Data must own the expand/migrate/contract sequence."
+    },
+    {
+      "id": "extract-helper",
+      "request": "Extract the duplicated date formatting into a shared helper",
+      "kind": "refactor",
+      "expect_risk": [],
+      "expect": {
+        "tier": "standard",
+        "team_includes": ["architect", "builder", "verifier"],
+        "team_excludes": ["security", "data", "experience", "reliability"]
+      },
+      "acceptance_note": "kind=refactor must finish only with tests UNMODIFIED; forge.mjs enforces this mechanically."
+    },
+    {
+      "id": "release-readiness",
+      "request": "Is this branch safe to ship?",
+      "kind": "audit",
+      "expect_risk": [],
+      "expect": {
+        "team_includes": ["verifier"],
+        "team_excludes": ["builder"]
+      },
+      "note": "Release readiness is the audit path, not a separate role. Builder must be absent and build must be unreachable."
+    },
+    {
+      "id": "unassessed",
+      "request": "Change the thing",
+      "kind": "feature",
+      "omit_risk": true,
+      "expect": {
+        "risk_assessed": false
+      },
+      "note": "Omitting the risk assessment must stay visible rather than passing as safety."
+    }
+  ]
+}

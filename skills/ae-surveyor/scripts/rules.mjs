@@ -155,7 +155,7 @@ if (untestedRisk.length) {
   derived.push({
     id: '40-risk-coverage',
     title: 'Risk coverage',
-    rules: [[`Changing any file listed in \`.dev/knowledge/40-risks.md\` requires a test in the same change. `
+    rules: [[`Changing any file listed under "Files carrying risk tags" in \`.dev/knowledge/architecture.md\` requires a test in the same change. `
       + `${untestedRisk.length} such file(s) currently have none; those are existing debt, not a blocker on unrelated work.`,
     gates.find((g) => g.kind === 'test')?.invoke ?? 'no test command detected']],
     evidence: `${untestedRisk.length} risk-tagged file(s) with no apparent test, at the time of analysis.`,

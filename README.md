@@ -51,8 +51,22 @@ exclusive outcome:
 
 Builder and Verifier are the minimum delivery team. Most changes use Architect,
 Builder, and Verifier. Other experts are selected only when their exclusive
-boundary is present. Audit-only requests use Verifier plus only the relevant
-Architect or named specialist and do not modify code.
+boundary is present, and that selection is **behavioural, not lexical**: Forge
+answers a short set of questions about what the change actually does — does it
+change who can reach anything, does it change stored shape, does it change a
+rendered surface, does it change runtime behaviour, is any part irreversible —
+and each answer maps deterministically to an expert. The wording of a request
+never decides whether a review happens, so "add OAuth login", "wire up SSO"
+and "add RBAC" all reach the Security expert.
+
+Depth inside a boundary comes from **lenses** rather than more experts. A lens
+attaches to an expert already working — it costs no extra dispatch — and
+carries the domain specifics that go out of date, each with the date it was
+last verified. Eight ship today, covering accessibility, secrets, web and
+database performance, API contracts, test quality, Android, and UI finish.
+
+Audit-only requests use Verifier plus only the relevant Architect or named
+specialist, and do not modify code.
 
 ### Risk-sized operation
 
@@ -207,34 +221,69 @@ Use ae-surveyor when a repository is large, unfamiliar, or will be worked on
 repeatedly. It creates .dev/knowledge and .dev/rules.
 Initialization improves future context but is not a prerequisite for Forge.
 
-## Internal recovery record
+## What you see, and what you get back
 
-Forge keeps one small ignored record per active change at
-.dev/work/<task-id>/run.json.
+Forge prints the routing decision once, before any work starts — including
+**what it decided to skip, and why**. A review the team chose not to run is the
+one thing you cannot infer from the result, so it is always shown.
 
-This record contains the selected team, current phase, expert contributions,
-approval when required, and the final verification summary. It exists so an
-interrupted task can resume safely. It is not a user-facing workflow.
+Then it stays quiet. A five-expert run produces about ten lines of progress,
+whatever is happening underneath.
+
+At the end you get one report, rendered from the run's own record rather than
+recalled: the routing decision, what each expert contributed, **what each one
+caught**, what was skipped and why, the checks that ran, and how many repair
+cycles it took. Because it is generated from the record, the summary and the
+work cannot disagree — which also makes it the instrument for checking that
+routing is behaving.
+
+## Working files
+
+Forge keeps a small ignored working directory per change at
+`.dev/work/<task-id>/`:
+
+| File | Purpose |
+|---|---|
+| `run.json` | Team, phase, revision, approval, contributions — the recovery record |
+| `brief.md` | The reviewable plan. Frozen once approved, so the audit can check what was delivered against what was agreed |
+| `results/` | One append-only file per expert contribution |
+
+The brief carries only the sections its risk tier calls for: four for a small
+fix, eleven for a deep change. A four-page plan for a one-line fix is treated
+as a defect, not thoroughness.
+
+Together these make an interrupted task genuinely resumable — a new session
+reads the approved brief and the results rather than re-planning.
 
 The bundled runner supports:
 
 | Command | Purpose |
 |---|---|
-| start | Create a run and select a risk-sized team |
+| start | Create a run, assess risk, and select the team |
+| brief | Scaffold the reviewable plan, sized to the risk tier |
 | list | List current and completed runs |
 | status | Read one run |
-| note | Record a selected expert's material contribution |
+| note | Record an expert's contribution, severity, and result file |
 | phase | Record a meaningful workflow boundary |
-| approve | Record material user approval when required |
-| finish | Close only after Builder and Verifier contributed |
+| approve | Record material user approval, freezing the brief |
+| audit | Run the deterministic release checks |
+| report | Render the delivery summary from the record |
+| finish | Close only after implementation and verification contributed |
 | cancel | Stop an active run |
 
 Agents invoke these commands internally. Users normally never do.
 
 ## Development
 
-Run npm test. The test suite validates skill packaging, the small Forge
-recovery contract, and the deterministic ae-surveyor scripts.
+Run `npm test`. The suite validates skill packaging, the Forge recovery and
+routing contract, lens selection, the deterministic ae-surveyor scripts, and a
+set of golden routing cases in `evals/`.
+
+`evals/` also carries a fixture repository with deliberately planted defects —
+an IDOR, an unbounded query, a missing reduced-motion guard, a non-idempotent
+retry. Running a real model against those cases grades something the
+deterministic suite cannot reach: not just whether the right expert was
+called, but whether it was deep enough to find anything. See `evals/README.md`.
 
 ## Design principles
 
@@ -242,7 +291,11 @@ recovery contract, and the deterministic ae-surveyor scripts.
 - Delegate judgment; do not manufacture process.
 - Implement and verify; do not stop after producing plans.
 - Use native host agents instead of building another agent platform.
-- Keep one lightweight recovery record, not a document tree.
+- Route on behaviour, never on vocabulary; absence of a keyword is not safety.
+- Keep a lightweight record and one approved brief, not a document tree.
+- Put method in the experts and dated facts in the lenses, so depth can admit
+  when it has gone stale.
+- Render the report from the record, so the summary cannot drift from the work.
 - Ask users about material outcomes and authority, not workflow mechanics.
 - State limitations and unknowns instead of fabricating assurance.
 

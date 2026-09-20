@@ -20,17 +20,10 @@ role's result or claim its decision.
 
 ## Exclusive ownership
 
-| Role | Exclusively owns | Explicitly does not own |
-|---|---|---|
-| Product | User/system outcome, scope, non-goals, acceptance behavior | Technical design, implementation, release verdict |
-| Investigator | Reproduced symptom and supported causal account | Product scope, solution design, implementation, fix verdict |
-| Architect | Technical design, boundaries, impact map, implementation plan | Product outcome, causal proof, code, final verification |
-| Security | Trust, authorization, privacy, abuse, security constraints/findings | General architecture, data migration mechanics, implementation |
-| Data | Persistent-data invariants, schema transition, migration and recovery constraints | Authorization policy, general reliability, application implementation |
-| Experience | User journey, interaction states, accessibility acceptance | Product priority, visual implementation, backend design |
-| Reliability | Runtime failure, performance, concurrency, observability and operational recovery | Stored-data transition, product scope, release verdict |
-| Builder | Application and test changes implementing the accepted plan | Scope, architecture, independent verification |
-| Verifier | Integrated evidence and final PASS/FAIL verdict | Product decisions, implementation, repair |
+Each role's exclusive outcome, and what it explicitly does not own, is stated
+once at the top of its own file under `## Exclusive outcome`. Read it there.
+Repeating the table here would be a third copy of the same nine facts, loaded
+on every run, free to drift from the two that matter.
 
 ## Boundary rules
 
@@ -62,19 +55,34 @@ let both roles issue competing answers to the same question.
 Quick changes may omit Product, Investigator, Architect, and named specialists.
 Audit-only work omits Builder and cannot modify application code.
 
+## Dispatch tiers
+
+Three tiers, duplicated here deliberately rather than read from
+`ae-surveyor`'s `targets.yml`: installed skills cannot read each other's
+files, and a "keep these in sync" instruction that no mechanism enforces is
+how a shared contract silently rots.
+
+- `native-parallel` — concurrent isolated dispatch, confirmed for this host.
+- `native-sequential` — isolation confirmed, concurrency not.
+- `none` — the default. Assume it unless this host is independently known to
+  support isolated dispatch. On `none`, run explicit sequential role passes in
+  this session and disclose in the report that the final review was not
+  context-independent.
+
 ## Lens selection
 
-A lens adds platform/protocol-specific depth to a role; it never overrides
-exclusive ownership from the table above. Selection is mechanical, not a
+A lens adds platform/protocol-specific depth to a role; it never overrides a role's
+exclusive ownership as stated in that role's own file. Selection is mechanical, not a
 judgment call — run it rather than eyeballing `team.json`:
 
 ```bash
 node "$AE/scripts/lens-select.mjs" --team <selected-roles> --signals <request-signals> [--stack <survey-detected-signals>]
 ```
 
-1. Pass the exact team chosen above and the exact signals given to
-   `forge.mjs start`. When `.dev/knowledge/stack.md` exists, also pass its
-   detected stack as `--stack`.
+1. Pass the exact team chosen above, and the domain words given to
+   `forge.mjs start` as `--domain` (plus any `--signals`). When
+   `.dev/knowledge/stack.md` exists, also pass its detected stack as
+   `--stack`.
 2. The script attaches at most **2** matching lenses per role, ranked by
    signal-match count (`lenses[*].signals` scored against the combined
    request + stack signals; ties keep `team.json`'s declared order). A role

@@ -66,6 +66,9 @@ targets:
     confidence: high
     notes: "Claude Code reads CLAUDE.md and does NOT read AGENTS.md. Its docs name an @AGENTS.md import as the bridge, and specifically recommend the import over a symlink on Windows."
     verified: "2026-09-17 code.claude.com/docs/en/skills"
+    dispatch: native-parallel
+    dispatch_notes: "Subagents run through the Task tool; each starts with a fresh, isolated context window that does not inherit the parent conversation, and several can be launched in one turn for parallel fan-out. The only channel from parent to subagent is the prompt string, so a dispatched expert must be given its paths and scope explicitly - it cannot see what the parent already read."
+    dispatch_verified: "2026-09-20 code.claude.com/docs/en/sub-agents"
 
   antigravity:
     display: "Google Antigravity IDE"

@@ -22,7 +22,7 @@ Resolve the installed skill directory and this host's dispatch capability
 once, at the top of every run:
 
 ```bash
-SV="${CLAUDE_SKILL_DIR:-}"
+SV="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
 [ -n "$SV" ] || for d in .claude/skills/ae-surveyor .agents/skills/ae-surveyor; do
   [ -f "$d/SKILL.md" ] && SV="$d" && break
 done
@@ -106,24 +106,14 @@ equal authority:
 - **Enforced rules** — `node "$SV/scripts/rules.mjs"`. A rule enters only
   if a command fails when it is broken. This is mechanical and repo-specific;
   nothing here is copied from outside the project.
-- **Stack idioms** — curated once per stack, shipped inside this kit, never
-  freshly generated per project. Detect the project's stack from the stage-2
-  sensor dump and copy the matching curated file(s) into the host's rules
-  directory (from `references/targets.yml`) so the IDE loads them
-  unconditionally, the same way it loads this project's own enforced rules.
-  Label them distinctly in the file itself — `STACK CONVENTION, not enforced
-  by a gate in this repository` — so nothing downstream mistakes a general
-  convention for something this repository actually checks.
-  **Not yet populated in this kit**: no curated idiom source exists yet to
-  copy from. Until one does, skip this half and say so in the readiness
-  report rather than inventing idiom text at survey time.
+- **Gaps** — an unenforced invariant is recorded in the knowledge Notes as a
+  gap, never promoted into the rules table. A rule nothing can check is a
+  suggestion, and suggestions accumulate until the file is too long to read.
 
-Regenerate both through the existing generated-block markers so a rerun
-updates the block and preserves anything written below it. Stage 3 and this
-stage's enforced-rules half share one marker/snapshot convention — reuse
-`scripts/artifact-support.mjs` (`stamp`, `writeManaged`) rather than
-reimplementing it; it is the one file in `scripts/` not yet wired into a
-stage, reserved for exactly this.
+Regenerate through the existing generated-block markers so a rerun updates the
+block and preserves anything written below it. Stage 3 and this stage share one
+marker/snapshot convention in `scripts/artifact-support.mjs` (`stamp`,
+`writeManaged`); use it rather than reimplementing it.
 
 ### 5. Verify
 
@@ -168,5 +158,6 @@ timestamp alone.
 - Never edit a generated block by hand; edit outside the markers or rerun
   the stage that owns it.
 - Never present `INFERRED` or `UNKNOWN` as `OBSERVED`.
-- Never let a stack-idiom file carry the same authority as this project's
-  own enforced rules or its own docs — the project always outranks the kit.
+- Never let anything shipped in this kit carry the same authority as this
+  project's own enforced rules or its own docs — the project always outranks
+  the kit.

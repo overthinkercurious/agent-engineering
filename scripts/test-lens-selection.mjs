@@ -9,7 +9,7 @@
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve, dirname } from 'node:path'
+import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { loadTeamContract, selectLenses } from '../skills/ae-forge/scripts/lens-select.mjs'
@@ -96,5 +96,22 @@ function scenario(id, { title, kind, signals = [], stack = [] }) {
 }
 
 rmSync(project, { recursive: true, force: true })
+// The CLI entry point, not just the exported function. team.md instructs the
+// model to RUN this script; a unit test that imports selectLenses directly
+// cannot see a dead `if (import.meta.url === ...)` guard, which is exactly how
+// this shipped broken on Windows and on any relative invocation.
+{
+  const script = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ae-forge', 'scripts', 'lens-select.mjs')
+  for (const [label, spec] of [['absolute', script], ['relative', relative(process.cwd(), script)]]) {
+    const out = spawnSync(process.execPath, [spec, '--team', 'experience', '--stack', 'accessibility'],
+      { encoding: 'utf8', cwd: process.cwd() })
+    let parsed = null
+    try { parsed = JSON.parse(out.stdout) } catch { /* reported below */ }
+    check(`the CLI produces output when invoked by ${label} path`,
+      out.status === 0 && parsed?.attached?.experience?.includes('accessibility'),
+      JSON.stringify(out.stdout.slice(0, 120)))
+  }
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
 if (failed) process.exit(1)

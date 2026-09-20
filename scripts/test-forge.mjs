@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -113,8 +113,117 @@ check('performance work selects Investigator and Reliability',
 const protectedTier = body(run(['start', '--title', 'Change tenant permissions', '--kind', 'feature', '--signals', 'tenant', '--tier', 'quick', '--id', 'protected-tier']))
 check('an explicit quick tier cannot downgrade detected risk',
   protectedTier?.tier === 'deep' && protectedTier?.team.includes('security'))
+// Behavioural risk routing. The vocabulary these requests would naturally
+// produce (oauth, sso, rbac) matches no keyword, which is exactly why the
+// router must not depend on the model guessing the right synonym.
+const oauth = body(run(['start', '--title', 'Add OAuth login', '--kind', 'feature',
+  '--risk', 'access,rendered', '--signals', 'oauth,login', '--id', 'oauth-login']))
+check('an access risk selects Security whatever the wording',
+  oauth?.tier === 'deep' && oauth?.team.includes('security') && oauth?.team.includes('experience'))
+check('routing records why each role was selected',
+  oauth?.routing.selected.security === 'risk=access' && oauth?.routing.selected.experience === 'risk=rendered')
+check('routing records why each role was skipped',
+  typeof oauth?.routing.skipped.data === 'string' && typeof oauth?.routing.skipped.reliability === 'string')
+
+const stored = body(run(['start', '--title', 'Add a nullable column', '--kind', 'feature',
+  '--risk', 'stored-shape,irreversible', '--id', 'stored-shape-change']))
+check('stored-shape selects Data and irreversible demands approval',
+  stored?.team.includes('data') && stored?.approval_required === true)
+
+const assessedClear = body(run(['start', '--title', 'Rename a local helper', '--kind', 'refactor',
+  '--risk', 'none', '--id', 'assessed-clear']))
+check('an explicit "none" assessment is recorded as assessed',
+  assessedClear?.routing.risk_assessed === true && !assessedClear?.team.includes('security'))
+
+const unassessed = body(run(['start', '--title', 'Unassessed work', '--kind', 'feature', '--id', 'unassessed']))
+check('omitting the risk assessment stays visible in routing',
+  unassessed?.routing.risk_assessed === false &&
+  unassessed?.routing.tier_reason.includes('risk not assessed'))
+
+const badFlag = run(['start', '--title', 'Bad flag', '--kind', 'feature', '--risk', 'sekurity', '--id', 'bad-flag'])
+check('an unknown risk flag is rejected rather than ignored', badFlag.status === 2)
+
+// The brief is the reviewable artifact and the resume contract. Its sections
+// are tier-bound so a one-line fix cannot grow enterprise ceremony.
+const deepBrief = body(run(['brief', '--id', 'oauth-login']))
+check('a deep brief carries the full contract',
+  deepBrief?.sections.includes('Options considered') && deepBrief?.sections.includes('Rollback'))
+check('the brief records acceptance criteria and a verification plan',
+  deepBrief?.sections.includes('Acceptance criteria') && deepBrief?.sections.includes('Verification plan'))
+const quickBrief = body(run(['brief', '--id', 'copy-fix']))
+check('a quick brief omits sections outside its tier',
+  quickBrief?.sections.length === 4 && !quickBrief?.sections.includes('Rollback'))
+check('a brief is not silently overwritten', run(['brief', '--id', 'copy-fix']).status === 4)
+
+const briefFile = join(project, '.dev', 'work', 'oauth-login', 'brief.md')
+check('the brief names the team and the declared risk',
+  readFileSync(briefFile, 'utf8').includes('security') &&
+  readFileSync(briefFile, 'utf8').includes('access'))
+
+// The report is rendered from the ledger, never recalled, so it can be used
+// to judge whether routing worked.
+const rendered = run(['report', '--id', 'oauth-login']).stdout
+check('the report shows why each role was selected', rendered.includes('risk=access'))
+check('the report names every skipped role and the reason',
+  rendered.includes('Skipped') && rendered.includes('no stored-shape risk declared'))
+check('the report warns when risk was never assessed',
+  run(['report', '--id', 'unassessed']).stdout.includes('NOT ASSESSED'))
+
+// Per-kind acceptance. A refactor is correct precisely when behaviour did not
+// change, so rewriting its own tests contradicts the claim. This is the rare
+// acceptance rule a script can settle, so a script settles it.
+{
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const git = (argv) => spawnSync('git', argv, { cwd: project, encoding: 'utf8' })
+  git(['init', '-q'])
+  git(['config', 'user.email', 't@t']); git(['config', 'user.name', 't'])
+  mkdirSync(join(project, 'tests'), { recursive: true })
+  writeFileSync(join(project, 'tests', 'a.test.js'), 'test("a",()=>{})\n')
+  git(['add', '-A']); git(['commit', '-qm', 'base'])
+
+  rr(['start', '--title', 'Extract a helper', '--kind', 'refactor', '--risk', 'none', '--id', 'refactor-run'])
+  rr(['note', '--id', 'refactor-run', '--role', 'architect', '--summary', 'extract'])
+  rr(['phase', '--id', 'refactor-run', '--to', 'build', '--summary', 'b'])
+  rr(['note', '--id', 'refactor-run', '--role', 'builder', '--summary', 'extracted'])
+  writeFileSync(join(project, 'tests', 'a.test.js'), 'test("a",()=>{/* rewritten */})\n')
+  rr(['phase', '--id', 'refactor-run', '--to', 'verify', '--summary', 'v'])
+  rr(['note', '--id', 'refactor-run', '--role', 'verifier', '--summary', 'ok'])
+  const blocked = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)'])
+  check('a refactor that rewrote its own tests cannot finish',
+    blocked.status === 5 && blocked.stdout.includes('behaviour preservation is unproven'))
+  git(['checkout', '--', 'tests/a.test.js'])
+  const allowed = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)'])
+  check('the same refactor finishes once its tests are unmodified', allowed.status === 0)
+}
+
+// Deterministic release audit: the questions a script can settle by exit code.
+// Everything else stays with the Verifier; this is input to that judgment.
+{
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const git = (argv) => spawnSync('git', argv, { cwd: project, encoding: 'utf8' })
+  mkdirSync(join(project, 'db'), { recursive: true })
+  writeFileSync(join(project, 'db', 'schema.sql'), 'CREATE TABLE t(id int);\n')
+  git(['add', '-A']); git(['commit', '-qm', 'schema'])
+
+  rr(['start', '--title', 'Add a column', '--kind', 'feature', '--risk', 'stored-shape', '--id', 'audit-run'])
+  rr(['brief', '--id', 'audit-run'])
+  writeFileSync(join(project, 'db', 'schema.sql'), 'CREATE TABLE t(id int, s text);\n')
+  writeFileSync(join(project, 'leak.js'), 'const K = "sk-abcdefghijklmnopqrstuvwxyz012345678"\n')
+
+  const audited = JSON.parse(rr(['audit', '--id', 'audit-run']).stdout)
+  const status = (name) => audited.checks.find((c) => c.check === name)?.status
+  check('audit flags a schema change with no migration', status('migration') === 'REVIEW')
+  check('audit finds a credential in an UNTRACKED new file', status('secrets') === 'FAIL')
+  check('audit flags acceptance criteria with no evidence', status('acceptance') === 'REVIEW')
+  check('audit flags files the brief never named', status('scope') === 'REVIEW')
+  check('audit blocks on critical or high findings only',
+    audited.ok === false && audited.findings.some((f) => f.severity === 'critical'))
+  check('audit states that judgment remains the Verifier\'s',
+    /Verifier/.test(audited.note))
+}
+
 const listed = body(run(['list']))
-check('list reports runs', Array.isArray(listed) && listed.length === 9)
+check('list reports runs', Array.isArray(listed) && listed.length === 15)
 
 rmSync(project, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)
