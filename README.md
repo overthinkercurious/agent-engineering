@@ -218,9 +218,14 @@ and doctor commands.
 ### Runtime expectations
 
 Forge needs a coding host that can read and edit project files and run project
-checks. Native isolated agents provide genuinely independent expert passes. On
-a host without them, Forge uses explicit sequential roles and discloses that
-the final review was not context-independent.
+checks. Native isolated agents provide genuinely independent expert passes —
+each dispatched expert gets a fresh context with only the request, the ledger,
+and its own role file, so a Verifier reviews the repository rather than a
+Builder's account of it. ae-surveyor resolves which hosts support this once,
+at initialization, and publishes it to `.dev/context/host.json`; Forge looks
+itself up there rather than assuming. On a host without isolated dispatch,
+Forge uses explicit sequential roles and discloses that the final review was
+not context-independent.
 
 Forge never treats installation as permission to deploy, publish, spend money,
 access a new private system, or perform destructive work.
@@ -288,13 +293,17 @@ Agents invoke these commands internally. Users normally never do.
 
 Run `npm test`. The suite validates skill packaging, the Forge recovery and
 routing contract, lens selection, the deterministic ae-surveyor scripts, and a
-set of golden routing cases in `evals/`.
+set of golden routing cases in `evals/` (Layer A: routing is a pure function
+of its inputs, so this runs in `npm test` with no model involved).
 
 `evals/` also carries a fixture repository with deliberately planted defects —
 an IDOR, an unbounded query, a missing reduced-motion guard, a non-idempotent
-retry. Running a real model against those cases grades something the
-deterministic suite cannot reach: not just whether the right expert was
-called, but whether it was deep enough to find anything. See `evals/README.md`.
+retry — and `npm run eval` (Layer B), which materialises a scrubbed copy of
+the fixture (the in-file defect labels are stripped, so a run cannot read its
+own answers), then scores a completed Forge run against ground truth. This
+grades something the deterministic suite cannot reach: not just whether the
+right expert was called, but whether it was deep enough to find anything. See
+`evals/README.md`.
 
 ## Design principles
 

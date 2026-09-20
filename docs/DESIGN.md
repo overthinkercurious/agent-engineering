@@ -55,9 +55,15 @@ demonstrably improve delivery quality, recovery, or user effort.
 
 A change is complete only when every selected expert contributed, the run
 reached verification through legal phase transitions, relevant project checks
-ran, blocking findings are resolved, and Forge can state what was delivered and
-what remains uncertain. Audit-only work requires its selected reviewers rather
-than an implementation contribution.
+ran, every blocking finding is either resolved or explicitly accepted as a
+named residual risk, and Forge can state what was delivered and what remains
+uncertain. Audit-only work requires its selected reviewers rather than an
+implementation contribution.
+
+Only a finding recorded while reviewing the actual candidate — the `verify`
+phase — can block completion. A role that diagnoses the reported problem
+before any fix exists, such as Investigator, is not re-inspecting a delivered
+result and its severity is not read as a residual defect in one.
 
 Acceptance is per-kind. Most of it is judgment the Verifier owns, but two are
 mechanical: a refactor whose diff touches test files cannot finish, because

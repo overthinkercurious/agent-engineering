@@ -33,6 +33,7 @@ Everything a skill needs at runtime must live inside its own directory.
 
     npm test
     npm run test:install
+    npm run eval -- list
     node scripts/test-evals.mjs
     bash scripts/validate-suite.sh
     node scripts/validate-forge.mjs
@@ -43,6 +44,10 @@ Everything a skill needs at runtime must live inside its own directory.
     node skills/ae-surveyor/scripts/verify-citations.mjs
     bash scripts/test-scaffold.sh
     bash scripts/test-artifacts.sh
+
+`npm run eval` (Layer B, `scripts/eval-depth.mjs`) needs a model-driven Forge
+run against a prepared fixture and is not part of `npm test`; see
+`evals/README.md` for `prepare`/`grade`.
 
 The test launcher finds Git Bash explicitly on Windows so it does not
 accidentally invoke the Windows Subsystem for Linux bash shim.
