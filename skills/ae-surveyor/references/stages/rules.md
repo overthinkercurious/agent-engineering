@@ -40,28 +40,6 @@ Existing debt should not force unrelated repairs. Describe ratcheting only
 when tooling supports it; a global check may still fail on old debt. Report
 that failure instead of claiming that changed files pass.
 
-## Stack conventions
-
-A second, separate output, never merged into the table above and never
-given the same authority. Enforced rules above come from this repository's
-own commands. Stack conventions are curated once per stack, shipped inside
-this kit, and copied — not generated — into the project's rules directory
-(`references/targets.yml`) by the stack the sensor dump detected.
-
-Label every materialized file with `STACK CONVENTION - not enforced by a
-gate in this repository` so nothing downstream mistakes a general idiom for
-something this project actually checks. This project's own code and docs
-always outrank a stack convention; a convention never overrides observed
-project evidence in `commands.md` or `architecture.md`.
-
-Regenerate through the same marker convention as the enforced table: a
-rerun replaces the copied block and leaves anything written below it.
-
-**Not yet populated in this kit.** No curated stack-idiom source exists to
-copy from yet. Until one does, skip this output and record it as a gap
-rather than writing idiom text at survey time — this stage never authors
-convention prose itself, curated or otherwise.
-
 ## Gaps
 
 Keep unenforced invariants and needed checks in knowledge Notes as gaps.

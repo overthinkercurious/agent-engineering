@@ -295,6 +295,24 @@ A five-role deep run should produce about ten lines of chat before the final
 report, however much work happened underneath. Never narrate file-by-file
 progress, expert reasoning, ledger commands, or phase vocabulary.
 
+## Leave the project smarter than you found it
+
+When a run accepts a material design decision — one a future Architect would
+otherwise rediscover — append one entry to `.dev/knowledge/decisions.md`,
+below its managed block, before finishing:
+
+```markdown
+- **2026-09-20 · Session storage for OAuth.** Reused the existing session
+  store rather than adding a token table.
+  **Evidence:** VERIFIED `src/session/store.ts:41`
+  **Rejected:** a dedicated token table — a second source of session truth.
+```
+
+That file is already committed and already names Architect as its reader. One
+line per genuine decision is the difference between a workflow and an
+organization: without it every run re-derives what the last run already
+settled. Do not log routine choices, and never rewrite an existing entry.
+
 ## Final response
 
 Render the report from the ledger rather than recalling the run:
