@@ -218,6 +218,11 @@ design choice:
 3. **Build:** edit the code and tests in small coherent steps.
 4. **Verify:** inspect the exact diff and run the project's relevant checks.
 5. **Repair:** fix valid findings and verify again, for at most two cycles.
+   The second cycle is **delta-only**: confirm each named blocker is closed,
+   and raise a new blocker only if the repair itself introduced it. A fresh
+   full re-review always yields new findings — that is a property of
+   re-reading, not of the candidate, and it is how a bounded loop stops
+   converging.
 6. **Finish:** leave the repository in a coherent state and give one concise
    delivery report.
 
@@ -243,6 +248,27 @@ node "$AE/scripts/forge.mjs" phase --id <id> --to <understand|plan|build|verify|
 - Critical or high findings block completion. Medium and low findings may be
   reported as residual risk when repair would exceed the request.
 - Stop after two unsuccessful repair cycles and explain the blocker.
+- A role may return DISPUTED **once**, with `VERIFIED (path:line)`
+  counter-evidence, instead of complying with a finding it can show is wrong.
+  Forge adjudicates: if the counter-evidence resolves and the finding's does
+  not, drop the finding and record why. Never resolve a dispute by asking the
+  reviewer to look again — that is how a bounded loop becomes an open one.
+
+## What "done" means for this kind
+
+`references/team.json`'s `acceptance` block defines the bar per kind. Most of
+it is judgment the Verifier owns, but two are not negotiable:
+
+| Kind | Done means | Non-negotiable |
+|---|---|---|
+| `bug` | the original reproduction now passes | re-run the **original** repro, not a new test that happens to pass; sweep callers |
+| `refactor` | **behaviour is unchanged** | existing tests pass **unmodified** — `finish` refuses otherwise |
+| `performance` | measured improvement under identical conditions | a before **and** after measurement; a percentile, not a mean |
+
+A refactor that rewrote its own tests has not demonstrated behaviour
+preservation, whatever the suite reports. If a test edit genuinely fixes a
+test defect rather than accommodating a behaviour change, say so in the report
+and pass `--tests-changed-justified`.
 
 Finish a delivery record only after implementation and verification both
 contributed. An audit-only record requires the Verifier and no code change:

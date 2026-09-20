@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -169,8 +169,35 @@ check('the report names every skipped role and the reason',
 check('the report warns when risk was never assessed',
   run(['report', '--id', 'unassessed']).stdout.includes('NOT ASSESSED'))
 
+// Per-kind acceptance. A refactor is correct precisely when behaviour did not
+// change, so rewriting its own tests contradicts the claim. This is the rare
+// acceptance rule a script can settle, so a script settles it.
+{
+  const rr = (argv) => spawnSync(process.execPath, [forge, ...argv, '--root', project], { encoding: 'utf8' })
+  const git = (argv) => spawnSync('git', argv, { cwd: project, encoding: 'utf8' })
+  git(['init', '-q'])
+  git(['config', 'user.email', 't@t']); git(['config', 'user.name', 't'])
+  mkdirSync(join(project, 'tests'), { recursive: true })
+  writeFileSync(join(project, 'tests', 'a.test.js'), 'test("a",()=>{})\n')
+  git(['add', '-A']); git(['commit', '-qm', 'base'])
+
+  rr(['start', '--title', 'Extract a helper', '--kind', 'refactor', '--risk', 'none', '--id', 'refactor-run'])
+  rr(['note', '--id', 'refactor-run', '--role', 'architect', '--summary', 'extract'])
+  rr(['phase', '--id', 'refactor-run', '--to', 'build', '--summary', 'b'])
+  rr(['note', '--id', 'refactor-run', '--role', 'builder', '--summary', 'extracted'])
+  writeFileSync(join(project, 'tests', 'a.test.js'), 'test("a",()=>{/* rewritten */})\n')
+  rr(['phase', '--id', 'refactor-run', '--to', 'verify', '--summary', 'v'])
+  rr(['note', '--id', 'refactor-run', '--role', 'verifier', '--summary', 'ok'])
+  const blocked = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)'])
+  check('a refactor that rewrote its own tests cannot finish',
+    blocked.status === 5 && blocked.stdout.includes('behaviour preservation is unproven'))
+  git(['checkout', '--', 'tests/a.test.js'])
+  const allowed = rr(['finish', '--id', 'refactor-run', '--summary', 'd', '--verification', 'tests (0)'])
+  check('the same refactor finishes once its tests are unmodified', allowed.status === 0)
+}
+
 const listed = body(run(['list']))
-check('list reports runs', Array.isArray(listed) && listed.length === 13)
+check('list reports runs', Array.isArray(listed) && listed.length === 14)
 
 rmSync(project, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)

@@ -178,5 +178,45 @@
     "api-platform",
     "test-automation",
     "payments"
-  ]
+  ],
+  "acceptance": {
+    "feature": {
+      "means": "the new behaviour is evidenced",
+      "requires": []
+    },
+    "bug": {
+      "means": "the original reproduction now passes and every sibling caller is repaired",
+      "requires": [
+        "re-run the ORIGINAL reproduction, not a new test that happens to pass",
+        "caller sweep at the shared origin"
+      ]
+    },
+    "refactor": {
+      "means": "behaviour is unchanged",
+      "requires": [
+        "existing tests pass UNMODIFIED",
+        "any test edit is justified in the report as a test defect, not a behaviour change"
+      ],
+      "check": "tests-unmodified"
+    },
+    "performance": {
+      "means": "a measured improvement under identical conditions",
+      "requires": [
+        "a before AND after measurement, same method and conditions",
+        "latency stated as a percentile, not a mean"
+      ]
+    },
+    "security": {
+      "means": "every pre-build constraint maps to evidence in the diff",
+      "requires": []
+    },
+    "idea": {
+      "means": "materially different options were considered and one accepted with a reason",
+      "requires": []
+    },
+    "audit": {
+      "means": "findings are evidenced and no code changed",
+      "requires": []
+    }
+  }
 }

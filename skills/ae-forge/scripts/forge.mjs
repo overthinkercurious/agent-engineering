@@ -220,6 +220,22 @@ function baseline(root) {
   return { head, analysis: map, at: new Date().toISOString() }
 }
 
+const ACCEPTANCE = TEAM.acceptance ?? {}
+const TEST_PATH = /(^|[\/\\])(tests?|spec|__tests__)[\/\\]|[._-](test|spec)\.[a-z]+$|(^|[\/\\])test_[^\/\\]+$/i
+
+// A refactor is correct precisely when behaviour did not change, so rewriting
+// its own tests is the one signal that contradicts the claim. This is the rare
+// acceptance rule a script can settle, so a script settles it - the model is
+// asked to justify, not to self-assess.
+function changedTestFiles(root, from) {
+  if (!from) return null
+  try {
+    const out = execFileSync('git', ['diff', '--name-only', from],
+      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    return out.split('\n').map((line) => line.trim()).filter(Boolean).filter((line) => TEST_PATH.test(line))
+  } catch { return null }
+}
+
 function briefPath(root, id) {
   const path = join(workRoot(root), safeId(id), 'brief.md')
   if (!inside(root, path)) die('brief path escapes project root')
@@ -513,6 +529,20 @@ function finish() {
   if (!verifierReview) {
     die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
   }
+  // Per-kind acceptance: most of it is judgment the Verifier owns, but a
+  // refactor that rewrote its own tests is mechanically checkable, so check it.
+  if (feature.run.kind === 'refactor' && !args.includes('--tests-changed-justified')) {
+    const touched = changedTestFiles(root, feature.run.baseline?.head)
+    if (touched && touched.length) {
+      die('a refactor changed test files, so behaviour preservation is unproven', 5, {
+        acceptance: ACCEPTANCE.refactor?.means ?? 'behaviour is unchanged',
+        changed_tests: touched.slice(0, 20),
+        resolve: 'restore the tests and re-run them unmodified, or pass --tests-changed-justified and explain in the report why each edit fixes a test defect rather than accommodating a behaviour change',
+      })
+    }
+  }
+  feature.run.acceptance = ACCEPTANCE[feature.run.kind] ?? null
+  feature.run.tests_changed_justified = args.includes('--tests-changed-justified') || undefined
   feature.run.brief_sha_at_finish = briefDigest(root, id)
   feature.run.status = 'done'
   feature.run.phase = 'done'
@@ -610,6 +640,7 @@ Internal recovery ledger for the autonomous Forge workflow.
   approve --id ID [--by NAME] [--basis TEXT]
   report --id ID
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]
+         [--tests-changed-justified]   (refactor only; explain in the report)
   cancel --id ID [--reason TEXT]
 
 --risk is the router. Answer the behavioural questions in team.json and pass
