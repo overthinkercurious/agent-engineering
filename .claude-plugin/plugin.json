@@ -15,5 +15,6 @@
     "software-engineering",
     "code-review"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
 }

@@ -51,6 +51,13 @@ check "repo placeholder substituted"      "! grep -qF '__KIT_REPO__' '$P/AGENTS.
 check "no stale version placeholder"      "! grep -qF '__KIT_VERSION__' '$P/AGENTS.md'"
 check "routes to the knowledge index"     "grep -qF '.dev/knowledge/00-index.md' '$P/AGENTS.md'"
 check ".gitignore ignores analysis"       "grep -qF '.dev/context/' '$P/.gitignore'"
+check "host.json is written"              "[ -s '$P/.dev/context/host.json' ]"
+# host.json decides whether Builder and Verifier get separate contexts. Ignore
+# it and a fresh clone silently downgrades to no isolation while still
+# reporting an independent review, so the negation is asserted by git itself
+# rather than by grepping for the pattern that is supposed to produce it.
+check "host.json survives a clone"        "(cd '$P' && ! git check-ignore -q .dev/context/host.json)"
+check "the analysis dump is still ignored" "(cd '$P' && : > .dev/context/analysis.json && git check-ignore -q .dev/context/analysis.json)"
 check "no CLAUDE.md (tool not present)"   "[ ! -f '$P/CLAUDE.md' ]"
 
 # ---------------------------------------------------------------------------

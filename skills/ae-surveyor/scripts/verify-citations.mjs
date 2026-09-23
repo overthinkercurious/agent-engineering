@@ -36,7 +36,11 @@ if (!existsSync(DIR)) {
 // Requiring the extension is what keeps "npm run test:coverage" and
 // "http://host:8080" out of the results - a false positive here would train
 // people to ignore real ones.
-const CITATION = /\b([A-Za-z0-9_][A-Za-z0-9_./\\-]*\.[A-Za-z0-9]{1,12}):(\d+)(?:-(\d+))?\b/g
+// The leading dot is optional so a citation into .github/, .claude-plugin/
+// or .dev/ resolves as written. Without it the match started one character
+// late and every such citation was reported as a missing file - a false
+// failure, which trains people to ignore the real ones.
+const CITATION = /(?<![A-Za-z0-9_])(\.?[A-Za-z0-9_][A-Za-z0-9_./\\-]*\.[A-Za-z0-9]{1,12}):(\d+)(?:-(\d+))?\b/g
 const SKIP_PREFIX = /^(https?|ftp|mailto):/i
 
 const lineCount = new Map()

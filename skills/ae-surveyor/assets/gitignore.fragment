@@ -13,6 +13,25 @@
 .dev/context/*
 !.dev/context/.gitkeep
 
-# Per-feature evidence, reviews, transcripts, and execution state are local
-# working memory and may contain sensitive material.
-.dev/work/
+# host.json is the exception, and it is committed deliberately. It is derived
+# from the kit's own targets.yml rather than from this repository, so it is
+# small, stable, and identical for every clone. It is also the file that
+# decides whether Builder and Verifier run in separate contexts. Ignoring it
+# means a fresh clone silently falls back to "no isolation" while still
+# reporting that an independent review happened - the one failure this file
+# must not cause.
+!.dev/context/host.json
+
+# Per-feature evidence, reviews and transcripts are local working memory and
+# may contain sensitive material, so the directory is ignored. Two files are
+# deliberately not: run.json is the control record (team, skip set, approval,
+# per-role severity, accepted gaps, brief_sha) and brief.md is the contract
+# the release audit compares the delivered change against. Neither carries
+# transcript text, and the plan already lands in the committed run artifact.
+# Without them a clone can read what was decided but cannot check that the
+# gates fired - which is where a second reviewer appears.
+.dev/work/**
+!.dev/work/
+!.dev/work/*/
+!.dev/work/*/run.json
+!.dev/work/*/brief.md

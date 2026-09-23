@@ -5,14 +5,57 @@ team from team.json, load only each selected role's workflow file under roles/.
 
 ## Shared result
 
-Every expert returns:
+Every expert writes this file to `.dev/work/<id>/results/<role>.md`. It is a
+form, not a description of one: copy the skeleton and fill it. Filling a form
+and composing a document from a list of required topics are different tasks,
+and only the first produces the same shape twice.
 
-- STATUS: COMPLETE, NEEDS INPUT, BLOCKED, or INCONCLUSIVE.
-- OUTCOME: the role's exclusive deliverable in no more than five bullets.
-- EVIDENCE: inspected paths and lines, or exact commands with exit status.
-- FINDINGS: severity, affected behavior, evidence, smallest repair, proof check.
-- UNKNOWNS: unresolved facts and whether each blocks the run.
-- HANDOFF: which role owns the next decision; never invoke that role directly.
+```markdown
+# <Role> · <run id> · revision <n>
+
+## STATUS
+COMPLETE | NEEDS INPUT | BLOCKED | INCONCLUSIVE
+
+## OUTCOME
+<the role's exclusive deliverable, in the shape its own `## Output` specifies>
+
+## EVIDENCE
+| What | Where | How checked |
+|---|---|---|
+| balance fold reads cleared rows only | `src/ledger.ts:88-140` | read |
+| unit suite | `npm test -- --run` | ran, exit 0 |
+
+## FINDINGS
+| ID | Severity | Location | Issue | Consequence | Smallest repair | Proof check |
+|---|---|---|---|---|---|---|
+| F1 | high | `src/auth.ts:51` | tenant id read from body | cross-tenant read | take it from the verified claim | `npm test -- auth` |
+
+## UNKNOWNS
+| Unknown | Blocks? | What would resolve it |
+|---|---|---|
+| retention window for superseded rows | no | product decision, or `docs/retention.md` |
+
+## HANDOFF
+<role that owns the next decision, and the one question it must answer>
+```
+
+Rules that make the form mean something:
+
+- **Every column is required.** A finding missing any cell is dropped rather
+  than reported — an unfillable column is the evidence that the finding was
+  not actually established. In particular `Consequence` is the concrete
+  failure produced; "could be cleaner" is not a consequence.
+- **At most five findings**, ranked by severity then blast radius. More than
+  five means the pass drifted from safety into style.
+- **`EVIDENCE` rows are things you opened or ran in this pass**, not things
+  you already believed. `How checked` is `read`, `ran, exit <n>`, or
+  `grep <pattern> → <n> hits`.
+- **An empty section is written as `none`**, never deleted. A missing section
+  and a section with nothing in it say different things, and only one of them
+  is a result.
+- **`UNKNOWNS` is the escalation valve.** An unresolved fact belongs here, not
+  inline in `OUTCOME` as a hedge. A role that records a blocking unknown has
+  done its job correctly.
 
 Critical and high findings block delivery. Medium and low findings are visible
 but do not expand the approved scope automatically. Experts do not edit another
@@ -68,16 +111,46 @@ the project**, never assumed:
 
 `ae-surveyor` resolves every known host's tier from its own `targets.yml` at
 scaffold time and publishes the table to `.dev/context/host.json`. Read that
-file and look up the tool you are running as. This kit still never reads
-another installed skill's files — the channel is an artifact inside the
-project, so it cannot silently rot the way a "keep these in sync" instruction
-would.
+file and look up the tool you are running as.
+
+**Two coupling styles, and the difference is deliberate.** Across a *product*
+boundary — `ae-forge` and `ae-surveyor` — this kit never reads another
+skill's files. The channel is an artifact inside the project, versioned by
+`analysis.json`'s `schema` field and checked against `team.json`'s
+`analysis_schema`, so it cannot silently rot the way a "keep these in sync"
+instruction would. Within the *delivery pipeline*, the six stage skills
+(`ae-plan`, `ae-plan-review`, `ae-build`, `ae-verify`, `ae-investigate`,
+`ae-audit`) do read `ae-forge/references/` directly, by resolving it as a
+sibling. That is not an exception to the rule, it is the rule applied to a
+different thing: they are one distribution unit with `ae-forge`, installed
+together and versioned together by `contract`. A stage skill that cannot
+resolve that sibling stops rather than improvising, which is what keeps the
+coupling honest.
 
 Assume `none` only when that file is missing or your own row is not in it, and
 say which of the two it was. Assuming `none` on a host that supports isolation
 is not the safe choice it looks like: it collapses Builder and Verifier into
 one context, and the independent review this team depends on stops existing
 while still being reported as though it happened.
+
+## Enforcement tiers
+
+Two tiers, and like `dispatch` the tier is **read, never assumed**:
+
+- `native` — a host-level hook refuses an edit while a run still needs
+  approval, and while a run is in `verify`. Available where this kit is
+  installed as a plugin whose hooks the host loads.
+- `none` — the default everywhere else. The same two rules still hold; they
+  are enforced by `forge.mjs` when it is called, and by nothing when it is not.
+
+Read `.dev/context/enforce.json`. That marker is written only by this kit's
+`SessionStart` hook, so its presence is evidence the tier is live rather than
+a claim that it should be; `start` reads it for you and prints it.
+
+Never describe `native` as a sandbox. Hooks load from a file this model can
+edit, and a subagent's tool calls may not reach them. It is defence in depth:
+it closes the gap where an edit happens without `forge.mjs` being called at
+all, and it closes nothing else.
 
 ## Lens selection
 

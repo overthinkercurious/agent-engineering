@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, readdirSy
 import { execFileSync } from 'node:child_process'
 import { join, relative, extname, basename, dirname, isAbsolute, resolve, sep } from 'node:path'
 import { createHash } from 'node:crypto'
-import { sense, manifestKind, redact } from './sense.mjs'
+import { sense, manifestKind, redact, maskComments } from './sense.mjs'
 
 // ---------------------------------------------------------------- args ------
 
@@ -298,13 +298,17 @@ for (const rel of allPaths) {
 
   // Routes declared in code. Tests and docs are excluded: a framework's own
   // test suite is full of `.get('/foo')` calls that are not this project's
-  // routes, and counting them inflates the route list into noise.
+  // routes, and counting them inflates the route list into noise. Comments are
+  // masked for the same reason and with a sharper edge: this analyzer's own
+  // comment above used to be detected as a live express route in its own
+  // survey, which is a false OBSERVED claim rather than merely noise.
   if (!test && !example && CODE.has(lang)) {
+    const scannable = maskComments(text, lang)
     for (const rp of ROUTE_PATTERNS) {
       if (rp.only && !rp.only.test(rel)) continue
       rp.re.lastIndex = 0
       let m
-      while ((m = rp.re.exec(text)) !== null) {
+      while ((m = rp.re.exec(scannable)) !== null) {
         addRoute({ path: rel, framework: rp.fw, method: rp.m ? m[rp.m].toUpperCase() : null, route: m[rp.p] })
         if (routes.length > 5000) break
       }

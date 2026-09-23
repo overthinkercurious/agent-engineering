@@ -14,6 +14,9 @@ boundaries, autonomy rules, recovery state, and completion criteria.
       -> routing decision, printed with what was SKIPPED and why
       -> understand
       -> risk-sized brief (tier-bound sections), approved and then frozen
+      -> USER APPROVAL, required whenever a plan exists or the change
+         carries an access, stored-shape or irreversible risk; checked
+         both by the run record and again by Builder
       -> build
       -> independent verify
       -> repair (at most two cycles; second pass focuses on the repair)
@@ -25,11 +28,31 @@ Data, Experience, Reliability, Product, or Investigator expert. Every expert
 has a dedicated workflow and exclusive outcome. Audit-only work excludes
 Builder and never edits code unless the user separately requests remediation.
 
+## Enforcement
+
+Every gate lives in `forge.mjs`, and until recently whether `forge.mjs` ran
+at all was decided by prose. That is an authority inversion: the instruction
+plane admits or bypasses the control plane.
+
+The kit closes the narrowest useful part of it with a host hook, on the same
+terms it already uses for isolation — a tier that is **read from the project,
+never assumed**, with `none` as the default and the limits shipped alongside
+the claim. Two refusals only, both already stated in writing elsewhere in this
+kit: no edit while a run still needs approval, and no edit while a run is in
+`verify`. Everything else stays advisory.
+
+It is not a sandbox and must never be reported as one. Hooks load in one host,
+from a file the model can edit, and a subagent's tool calls may not reach them.
+What it buys is the case the ledger could never see: an edit made without
+`forge.mjs` being called at all.
+
 ## Deliberately excluded
 
 The kit does not implement:
 
 - a second model-host adapter system;
+- a blocking `Stop` hook. Refusing to end a turn can strand a session with no
+  way out, and the failure it would prevent is already visible in the report;
 - token or monetary budget accounting the host cannot measure reliably;
 - cryptographic evidence claims over a workspace every agent can edit;
 - separate schemas for every intermediate document;

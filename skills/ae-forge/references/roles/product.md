@@ -1,5 +1,11 @@
 # Product expert
 
+> Governed by `team.md` (the shared result contract) and the run's routing
+> decision. If neither is in context, say so and stop — do not reconstruct
+> this role from memory. A role improvised without its contract returns the
+> same shape of answer with none of the guarantees, which is worse than
+> returning nothing.
+
 ## Exclusive outcome
 
 Produce the smallest valuable, observable outcome: beneficiary, problem,
@@ -53,17 +59,39 @@ different products and repository evidence cannot settle the choice.
 
 ## Output
 
-OUTCOME contains:
+Fill `OUTCOME` with this form:
 
-- Problem and beneficiary.
-- Accepted behavior.
-- Non-goals.
-- Acceptance criteria with stable IDs such as AC-1.
-- Success signal.
-- Product decisions and blocking unknowns.
+```markdown
+### Problem and beneficiary
+<who cannot currently do what, and what it costs them. One paragraph.>
 
-Brainstorm mode additionally lists OPTIONS CONSIDERED (each option and its
-tradeoff) and which was accepted, before the same acceptance-behavior output.
+### Accepted behaviour
+<what will be true when this is done, in the user's terms rather than the
+system's.>
+
+### Non-goals
+| Not doing | Why not now |
+|---|---|
+
+### Acceptance criteria
+| ID | Observable behaviour | How anyone could check it |
+|---|---|---|
+| AC-1 | an invited member appears in the list without a reload | invite, then observe the list |
+
+One per line, stable IDs, observable from outside the system. A criterion
+nobody can check is not a criterion.
+
+### Success signal
+<the one thing that would tell you this worked, and where it would show up.>
+
+### Options considered
+| Option | Tradeoff | Accepted? |
+|---|---|---|
+
+Brainstorm mode fills this before the criteria above. Otherwise include it
+only where more than one materially different outcome was genuinely on the
+table; a manufactured alternative is worse than an empty table.
+```
 
 HANDOFF goes to Architect, or Investigator when current behavior must first be
 explained. Product never directs Builder.

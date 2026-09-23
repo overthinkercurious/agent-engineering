@@ -23,10 +23,21 @@ once, at the top of every run:
 
 ```bash
 SV="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
-[ -n "$SV" ] || for d in .claude/skills/ae-surveyor .agents/skills/ae-surveyor; do
+[ -n "$SV" ] || for d in .claude/skills/ae-surveyor .agents/skills/ae-surveyor \
+                         .gemini/skills/ae-surveyor .agent/skills/ae-surveyor; do
   [ -f "$d/SKILL.md" ] && SV="$d" && break
 done
+[ -n "$SV" ] && [ -f "$SV/scripts/scaffold.sh" ] \
+  && printf 'ae-surveyor: %s\n' "$SV" \
+  || printf 'AE-SURVEYOR UNRESOLVED\n'
 ```
+
+**If that prints `AE-SURVEYOR UNRESOLVED`, stop and say so.** Every stage below
+is a script; there is no model-only version of this survey. A hand-written
+`.dev/knowledge/` that looks generated is worse than none, because the next
+skill will trust its tags. Tell the user the directory could not be resolved,
+print the restore command from the project's instruction file, and end the
+turn.
 
 Read `references/targets.yml` for this host's paths **and its dispatch
 tier**. A host is `native-parallel` (concurrent isolated dispatch confirmed

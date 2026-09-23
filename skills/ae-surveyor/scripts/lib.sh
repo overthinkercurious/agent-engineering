@@ -175,6 +175,16 @@ ae_write_block() {
 
 ae_block_present() { [ -f "$1" ] && grep -qF "$AE_MARK_START" "$1"; }
 
+# True when the "project" being surveyed is this kit's own source repository.
+# There, skills/ae-*/ is the product, not an installed dependency: ignoring it
+# hides every uncommitted skill directory from git status, and the advice to
+# untrack the tracked ones would delete the product. Two markers together,
+# because either alone can appear in a consumer project.
+ae_self_hosted() {
+  [ -f "$1/kit-version.txt" ] && [ -f "$1/skills/ae-forge/SKILL.md" ] \
+    && [ -f "$1/skills/ae-surveyor/SKILL.md" ]
+}
+
 # Substitute the handful of placeholders templates are allowed to use.
 ae_render() {
   sed -e "s|__KIT_REPO__|${AE_KIT_REPO:-overthinkercurious/agent-engineering}|g" "$1"

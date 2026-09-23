@@ -5,13 +5,32 @@ software request from intent to implementation and independent verification.
 It is designed for people who want to describe the outcome, not operate an
 agent framework.
 
-The kit ships two public skills:
+**ae-forge** is the only skill you need to name. It selects a risk-sized team,
+drives each stage, enforces the gates, and reports the result.
 
-- **ae-forge** is the everyday entry point. It selects a risk-sized team,
-  plans, implements, verifies, repairs findings, and reports the result.
-- **ae-surveyor** optionally builds durable project knowledge and rules for large
-  or long-lived repositories. Forge does not refuse work when initialization
-  has not been run.
+Behind it are six stage skills and one optional survey. You can invoke any of
+them directly when you want to drive a stage yourself, but you never have to:
+
+| Skill | Stage |
+|---|---|
+| `ae-forge` | Orchestrator — routes, gates, owns the run artifact |
+| `ae-investigate` | Establish the cause of a failure before anyone plans a fix |
+| `ae-plan` | Write the implementation plan |
+| `ae-plan-review` | Read that plan adversarially, before any code exists |
+| `ae-build` | Implement the approved plan |
+| `ae-verify` | Independently verify the candidate and issue the verdict |
+| `ae-audit` | Audit the repository cold, with no plan and no diff |
+| `ae-surveyor` | Optional durable project knowledge and rules |
+
+Stages run **sequentially, never concurrently**. The pairs that matter are
+adversarial — a plan and its review, a build and its verification — and running
+a pair at the same time means the reviewer is judging a moving target.
+
+Every stage reads and writes one committed file, `.dev/runs/<id>.md`. Each
+stage is invoked with a clean context and inherits nothing, so that file is the
+only channel between them: a decision recorded in a conversation does not
+exist. The bar the artifact has to meet is that a reader who has seen none of
+the run can review and implement from it alone.
 
 ## The normal experience
 
@@ -34,7 +53,7 @@ or understand the internal lifecycle.
 
 ## The team
 
-Forge has nine internal experts. Each has a dedicated workflow and one
+Forge has eleven internal experts. Each has a dedicated workflow and one
 exclusive outcome:
 
 | Role | Used when |
@@ -42,15 +61,26 @@ exclusive outcome:
 | Product | A new idea or feature outcome is genuinely ambiguous |
 | Investigator | A bug or performance problem has no demonstrated cause |
 | Architect | A meaningful design or multi-file change needs a safe plan |
+| Plan Reviewer | A plan exists and has not been read by anyone who did not write it |
 | Security | Trust, authorization, privacy, abuse, or payment risk is present |
 | Data | Stored-data invariants, migration, backfill, or recovery is affected |
 | Experience | A user journey, interface state, or accessibility behavior changes |
 | Reliability | Runtime failure, concurrency, performance, or recovery is affected |
 | Builder | Code, tests, or configuration must change |
 | Verifier | The implemented result needs independent inspection |
+| Auditor | The repository itself needs a cold read, with no plan and no diff |
+
+Two of those exist because nobody else could answer their question. **Plan
+Reviewer** owns "is this design wrong, before we build it" — Architect writes
+the plan and Verifier judges the result, so without this role a design defect
+is found in a diff rather than in a paragraph. It re-opens every citation the
+plan makes; a reference that does not resolve is an automatic blocker.
+**Auditor** owns "what is already wrong here", read cold: it deliberately does
+not read the plan or the diff, because an auditor who knows what was intended
+audits the intention.
 
 Builder and Verifier are the minimum delivery team. Most changes use Architect,
-Builder, and Verifier. Other experts are selected only when their exclusive
+Plan Reviewer, Builder, and Verifier. Other experts are selected only when their exclusive
 boundary is present, and that selection is **behavioural, not lexical**: Forge
 answers a short set of questions about what the change actually does — does it
 change who can reach anything, does it change stored shape, does it change a
@@ -62,9 +92,15 @@ and "add RBAC" all reach the Security expert.
 Depth inside a boundary comes from **lenses** rather than more experts. A lens
 attaches to an expert already working — it costs no extra dispatch — and
 carries the domain specifics that go out of date, each with the date it was
-last verified. Fourteen ship today: accessibility, AI/LLM, payments, privacy,
-secrets, web and database performance, observability, infrastructure, API
-contracts, test quality, Android, iOS, and UI finish.
+last verified. Twenty ship today: accessibility, AI/LLM, API contracts,
+Android, caching, compliance, database and web performance, i18n,
+identity/auth, infrastructure, iOS, observability, payments, privacy,
+queue/messaging, release engineering, secrets, test quality, and UI finish.
+
+A domain the kit detects but has no lens for is announced as `LENS
+UNAVAILABLE` rather than improvised — `realtime`, `collaborative-editing` and
+`search-relevance` are named gaps today, and a role asked about one of them
+says so instead of inventing an answer.
 
 **The kit adapts to your project without being told.** It reads the survey's
 sensor dump and derives the relevant domains from what the repository actually
@@ -75,16 +111,17 @@ left. A domain it detects but has no lens for is reported as unavailable
 rather than silently improvised, and a lens past its review date says so
 instead of quoting a threshold nobody rechecked.
 
-Audit-only requests use Verifier plus only the relevant Architect or named
-specialist, and do not modify code.
+Audit-only requests use Auditor plus Verifier and any relevant named
+specialist. They exclude Architect, Plan Reviewer and Builder — there is no
+plan to review and nothing to implement — and they do not modify code.
 
 ### Risk-sized operation
 
 | Tier | Typical use | Default team |
 |---|---|---|
 | Quick | Local, reversible, well-understood correction | Builder, Verifier |
-| Standard | Meaningful feature, refactor, or multi-file change | Architect, Builder, Verifier |
-| Deep | Security, payments, destructive data, public contracts, difficult rollback | Architect, relevant named specialist, Builder, Verifier |
+| Standard | Meaningful feature, refactor, or multi-file change | Architect, Plan Reviewer, Builder, Verifier |
+| Deep | Security, payments, destructive data, public contracts, difficult rollback | Architect, Plan Reviewer, relevant named specialist, Builder, Verifier |
 
 An Investigator is added for unknown bugs and performance problems. Product is
 added for ambiguous ideas. Experience is selected for user-facing journeys;
@@ -94,10 +131,28 @@ risks require more.
 
 ## Autonomy and approval
 
-Forge proceeds through routine, reversible engineering decisions without
-interrupting the user. It asks once when work requires a material product
-choice, destructive or irreversible action, external side effect, new access or
-spending, production deployment, or acceptance of a serious unresolved risk.
+Forge asks once, before implementation, and then works without interrupting.
+
+Approval is required whenever a plan exists — any `standard` or `deep` run —
+and whenever the change carries an `access`, `stored-shape`, or `irreversible`
+risk. **Quick** work is the gate-free case: local, reversible, understood, with
+no open design choice.
+
+The rule is that anything with a design behind it had something the user could
+have disagreed with, and they should see it before code changes rather than
+after. A reviewer verdict is not user approval: an expert clearing its findings
+says the change is sound, only the user says it is wanted. Forge refuses to
+record a role as the approver, and Builder checks the same condition
+independently before editing — two keys, because a gate enforced at one point
+is a gate one mistake opens.
+
+An audit-only run is never gated. It cannot enter build and cannot modify code,
+so there is no action to authorise.
+
+Separately, four actions are gated at the moment of action, every run, whatever
+was approved earlier: pushing to a remote, merging, migrating a shared
+environment, and anything that spends money. Approving a plan authorises the
+change, never its release.
 
 Planning is not treated as delivery. Completion for a requested change requires:
 
@@ -142,7 +197,7 @@ For example, Antigravity IDE needs exactly:
 npx skills@1.7.0 add overthinkercurious/agent-engineering --agent antigravity --copy -y
 ```
 
-The command is project-scoped: it downloads both complete skill directories,
+The command is project-scoped: it downloads all eight skill directories,
 puts them where the selected IDE discovers them, and writes `skills-lock.json`.
 `--copy` avoids cross-platform symlink failures. Do not add `-g`; project scope
 is the portable contract and records the installed content with the repository.

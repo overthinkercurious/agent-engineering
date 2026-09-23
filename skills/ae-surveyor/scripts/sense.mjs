@@ -92,6 +92,42 @@ export function githubSteps(file, text) {
   return { steps, warnings: [...new Set(warnings)] }
 }
 
+// Whole-line comments are masked, not deleted, so every offset downstream
+// stays put. The route scan reads the masked copy: a framework path written in
+// a comment is documentation, not a declared route, and counting it puts a
+// false OBSERVED claim into a generated knowledge base - this analyzer's own
+// comment used to be reported as a live express route in its own survey.
+//
+// Deliberately line-based. A character-level scanner has to tokenise the
+// language to know whether a quote opens a string or sits inside a regex
+// literal, and this file is full of regex literals containing quotes. Getting
+// that wrong desynchronises the scanner and silently stops masking anything,
+// which is worse than masking less - it looks like it works. Trailing comments
+// after code are left alone: that is the pre-existing behaviour, and it is
+// rare for the text this guards against.
+const HASH_COMMENT = new Set(['python', 'ruby', 'shell', 'yaml', 'toml', 'perl', 'r'])
+export function maskComments(text, lang) {
+  const hash = HASH_COMMENT.has(lang)
+  let inBlock = false
+  return text.split('\n').map((line) => {
+    const trimmed = line.trim()
+    const blank = ' '.repeat(line.length)
+    if (inBlock) {
+      const close = line.indexOf('*/')
+      if (close === -1) return blank
+      inBlock = false
+      return ' '.repeat(close + 2) + line.slice(close + 2)
+    }
+    if (!hash && trimmed.startsWith('/*')) {
+      if (line.indexOf('*/', line.indexOf('/*') + 2) === -1) inBlock = true
+      return blank
+    }
+    if (!hash && (trimmed.startsWith('//') || trimmed.startsWith('*'))) return blank
+    if (hash && trimmed.startsWith('#')) return blank
+    return line
+  }).join('\n')
+}
+
 export function sense(paths, read) {
   const stack = { package_managers: [], manifests: [], runtimes: {} }
   const commands = { scripts: {}, make_targets: [], ci: [], entries: [] }

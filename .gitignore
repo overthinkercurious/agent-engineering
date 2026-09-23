@@ -14,3 +14,42 @@ node_modules/
 # Accidental Claude-app export target; the design record lives in the
 # claude.ai project, not in this repo.
 /Claude outputs/
+
+# <!-- agent-engineering:start -->
+# Installed skills are a dependency, not your code. They are restored with one
+# command, so they do not belong in your history.
+#
+#   npx skills@1.7.0 add overthinkercurious/agent-engineering --agent AGENT_ID --copy -y
+#
+# Every skill this kit installs is prefixed ae- specifically so this single
+# pattern can match all of them without listing names by hand.
+
+# Raw analysis dump: large, machine-only, and regenerated on every run. The
+# documents derived from it in .dev/knowledge/ and .dev/rules/
+# ARE committed - they are the reusable project contract.
+.dev/context/*
+!.dev/context/.gitkeep
+
+# host.json is the exception, and it is committed deliberately. It is derived
+# from the kit's own targets.yml rather than from this repository, so it is
+# small, stable, and identical for every clone. It is also the file that
+# decides whether Builder and Verifier run in separate contexts. Ignoring it
+# means a fresh clone silently falls back to "no isolation" while still
+# reporting that an independent review happened - the one failure this file
+# must not cause.
+!.dev/context/host.json
+
+# Per-feature evidence, reviews and transcripts are local working memory and
+# may contain sensitive material, so the directory is ignored. Two files are
+# deliberately not: run.json is the control record (team, skip set, approval,
+# per-role severity, accepted gaps, brief_sha) and brief.md is the contract
+# the release audit compares the delivered change against. Neither carries
+# transcript text, and the plan already lands in the committed run artifact.
+# Without them a clone can read what was decided but cannot check that the
+# gates fired - which is where a second reviewer appears.
+.dev/work/**
+!.dev/work/
+!.dev/work/*/
+!.dev/work/*/run.json
+!.dev/work/*/brief.md
+# <!-- agent-engineering:end -->

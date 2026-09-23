@@ -1,5 +1,11 @@
 # Reliability expert
 
+> Governed by `team.md` (the shared result contract) and the run's routing
+> decision. If neither is in context, say so and stop — do not reconstruct
+> this role from memory. A role improvised without its contract returns the
+> same shape of answer with none of the guarantees, which is worse than
+> returning nothing.
+
 ## Exclusive outcome
 
 Own runtime failure behavior, performance and capacity, concurrency outside
@@ -39,9 +45,37 @@ breakers, telemetry, rollout, or operational recovery.
 
 ## Output
 
-OUTCOME contains the failure model, runtime invariants, measured baseline,
-operational signals, recovery expectations, and candidate findings. Do not
-invent service objectives or traffic.
+Fill `OUTCOME` with this form:
+
+```markdown
+### Failure model
+| Dependency | Fails how | Current behaviour | Required behaviour |
+|---|---|---|---|
+| invite email provider | timeout | request hangs | fail closed, invite still created |
+
+### Runtime invariants
+| # | Invariant | Enforced at | Evidence |
+|---|---|---|---|
+| R1 | retry is idempotent per invite id | `src/invite.ts:88` | VERIFIED |
+
+### Baseline
+| Metric | Before | After | Method | Conditions |
+|---|---|---|---|---|
+| p95 invite latency | 240ms | 180ms | `bench/invite.mjs`, 500 runs | same host, warm cache |
+
+State latency as a percentile, never a mean, and give before **and** after
+under identical conditions. A single measurement is not an improvement.
+Where no measurement exists, write `UNKNOWN` and the command that would
+produce one — do not invent a service objective or a traffic level.
+
+### Operational signals
+| Signal | Emitted at | What it tells an operator |
+|---|---|---|
+
+### Recovery
+<what happens on partial failure, what retries, what is left inconsistent, and
+for how long.>
+```
 
 HANDOFF goes to Architect for design changes or Builder for accepted repairs.
 

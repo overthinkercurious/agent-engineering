@@ -157,9 +157,20 @@ function runCli() {
   // domain truth available, and it does not depend on anyone remembering.
   const analysisPath = resolve(option('--analysis', join(process.cwd(), '.dev', 'context', 'analysis.json')))
   let derived = { tags: [], because: {} }
+  let schemaMismatch = null
   if (existsSync(analysisPath)) {
     try {
-      derived = deriveDomains(JSON.parse(readFileSync(analysisPath, 'utf8')), team.domain_detectors ?? [])
+      const analysis = JSON.parse(readFileSync(analysisPath, 'utf8'))
+      // A survey written by a different generation of the surveyor does not
+      // fail here - it reports. Without this the failure mode was silent and
+      // indistinguishable from success: a renamed field yields FEWER lenses,
+      // returned as a legitimate selection. Every other absence in this kit
+      // is recorded rather than inferred; this one was not.
+      const expected = team.analysis_schema ?? null
+      if (expected !== null && analysis.schema !== expected) {
+        schemaMismatch = { expected, found: analysis.schema ?? null }
+      }
+      derived = deriveDomains(analysis, team.domain_detectors ?? [])
     } catch { /* an unreadable survey is a missing survey, not a hard failure */ }
   }
 
@@ -172,6 +183,7 @@ function runCli() {
     ...result,
     derived_from_project: derived.tags,
     derived_because: derived.because,
+    ...(schemaMismatch ? { schema_mismatch: schemaMismatch } : {}),
   }, null, 2)}\n`)
 }
 

@@ -79,10 +79,14 @@ docs.push(['stack.md', 'Stack', [
     langs.map(([lang, v]) => [lang, v.files ?? 'UNKNOWN', v.loc ?? 'UNKNOWN']),
     'No languages detected; the inventory may have excluded everything.'),
   '\n## Package managers and manifests\n\n',
+  // sense.mjs writes { file, component, kind, deps, devDeps }. Reading
+  // m.manager and m.path here printed UNKNOWN for every row while the value
+  // sat one field away in the same JSON - the exact drift the kit's own
+  // contract gates exist to catch, inside the kit.
   table(['Manager', 'Manifest'],
     (a.stack?.manifests ?? []).map((m) => [
-      typeof m === 'string' ? (a.stack?.package_managers ?? []).join(', ') || 'UNKNOWN' : (m.manager ?? 'UNKNOWN'),
-      typeof m === 'string' ? m : (m.path ?? 'UNKNOWN'),
+      typeof m === 'string' ? (a.stack?.package_managers ?? []).join(', ') || 'UNKNOWN' : (m.manager ?? m.kind ?? 'UNKNOWN'),
+      typeof m === 'string' ? m : (m.path ?? m.file ?? 'UNKNOWN'),
     ]),
     'No manifest detected by supported parsers.'),
   '\n## Most-imported external packages\n\n',
@@ -104,7 +108,8 @@ docs.push(['architecture.md', 'Architecture', [
   'so fan-in is a lower bound and an empty route list means undetected, not absent._\n\n',
   '## Components\n\n',
   table(['Component', 'Root', 'Entrypoints detected'],
-    components.map((c) => [c.name ?? 'UNKNOWN', c.root ?? 'UNKNOWN', (c.entrypoints ?? []).length]),
+    // Same drift: the sensor writes { id, root, kind }, never `name`.
+    components.map((c) => [c.name ?? c.id ?? 'UNKNOWN', c.root ?? 'UNKNOWN', (c.entrypoints ?? []).length]),
     'No component boundary detected; treat the repository as one component until proven otherwise.'),
   '\n## Routes and entrypoints\n\n',
   table(['Route', 'Method', 'Framework', 'Declared in'],

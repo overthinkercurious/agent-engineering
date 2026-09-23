@@ -30,7 +30,10 @@ inside the kit and copied in by detected stack — never enforced here, and this
 project's own code and docs always outrank them.
 
 `.dev/context/` holds the raw analysis dump. It is regenerated on every run and
-is not committed. `.dev/work/` holds ignored per-feature working artifacts.
+is not committed — except `.dev/context/host.json`, which is committed because
+it decides whether review roles run in an isolated context, and a clone that
+loses it silently downgrades to no isolation. `.dev/work/` holds ignored
+per-feature working artifacts.
 
 **The suite itself is not committed to this repository.** It is a dependency,
 listed in `skills-lock.json` and gitignored. In a fresh clone, restore it with:

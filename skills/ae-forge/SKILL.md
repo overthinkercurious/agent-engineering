@@ -45,10 +45,23 @@ Resolve the installed skill directory once:
 
 ```bash
 AE="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
-[ -n "$AE" ] || for d in .claude/skills/ae-forge .agents/skills/ae-forge; do
+[ -n "$AE" ] || for d in .claude/skills/ae-forge .agents/skills/ae-forge \
+                         .gemini/skills/ae-forge .agent/skills/ae-forge; do
   [ -f "$d/SKILL.md" ] && AE="$d" && break
 done
+[ -n "$AE" ] && [ -f "$AE/scripts/forge.mjs" ] \
+  && printf 'ae-forge: %s\n' "$AE" \
+  || printf 'AE-FORGE UNRESOLVED\n'
 ```
+
+**If that prints `AE-FORGE UNRESOLVED`, stop and say so.** Do not continue from
+memory. Every gate in this file — routing, approval, the audit, the completion
+checks — lives in `scripts/`, so a run without them is not a lighter-weight
+Forge run, it is an ungoverned one that still reports itself as a Forge run.
+Say the directory could not be resolved, print the restore command
+(`npx skills@1.7.0 add overthinkercurious/agent-engineering --agent <AGENT_ID>
+--copy -y`, or set `AE_SKILL_DIR`), and end the turn. A shell that cannot run
+the resolution at all is the same condition.
 
 Inspect the project instructions and current work. Build the repository map
 **once per run**, before any expert starts, and give every expert the same map:
@@ -79,8 +92,15 @@ create one small record. Skip the record for explanation-only work.
 ```bash
 node "$AE/scripts/forge.mjs" list
 node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
-  --risk <comma-list|none> [--domain <comma-list>]
+  --risk <comma-list|none> [--signals <comma-list>] [--domain <comma-list>]
 ```
+
+`--signals` passes the request's own vocabulary — `oauth`, `payment`, `deploy`,
+`migration`, the words the user actually used. Signals only ever **add** a
+reviewer or raise a tier; they can never withhold one, which is why `--risk`
+stays the router and this stays optional. Pass it anyway: it is free, it
+catches the case where the behavioural questions were answered too narrowly,
+and it feeds lens selection.
 
 ### Assess risk before starting
 
@@ -133,21 +153,33 @@ every checklist, or a separate critic merely because they exist.
 
 ### Print the routing decision
 
-Before any expert works, print the routing block from `start`'s output — six
+Before any expert works, print the routing block from `start`'s output — seven
 lines, once, then stay quiet:
 
 ```text
+Forge   · contract v2 · run 3f9c1a
 Routing · deep · Architect → Security → Experience → Builder → Verifier
 Why     · risk=access (changes who may authenticate), risk=rendered (new login journey)
 Skipped · data (no stored-shape risk declared) · reliability (no runtime risk declared)
         · investigator (no undiagnosed defect) · product (outcome already specified)
 Lenses  · ui-finish → experience, builder
 Approval· required before build (external provider registration)
+Enforce · native (approval gate gated in the host) | none (gates are advisory)
 ```
+
+Copy the `Forge` line from `start`'s `contract` field. Do not type it from
+memory and never guess the number: it is read from `team.json`, which only
+exists when the skill directory resolved, so a routing block carrying it is
+evidence the machinery ran. A block without it is a block the model composed,
+which is the one kind of routing decision this file cannot trust.
 
 The `Skipped` line is required. A review the team decided not to run is the
 one thing the user cannot infer from the result, and it is how a wrong routing
 decision gets caught on the first run instead of the tenth.
+
+The `Enforce` line is `start`'s `enforce` field verbatim. It is read, never
+assumed, and `none` is the honest default. See `team.md`'s "Enforcement
+tiers" for what each tier does and, more importantly, what it does not.
 
 An audit-only request is different: select Verifier and only the relevant
 Architect, Security, Data, Experience, or Reliability expert. Do not add
@@ -157,35 +189,86 @@ is no separate release role; scope it to the relevant specialists (Reliability
 for rollout/observability, Security for exposure, Data for migration safety)
 plus Verifier.
 
-Resolve this host's isolated-agent capability before dispatching anything:
+## Drive the stages, one at a time
+
+Stages run **sequentially**. Never two at once, whatever this host can
+dispatch: the stages that matter are adversarial in pairs — plan and its
+review, build and its verification — and running a pair concurrently means the
+reviewer judges a moving target.
+
+Six stages are separately installed skills. Scaffold the artifact first, then
+drive them in routing order:
 
 ```bash
-cat .dev/context/host.json   # written by ae-surveyor stage 1
+node "$AE/scripts/forge.mjs" artifact --id <id>
 ```
 
-Find **your own** row in `hosts` — you know which tool you are running as —
-and use its `dispatch` value. Do not infer a tier from `detected_in_project`;
-that field describes what this repository contains, not what is executing.
-If the file is absent, or you cannot identify your own row, use
-`default_dispatch` and say so in the report.
+| Stage | Skill | Writes section |
+|---|---|---|
+| Investigator | `ae-investigate` | `Investigation` |
+| Architect | `ae-plan` | `Plan` |
+| Plan Reviewer | `ae-plan-review` | `Plan review` |
+| Builder | `ae-build` | `Implementation` |
+| Verifier | `ae-verify` | `Verification` |
+| Auditor | `ae-audit` | `Audit` |
 
-The tiers: `native-parallel` (concurrent isolated dispatch),
-`native-sequential` (isolation confirmed, not concurrency), `none`.
+The five named specialists — Security, Data, Experience, Reliability, Product —
+are not separate skills. They attach to whichever stage is running, from
+`references/roles/`, the same way a lens does. Their findings go into that
+stage's result.
 
-On `native-parallel` or `native-sequential`, give each expert the request,
-exact repository scope, relevant project rules, its dedicated workflow file,
-and the shared result contract; experts return findings to Forge and never
-dispatch one another. A dispatched expert inherits nothing from this
-conversation, so everything it needs must be in its prompt — that isolation
-is the point, not an inconvenience to work around by summarising what you
-already concluded.
+### How a stage is invoked
 
-On `none`, run explicit role passes in this same session and disclose in the
-final report that verification was not context-independent this run.
+Prefer isolated dispatch where this host has it, one stage at a time:
 
-Forge is the sole coordinator. Planning and review roles are read-only. Builder
-is the only role that edits application code. Do not run Builder and Verifier
-concurrently, and do not let experts mutate the recovery record.
+```bash
+cat .dev/context/host.json   # committed by ae-surveyor stage 1
+```
+
+Find **your own** row in `hosts` — you know which tool you are running as — and
+use its `dispatch` value. Do not infer a tier from `detected_in_project`; that
+field describes what this repository contains, not what is executing. If the
+file is absent or your row is not in it, assume `none` and say which of the two
+it was.
+
+- **Isolation available** — dispatch the stage with its skill name, the run id,
+  the artifact path, the exact repository scope, and the specialists and lenses
+  attached to it. It inherits nothing else, which is the point.
+- **No isolation** — tell the user to run the stage themselves:
+
+  ```text
+  Next · run /ae-plan in this session.
+  Run state is saved in .dev/runs/<id>.md. I resume once that stage writes its
+  section.
+  ```
+
+  This is the manual-drive path and it is a first-class outcome, not a
+  degradation to apologise for. Handing off by instruction costs one message
+  and keeps every gate; improvising the stage here costs nothing and keeps
+  none.
+
+**Never improvise a stage you could not invoke.** A Forge-approximated plan
+review or verification is exactly the failure this pipeline exists to prevent:
+it produces the same shaped answer with none of the guarantees, and the report
+will present it as though a review happened.
+
+### Session boundaries
+
+After `ae-plan` and after `ae-build`, recommend a fresh session before the next
+stage:
+
+```text
+Session boundary recommended · start a new session and run: resume .dev/runs/<id>.md
+The next stage is adversarial and should not inherit this session's reasoning.
+```
+
+If the user continues in the same session anyway, the next stage's
+re-verification duty stops being advisory: every citation it relies on must be
+re-opened in that stage, including ones it can see being established.
+
+Forge is the sole coordinator. Planning and review stages are read-only.
+Builder is the only stage that edits application code. Stages return to Forge
+and never invoke one another.
 
 Record what the lenses decided, so lens routing is as measurable as role
 routing — the report renders from this:
@@ -202,11 +285,23 @@ node "$AE/scripts/forge.mjs" note --id <id> --role <role> --summary "<result>"
 
 ## Work autonomously
 
-Proceed without approval for routine, reversible work that clearly matches the
-request. Ask once before implementation only when the plan introduces a
-material product choice, irreversible or destructive action, external side
-effect, new spending/access, production deployment, or unresolved high-risk
-tradeoff.
+Autonomy is about not narrating, not about not asking. Proceed without
+approval only for **quick** work: local, reversible, understood, with no open
+design choice and no approval-carrying risk flag. Everything else asks once,
+before implementation — when the tier is `standard` or `deep` (a plan exists,
+so there was a design the user could have disagreed with), or when the risk
+set names `access`, `stored-shape` or `irreversible`. `start` computes this and
+prints it; do not re-derive it.
+
+**A reviewer verdict is not user approval.** An expert clearing its findings
+says the change is sound; only the user says it is wanted. `approve` refuses a
+role name as the approver for exactly this reason, and Builder checks the same
+condition independently before it edits anything. Two keys, because a gate
+enforced at one point is a gate one mistake opens.
+
+What autonomy still means: do not ask which file to edit, whether to write a
+test, how to name something, or whether to run the project's own checks. Ask
+once, about the plan, then work.
 
 Four actions are gated at the moment of action, every run, no matter what was
 approved earlier: **pushing to a remote, merging, migrating a shared
@@ -306,11 +401,23 @@ preservation, whatever the suite reports. If a test edit genuinely fixes a
 test defect rather than accommodating a behaviour change, say so in the report
 and pass `--tests-changed-justified` to both `audit` and `finish`.
 
-`finish` refuses to close a run whose required steps did not happen: an
-unassessed risk set, an unrecorded lens selection, or a deterministic audit
-that never ran or inspected an earlier revision. Do the step. When one is
-genuinely not applicable, close with `--accept-gaps <names>` — each accepted
-gap is named in the delivery report rather than disappearing.
+`finish` refuses to close a run whose required steps did not happen:
+
+| Gap | Fires when |
+|---|---|
+| `risk` | the behavioural questions were never answered, so specialists were selected by keyword alone |
+| `lenses` | lens selection was never recorded, so no domain depth is evidenced |
+| `audit` | the deterministic audit never ran, inspected an earlier revision, or read an empty diff |
+| `sections` | a role contributed to the ledger but left its artifact section scaffolded |
+
+`sections` is the one that keeps the artifact honest: a ledger note says an
+expert worked, the section is what the next stage actually reads, and a run
+closing with a `_pending_` section holds a complete record of work nobody can
+read.
+
+Do the step. When one is genuinely not applicable, close with
+`--accept-gaps <names>` — each accepted gap is named in the delivery report
+rather than disappearing.
 
 Finish a delivery record only after implementation and verification both
 contributed. An audit-only record requires the Verifier and no code change:
@@ -393,5 +500,12 @@ accounting, or coordination files alongside it.
 - Do not deploy, publish, spend money, access new private systems, or perform a
   destructive action without the authority required by the user and project.
 - Do not expand a bounded request into unrelated cleanup.
-- Do not turn missing optional Agent Engineering metadata into a refusal to
-  help.
+- Do not turn missing **optional** Agent Engineering metadata into a refusal to
+  help. A missing survey, an absent lens, and an unwritten `decisions.md` are
+  optional: proceed and say what was unavailable. `scripts/` is **not**
+  optional — without it nothing gates the run, so an unresolved skill
+  directory stops the run instead of degrading it. The difference is whether
+  the missing thing was going to say no to something.
+- Do not run an expert pass, print a routing block, or write a delivery report
+  while the skill directory is unresolved. A Forge-shaped answer produced
+  without Forge's gates is the failure this kit exists to prevent.

@@ -33,9 +33,9 @@
         "team_includes": ["architect", "security", "experience", "builder", "verifier"],
         "team_excludes": ["data", "reliability"],
         "skipped_includes": ["data", "reliability"],
-        "approval_required": false
+        "approval_required": true
       },
-      "note": "The original P2 defect. The natural vocabulary here (oauth, login, sso) matched no keyword, so this routed with no Security expert at all."
+      "note": "The original P2 defect: the natural vocabulary here (oauth, login, sso) matched no keyword, so this routed with no Security expert at all. It is also the case that proved the approval gate defaulted open - a deep, five-expert run changing who may authenticate reached build without one question, because only `irreversible` carried approval. An access risk now gates, and so does any tier past quick."
     },
     {
       "id": "footer-typo",

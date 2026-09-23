@@ -5,12 +5,19 @@ is installed.
 
 ## Product
 
-Agent Engineering ships two public skills:
+Agent Engineering ships eight skills behind **two user-facing surfaces**:
 
 - ae-forge takes a software request through a risk-sized expert team,
   implementation, and independent verification.
 - ae-surveyor optionally creates durable repository knowledge and enforceable rules
   for large or long-lived projects.
+
+The other six — ae-investigate, ae-plan, ae-plan-review, ae-build, ae-verify,
+ae-audit — are dispatch targets, not routing surfaces. Forge invokes them one
+at a time; each carries only the protocol and reads its method from
+ae-forge/references/. They are one distribution unit with ae-forge and are
+installed together. A stage that cannot resolve its sibling contract stops
+rather than improvising.
 
 The kit is a workflow layer over the host coding agent. It must not become a
 second agent runtime.
@@ -19,8 +26,10 @@ second agent runtime.
 
 | Path | Role |
 |---|---|
-| skills/ae-forge/ | Autonomous delivery workflow and lightweight recovery ledger |
+| skills/ae-forge/ | Autonomous delivery workflow, the shared contract, and the recovery ledger |
 | skills/ae-surveyor/ | Optional project indexing, knowledge, and rules |
+| skills/ae-{investigate,plan,plan-review,build,verify,audit}/ | Stage skills: protocol only; method stays in ae-forge/references/roles/ |
+| hooks/ | The enforcement tier. Loaded only on the plugin install path |
 | .codex-plugin/ | Codex package manifest |
 | .claude-plugin/ | Claude Code plugin and marketplace manifests |
 | scripts/ | Repository validation and acceptance tests; not shipped inside a skill |
@@ -35,6 +44,8 @@ Everything a skill needs at runtime must live inside its own directory.
     npm run test:install
     npm run eval -- list
     node scripts/test-evals.mjs
+    node scripts/test-contract.mjs
+    node scripts/test-guard.mjs
     bash scripts/validate-suite.sh
     node scripts/validate-forge.mjs
     node scripts/test-forge.mjs
@@ -58,7 +69,18 @@ accidentally invoke the Windows Subsystem for Linux bash shim.
 - Routing is behavioural, never lexical. `--risk` flags map deterministically
   to roles; keyword signals may only ADD a role, never withhold one. An absent
   risk assessment is recorded and reported, never treated as safety.
-- Two public routing surfaces only: ae-surveyor and ae-forge.
+- Two user-facing routing surfaces only: ae-surveyor and ae-forge. The six
+  stage skills are dispatch targets; they must read as unreachable outside a
+  run, never as a second way to ask for work.
+- Enforcement is a read tier, never an assumption, and never described as a
+  sandbox. `native` means a host hook refuses an edit that the ledger says is
+  not yet authorised; `none` is the honest default. Hooks load from a file the
+  model can edit and a subagent may bypass them, so both limits ship with the
+  claim.
+- The one artifact that crosses a product boundary (.dev/context/analysis.json)
+  is versioned and its version is asserted. A consumer reading it with `?? []`
+  turns a rename into silent depth loss, which is the only fail-open path this
+  kit is allowed to have and it must be reported when it fires.
 - Initialization improves context but never blocks ordinary Forge work.
 - Use the smallest team that covers the actual behavioral risk.
 - Builder and Verifier are required for completion.
@@ -118,3 +140,64 @@ public skill or globally visible persona.
 Runtime scripts use Node without package dependencies. Portable shell stays
 Bash 3.2 compatible: no associative arrays, mapfile, sed -i, or non-POSIX awk.
 Pin shell, Node, Markdown, YAML, and JSON files to LF.
+
+<!-- agent-engineering:start -->
+## Project knowledge
+
+This project was surveyed by [agent-engineering](https://github.com/overthinkercurious/agent-engineering).
+
+**Start here:** `.dev/knowledge/00-index.md` routes you to the one document
+that answers your question. Read that document, not all of them.
+
+| Question | Document |
+|---|---|
+| What is this built with? | `.dev/knowledge/stack.md` |
+| How is it shaped? What breaks if I change this? | `.dev/knowledge/architecture.md` |
+| What does the persisted data look like? | `.dev/knowledge/schema.md` |
+| How do I run, test and build it? | `.dev/knowledge/commands.md` |
+| Why is it built this way? | `.dev/knowledge/decisions.md` |
+| What is enforced, and by which command? | `.dev/rules/00-index.md` |
+
+The knowledge and rules documents are generated but committed. Content between
+the `agent-engineering` markers is rewritten on every run; anything outside
+the markers is preserved, so corrections go under `## Notes`.
+
+Every claim in a managed block is tagged. `OBSERVED` cites the exact
+`path:line` a parser or a reading pass actually checked. `INFERRED` states
+what it was reasoned from. `UNKNOWN` names what would resolve it. There is no
+fourth tag — a claim that isn't one of these three doesn't belong in the file.
+
+`.dev/rules/` carries two kinds of guidance, labeled apart because they carry
+different authority: **enforced rules**, backed by a command in this repository
+that fails when the rule is broken, and **stack conventions**, curated once
+inside the kit and copied in by detected stack — never enforced here, and this
+project's own code and docs always outrank them.
+
+`.dev/context/` holds the raw analysis dump. It is regenerated on every run and
+is not committed — except `.dev/context/host.json`, which is committed because
+it decides whether review roles run in an isolated context, and a clone that
+loses it silently downgrades to no isolation. `.dev/work/` holds ignored
+per-feature working artifacts.
+
+**The suite itself is not committed to this repository.** It is a dependency,
+listed in `skills-lock.json` and gitignored. In a fresh clone, restore it with:
+
+```bash
+npx skills@1.7.0 add overthinkercurious/agent-engineering --agent AGENT_ID --copy -y
+```
+
+Replace `AGENT_ID` with the current IDE's identifier from the installation table
+in the linked Agent Engineering README.
+
+Then ask the agent to run the survey. If the knowledge base looks out of date,
+re-run it: only the sections whose sources actually changed are regenerated.
+<!-- agent-engineering:end -->
+
+> **Correction to the generated block above (this repository only).** Two of
+> its sentences describe a *consumer* project and are false here: this **is**
+> the suite's repository, so `skills/` is the product and must stay tracked,
+> and there is no `skills-lock.json` here and should not be.
+>
+> `scaffold.sh` and `doctor.sh` now detect self-hosting (`ae_self_hosted` in
+> `lib.sh`) and omit the suite ignore rule, the untrack advice and the lock
+> warning. Running the survey here is safe.

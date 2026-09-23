@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "analysis_schema": 2,
   "roles": {
     "product": {
       "owns": "user or system outcome, scope, non-goals, and acceptance behavior",
@@ -12,6 +13,10 @@
     "architect": {
       "owns": "technical design, system boundaries, impact map, and implementation plan",
       "file": "roles/architect.md"
+    },
+    "plan-reviewer": {
+      "owns": "independent judgment that a plan is safe, correct and implementable as written, before any code exists",
+      "file": "roles/plan-reviewer.md"
     },
     "security": {
       "owns": "trust, authorization, privacy, abuse, and security constraints",
@@ -36,6 +41,10 @@
     "verifier": {
       "owns": "integrated evidence and the final delivery verdict",
       "file": "roles/verifier.md"
+    },
+    "auditor": {
+      "owns": "cold assessment of the repository as it stands today, read without a plan or a diff",
+      "file": "roles/auditor.md"
     }
   },
   "tiers": {
@@ -45,11 +54,13 @@
     ],
     "standard": [
       "architect",
+      "plan-reviewer",
       "builder",
       "verifier"
     ],
     "deep": [
       "architect",
+      "plan-reviewer",
       "builder",
       "verifier"
     ]
@@ -57,10 +68,12 @@
   "risk": {
     "access": {
       "role": "security",
+      "approval": true,
       "question": "Does this change who can read, do, or reach anything? (authentication, authorization, tenancy, secrets, payments)"
     },
     "stored-shape": {
       "role": "data",
+      "approval": true,
       "question": "Does this change the shape of persisted data, or move or delete existing data?"
     },
     "rendered": {
@@ -392,12 +405,155 @@
         "data-subject",
         "anonymize"
       ]
+    },
+    "identity-auth": {
+      "owns": "How a caller proves who they are and for how long: flow choice, token validation, session lifetime, revocation, and account linking",
+      "file": "lenses/identity-auth.md",
+      "attaches_to": [
+        "security",
+        "architect",
+        "builder",
+        "experience"
+      ],
+      "signals": [
+        "auth",
+        "oauth",
+        "oidc",
+        "sso",
+        "saml",
+        "login",
+        "signin",
+        "signup",
+        "session",
+        "token",
+        "jwt",
+        "refresh",
+        "mfa",
+        "password",
+        "logout",
+        "account-linking"
+      ]
+    },
+    "queue-messaging": {
+      "owns": "Asynchronous delivery guarantees: what arrives twice, what arrives out of order, and what happens to a message nobody can process",
+      "file": "lenses/queue-messaging.md",
+      "attaches_to": [
+        "reliability",
+        "data",
+        "architect",
+        "builder"
+      ],
+      "signals": [
+        "queue",
+        "message",
+        "broker",
+        "kafka",
+        "rabbitmq",
+        "sqs",
+        "pubsub",
+        "nats",
+        "consumer",
+        "producer",
+        "event-bus",
+        "worker",
+        "dead-letter"
+      ]
+    },
+    "caching": {
+      "owns": "Deliberate staleness: how wrong a cached answer may be, to whom, and what happens when every entry expires at once",
+      "file": "lenses/caching.md",
+      "attaches_to": [
+        "reliability",
+        "data",
+        "architect",
+        "builder"
+      ],
+      "signals": [
+        "cache",
+        "caching",
+        "redis",
+        "memcached",
+        "cdn",
+        "etag",
+        "invalidation",
+        "ttl",
+        "stale",
+        "memoize",
+        "revalidate"
+      ]
+    },
+    "release-engineering": {
+      "owns": "How a change reaches users and how it is withdrawn: versioning, rollout shape, feature flags, and rollback as distinct from revert",
+      "file": "lenses/release-engineering.md",
+      "attaches_to": [
+        "reliability",
+        "architect",
+        "builder"
+      ],
+      "signals": [
+        "release",
+        "deploy",
+        "rollout",
+        "version",
+        "versioning",
+        "semver",
+        "changelog",
+        "feature-flag",
+        "canary",
+        "staged-rollout",
+        "hotfix",
+        "rollback"
+      ]
+    },
+    "i18n": {
+      "owns": "Locale correctness: translatable message construction, plural rules, locale-aware formatting and collation, timezone boundaries, and layout direction",
+      "file": "lenses/i18n.md",
+      "attaches_to": [
+        "experience",
+        "builder",
+        "architect"
+      ],
+      "signals": [
+        "i18n",
+        "l10n",
+        "internationalization",
+        "localization",
+        "locale",
+        "translation",
+        "rtl",
+        "timezone",
+        "currency",
+        "pluralization",
+        "unicode"
+      ]
+    },
+    "compliance": {
+      "owns": "Control frameworks and their evidence: scope, audit trail content and integrity, attributable privileged action, and retention of the trail itself",
+      "file": "lenses/compliance.md",
+      "attaches_to": [
+        "security",
+        "data",
+        "architect"
+      ],
+      "signals": [
+        "compliance",
+        "soc2",
+        "pci",
+        "hipaa",
+        "iso27001",
+        "audit-trail",
+        "audit-log",
+        "regulated",
+        "attestation",
+        "segregation-of-duties",
+        "access-review"
+      ]
     }
   },
   "lenses_backlog": [
-    "internationalization",
-    "i18n",
-    "queue"
+    "realtime",
+    "collaborative-editing",
+    "search-relevance"
   ],
   "acceptance": {
     "feature": {

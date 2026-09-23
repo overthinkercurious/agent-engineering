@@ -56,7 +56,7 @@ check('packaged Forge writes one run record', existsSync(join(project, '.dev', '
 
 const team = JSON.parse(readFileSync(join(install, 'skills', 'ae-forge', 'references', 'team.json'), 'utf8'))
 check('packaged team contract is complete',
-  Object.keys(team.roles).length === 9 &&
+  Object.keys(team.roles).length === 11 &&
   Object.values(team.roles).every((role) => existsSync(join(install, 'skills', 'ae-forge', 'references', role.file))) &&
   team.tiers.standard.includes('verifier'))
 check('legacy adapters and schemas are not packaged',
@@ -76,12 +76,21 @@ const manifests = [
   JSON.parse(readFileSync(join(install, '.claude-plugin', 'marketplace.json'), 'utf8')),
 ]
 const kitVersion = readFileSync(join(install, 'kit-version.txt'), 'utf8').trim()
+// kit.json is the copy that travels INSIDE the skill, which is the only part
+// a project install receives, so it is the one a stamped artifact can cite.
+// It is therefore the copy most likely to drift, and the one worth asserting.
+const skillVersion = JSON.parse(readFileSync(
+  join(install, 'skills', 'ae-surveyor', 'references', 'kit.json'), 'utf8')).version
 check('published versions agree',
   pkg.version === kitVersion &&
+  skillVersion === kitVersion &&
   manifests[0].version === kitVersion &&
   manifests[1].version === kitVersion &&
   manifests[2].metadata.version === kitVersion &&
-  manifests[2].plugins[0].version === kitVersion)
+  manifests[2].plugins[0].version === kitVersion,
+  `kit-version.txt=${kitVersion} kit.json=${skillVersion} package.json=${pkg.version}`)
+check('a generated block stamps the kit that wrote it',
+  readFileSync(join(initProject, '.dev', 'context', 'analysis.json'), 'utf8').length > 0)
 
 rmSync(temp, { recursive: true, force: true })
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`)

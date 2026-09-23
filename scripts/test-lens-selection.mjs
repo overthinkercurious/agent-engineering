@@ -88,11 +88,15 @@ function scenario(id, { title, kind, signals = [], stack = [] }) {
 // 6. Missing specialist guidance: a signal names a backlog (not-yet-written) lens.
 //    Must surface as LENS UNAVAILABLE, not silently ignored or improvised.
 {
-  const r = scenario('missing-lens', { title: 'Move email sending onto a worker queue', kind: 'feature', signals: ['queue'] })
+  // Uses a domain that is genuinely on the backlog. When one gets written the
+  // fixture must move to another, and that is the point: this case can only
+  // pass while some named domain really is unwritten, so it cannot quietly
+  // become a test of nothing.
+  const r = scenario('missing-lens', { title: 'Add live cursors to the document editor', kind: 'feature', signals: ['realtime'] })
   check('a backlog-lens signal is reported unavailable rather than silently dropped',
-    r.lenses.unavailable.includes('queue'), JSON.stringify(r.lenses))
+    r.lenses.unavailable.includes('realtime'), JSON.stringify(r.lenses))
   check('an unavailable lens does not get invented as an attached lens',
-    Object.values(r.lenses.attached).every((list) => !list.includes('queue')), JSON.stringify(r.lenses))
+    Object.values(r.lenses.attached).every((list) => !list.includes('realtime')), JSON.stringify(r.lenses))
 }
 
 rmSync(project, { recursive: true, force: true })

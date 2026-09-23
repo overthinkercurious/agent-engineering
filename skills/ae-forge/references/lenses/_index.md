@@ -36,6 +36,12 @@ can never be silently ignored.
 | `ios` | `lenses/ios.md` | architect, builder, verifier | Apple platform: lifecycle and background limits, permission declarations, interface conventions, review constraints |
 | `infrastructure` | `lenses/infrastructure.md` | architect, reliability, builder | Declared environment: what an apply really does, safe rollout, rollback, pipeline trust |
 | `privacy` | `lenses/privacy.md` | security, data, product | Personal data: justified collection, every destination, enforced retention and deletion, data-subject requests |
+| `identity-auth` | `lenses/identity-auth.md` | security, architect, builder, experience | How a caller proves who they are and for how long: flow choice, token validation, session lifetime, revocation, account linking |
+| `queue-messaging` | `lenses/queue-messaging.md` | reliability, data, architect, builder | Asynchronous delivery: what arrives twice, what arrives out of order, and what happens to a message nobody can process |
+| `caching` | `lenses/caching.md` | reliability, data, architect, builder | Deliberate staleness: how wrong a cached answer may be, to whom, and what happens when every entry expires at once |
+| `release-engineering` | `lenses/release-engineering.md` | reliability, architect, builder | Reaching users and taking it back: versioning, rollout shape, feature flags, rollback as distinct from revert |
+| `i18n` | `lenses/i18n.md` | experience, builder, architect | Locale correctness: translatable messages, plural rules, locale-aware formatting and collation, timezone boundaries, layout direction |
+| `compliance` | `lenses/compliance.md` | security, data, architect | Control frameworks and their evidence: scope, audit-trail content and integrity, attributable privileged action |
 
 ## Dated specifics, not durable method
 
@@ -61,13 +67,21 @@ the lens records the difference.
 
 ## Backlog (named, not yet written)
 
-Kept deliberately short. A backlog exists to flag domains where *absence is
-itself a risk worth announcing* — not to enumerate every domain that could one
-day have a lens. A long backlog mostly announces absence, which is why this
-one is down to the single domain where a silent gap would be dangerous.
+`realtime`, `collaborative-editing`, `search-relevance`.
 
-`internationalization`, `i18n`, `queue`.
+A backlog exists to flag domains where *absence is itself a risk worth
+announcing* — not to enumerate every domain that could one day have a lens.
+The entries that previously stood here (`internationalization`, `i18n`,
+`queue`) are now written; these three replaced them because a role asked about
+presence, conflict resolution or ranking quality with no checked source would
+improvise confidently, which is the failure this list prevents.
 
-A signal naming one of these fires `LENS UNAVAILABLE` (see `team.md`) until
+When a detector emits a tag nothing handles, `validate-forge.mjs` fails: a
+domain the kit can detect in a project and then silently ignore is the exact
+failure this system exists to prevent. So a new backlog entry is how you
+announce a gap deliberately, and an empty backlog means every domain the kit
+can currently detect has somewhere to go.
+
+A signal naming a backlog entry fires `LENS UNAVAILABLE` (see `team.md`) until
 it is written. That is not a bug — it is the mechanism that stops a role
 inventing expertise it has no checked source for.

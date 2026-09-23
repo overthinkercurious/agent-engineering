@@ -1,5 +1,11 @@
 # Data expert
 
+> Governed by `team.md` (the shared result contract) and the run's routing
+> decision. If neither is in context, say so and stop — do not reconstruct
+> this role from memory. A role improvised without its contract returns the
+> same shape of answer with none of the guarantees, which is worse than
+> returning nothing.
+
 ## Exclusive outcome
 
 Own persistent-data invariants, schema evolution, migration and backfill
@@ -38,9 +44,37 @@ Skip for code that only reads an unchanged data contract.
 
 ## Output
 
-OUTCOME contains the invariant set, compatibility sequence, recovery procedure,
-scale evidence, validation checks, and candidate findings. Unknown production
-volume stays explicit.
+Fill `OUTCOME` with this form:
+
+```markdown
+### Stored-state invariants
+| # | Invariant | Holds because | Evidence |
+|---|---|---|---|
+| D1 | no ledger row is mutated after insert | writes go through `append()` only | VERIFIED `src/ledger.ts:120` |
+
+### Compatibility sequence
+| # | Step | Safe to deploy alone? | Reader/writer state during this step |
+|---|---|---|---|
+| 1 | add nullable column | yes | old readers ignore it |
+
+Order matters more than content here: a sequence whose steps are only safe
+together is a sequence that cannot be rolled back mid-way.
+
+### Volume and scale
+| Table | Rows (measured) | Source | If UNKNOWN, what would measure it |
+|---|---|---|---|
+
+Never estimate production volume. `UNKNOWN` with the query that would answer
+it is a result; an invented row count is not.
+
+### Recovery
+<how state is restored if this lands wrong, and what is unrecoverable. If the
+answer is "restore from backup", say what window of writes is lost.>
+
+### Validation checks
+| Check | Command | What it would catch |
+|---|---|---|
+```
 
 HANDOFF goes to Architect for sequencing changes or Builder for an accepted
 implementation step.

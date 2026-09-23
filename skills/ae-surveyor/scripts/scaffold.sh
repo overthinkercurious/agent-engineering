@@ -186,6 +186,12 @@ fi
 
 ae_head ".gitignore"
 ae_render "$ASSETS/gitignore.fragment" > "$BODY"
+if ae_self_hosted "$ROOT"; then
+  # Keep the .dev/ rules, drop the suite rule. Writing the skills/ae-*/
+  # pattern into this kit own repository hides its product from git status.
+  grep -v "skills/ae-" "$BODY" > "$BODY.self" && mv "$BODY.self" "$BODY"
+  ae_warn "self-hosted: kept .dev/ rules, omitted the suite rule - skills/ is the product here"
+fi
 GI="$ROOT/.gitignore"
 st="$(ae_write_block "$GI" "# " "$BODY" "$DRY")"
 case "$st" in

@@ -1,0 +1,11 @@
+{
+  "generated_by": "ae-surveyor/scripts/scaffold.sh",
+  "default_dispatch": "none",
+  "hosts": {
+    "agents-md": { "display": "AGENTS.md (cross-tool canonical)", "dispatch": "none", "dispatch_verified": "", "instruction_file": "AGENTS.md", "detected_in_project": true },
+    "claude-code": { "display": "Claude Code", "dispatch": "native-parallel", "dispatch_verified": "2026-09-20 code.claude.com/docs/en/sub-agents", "instruction_file": "CLAUDE.md", "detected_in_project": false },
+    "antigravity": { "display": "Google Antigravity IDE", "dispatch": "native-parallel", "dispatch_verified": "2026-09-17 antigravity.google/docs/subagents/", "instruction_file": ".agents/rules/agent-engineering.md", "detected_in_project": false },
+    "gemini-cli": { "display": "Gemini CLI", "dispatch": "none", "dispatch_verified": "", "instruction_file": "GEMINI.md", "detected_in_project": false },
+    "github-copilot": { "display": "GitHub Copilot", "dispatch": "none", "dispatch_verified": "", "instruction_file": ".github/copilot-instructions.md", "detected_in_project": false }
+  }
+}

@@ -36,8 +36,28 @@ const APPROVAL_SIGNALS = new Set([
 const RISK = TEAM.risk ?? {}
 const RISK_FLAGS = Object.keys(RISK)
 
-function requiresApproval(signals, risks) {
-  return risks.some((flag) => RISK[flag]?.approval) || signals.some((value) => APPROVAL_SIGNALS.has(value))
+// Three independent reasons to stop and ask, and the tier is the one that
+// fires most often on purpose.
+//
+// The old predicate asked only about risk flags and keyword signals, and only
+// `irreversible` carried approval - so a deep, six-expert run touching
+// authentication and stored data walked into build without a single question.
+// That is not autonomy, it is a gate whose default is open.
+//
+// `tier !== 'quick'` is the "a plan exists" rule: anything past quick has an
+// Architect on the team, which means a design was chosen, which means there
+// was something the user could have disagreed with. Quick work stays
+// genuinely gate-free - local, reversible, no open design choice - so this
+// adds a question where one was owed, not ceremony everywhere.
+// An audit-only run is the one exception, and it is not a loophole: it cannot
+// enter build and cannot modify code, so there is no action to authorise.
+// Asking the user to approve a read-only review is the ceremony this gate is
+// supposed to be distinguishable from.
+function requiresApproval(signals, risks, tier, kind) {
+  if (kind === 'audit') return false
+  return risks.some((flag) => RISK[flag]?.approval)
+    || signals.some((value) => APPROVAL_SIGNALS.has(value))
+    || (tier !== undefined && tier !== 'quick')
 }
 
 // `--risk none` is an explicit assessment that found nothing. An ABSENT
@@ -89,6 +109,51 @@ function workRoot(root) {
   }
   if (!inside(root, path)) die('work directory escapes project root')
   return path
+}
+
+// The artifact lives OUTSIDE .dev/work/ deliberately. work/ is gitignored raw
+// evidence - transcripts, per-role results, things that may carry sensitive
+// material. The artifact is the opposite: the one document a human reads, a
+// reviewer approves, and a fresh agent resumes from, so it is committed.
+//
+// In a split pipeline this file is also the only channel between roles. Each
+// role is invoked separately and inherits nothing, so a decision that lives
+// only in a previous role's context does not exist. That is the constraint
+// the self-sufficiency rule encodes, not a documentation preference.
+function runsRoot(root) {
+  const path = join(root, '.dev', 'runs')
+  for (const candidate of [join(root, '.dev'), path]) {
+    if (existsSync(candidate) && !inside(root, realpathSync(candidate))) {
+      die('runs directory resolves outside project root')
+    }
+  }
+  if (!inside(root, path)) die('runs directory escapes project root')
+  return path
+}
+
+function artifactPath(root, id) {
+  const path = join(runsRoot(root), `${safeId(id)}.md`)
+  if (!inside(root, path)) die('artifact path escapes project root')
+  return path
+}
+
+// Section -> the single role permitted to write it. One owner per section is
+// what stops two roles issuing competing answers to the same question, and it
+// is checkable, so it is checked rather than asked for.
+const SECTIONS = {
+  request: { title: 'Request', owner: null },
+  status: { title: 'Status', owner: null },
+  'stage-log': { title: 'Stage log', owner: null },
+  'open-questions': { title: 'Open questions', owner: null },
+  decisions: { title: 'Decisions', owner: null },
+  investigation: { title: 'Investigation', owner: 'investigator' },
+  plan: { title: 'Plan', owner: 'architect' },
+  'plan-review': { title: 'Plan review', owner: 'plan-reviewer' },
+  approval: { title: 'Approval', owner: null },
+  implementation: { title: 'Implementation', owner: 'builder' },
+  verification: { title: 'Verification', owner: 'verifier' },
+  audit: { title: 'Audit', owner: 'auditor' },
+  summary: { title: 'Summary', owner: null },
 }
 
 function safeId(value) {
@@ -160,8 +225,17 @@ function chooseTeam(kind, tier, signals, risks) {
     skipped[role] = declared ? `no ${declared} risk declared` : 'no matching risk or signal'
   }
 
-  if (tier !== 'quick') take('architect', 'tier is standard or deeper')
-  else skipped.architect = 'quick tier: no open design choice'
+  if (tier !== 'quick') {
+    take('architect', 'tier is standard or deeper')
+    // A plan nobody adversarially read is a plan whose defects are found by
+    // Builder, in code, after they are expensive. Plan Reviewer exists for
+    // exactly the window between "a design was chosen" and "code was written",
+    // so it is selected by the same condition that creates that window.
+    take('plan-reviewer', 'a plan exists and must be read by someone who did not write it')
+  } else {
+    skipped.architect = 'quick tier: no open design choice'
+    skipped['plan-reviewer'] = 'quick tier: no plan to review'
+  }
 
   if (kind === 'bug' || kind === 'performance' || signals.includes('unknown')) {
     take('investigator', `kind=${kind === 'performance' ? 'performance' : kind === 'bug' ? 'bug' : 'feature'}, cause not demonstrated`)
@@ -172,12 +246,20 @@ function chooseTeam(kind, tier, signals, risks) {
   } else skipped.product = 'requested outcome is already specified'
 
   if (kind === 'audit') {
-    delete selected.builder
+    // A cold audit has no plan and no diff, so the two roles whose whole job
+    // is comparing against one are not merely unused here - they would have
+    // nothing to read. Auditor replaces them: it reads the repository as it
+    // stands, which is a different question from "is this change correct".
+    for (const role of ['builder', 'architect', 'plan-reviewer']) delete selected[role]
     skipped.builder = 'audit-only: cannot modify code'
+    skipped.architect = 'audit-only: nothing is being designed'
+    skipped['plan-reviewer'] = 'audit-only: there is no plan to review'
     delete skipped.investigator
     delete skipped.product
+    take('auditor', 'owns the cold assessment of the repository as it stands')
     take('verifier', 'owns the audit verdict')
   } else {
+    skipped.auditor = 'not a cold audit: this run has a change to judge'
     take('builder', 'code must change')
     take('verifier', 'independent verification of every delivery')
   }
@@ -206,6 +288,19 @@ const BRIEF_SECTIONS = [
 
 // Recorded at start so the audit can tell whether the repository moved under
 // the brief. Stale context is a silent correctness failure otherwise.
+// The enforcement tier is read, never assumed - the same rule the dispatch
+// tier already follows. The marker exists only because the SessionStart hook
+// actually ran in this session, so its presence is evidence rather than a
+// claim. Absent means 'none', and 'none' is the honest default.
+function enforceTier(root) {
+  try {
+    const path = join(root, '.dev', 'context', 'enforce.json')
+    if (!existsSync(path)) return 'none'
+    const marker = JSON.parse(readFileSync(path, 'utf8'))
+    return marker.enforce === 'native' ? 'native' : 'none'
+  } catch { return 'none' }
+}
+
 function baseline(root) {
   let head = null
   try {
@@ -293,9 +388,130 @@ function brief() {
   output({ ok: true, id, tier: run.tier, sections: included, brief: relative(root, path).replaceAll('\\', '/') })
 }
 
+// The artifact is scaffolded once and filled section by section. It is
+// deliberately not composed at the end: a role that holds its result only in
+// context loses it the moment the next role is invoked with a clean one.
+function artifactSkeleton(run) {
+  const lines = [
+    `# ${run.title}`, '',
+    `> Forge · contract v${run.contract ?? TEAM.version} · run \`${run.id}\``,
+    `> ${run.tier} · ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
+    `> Team: ${run.team.join(' → ')}`,
+    '',
+    '_Every section below is written by exactly one role, at the end of its own',
+    'stage. This file is the only channel between roles: each is invoked with a',
+    'clean context and inherits nothing, so a decision recorded only in a',
+    'conversation does not exist. The bar is that a reader who has seen none of',
+    'this run can review and implement from this file alone._',
+    '',
+  ]
+  for (const [key, meta] of Object.entries(SECTIONS)) {
+    lines.push(`<!-- forge:section:${key} -->`, `## ${meta.title}`, '')
+    if (key === 'request') lines.push(run.title, '')
+    else if (key === 'status') lines.push(`ACTIVE · phase ${run.phase}`, '')
+    else if (key === 'stage-log') lines.push('| # | Role | Phase | Revision | Result |', '|---:|---|---|---:|---|', '')
+    else lines.push(`_pending — owned by ${meta.owner ?? 'Forge'}_`, '')
+  }
+  return `${lines.join('\n').trimEnd()}\n`
+}
+
+// One parser, used by both the writer and the completion check. Two
+// implementations of "where does this section start and end" is how a section
+// can be written by one and read as empty by the other.
+function sectionBounds(doc, name) {
+  const marker = `<!-- forge:section:${name} -->`
+  const start = doc.indexOf(marker)
+  if (start === -1) return null
+  const after = doc.indexOf('<!-- forge:section:', start + marker.length)
+  return { marker, start, end: after === -1 ? doc.length : after }
+}
+
+function sectionBody(doc, name) {
+  const at = sectionBounds(doc, name)
+  if (!at) return null
+  return doc.slice(at.start + at.marker.length, at.end)
+    .replace(/^\s*##[^\n]*\n/, '')
+    .trim()
+}
+
+// A section still carrying its scaffolded placeholder was never written. The
+// role recorded a ledger note and skipped the document, which is the failure
+// mode this kit refuses to accept anywhere else: a step that can be silently
+// skipped is a suggestion, not a step.
+function unwrittenSections(root, id, run) {
+  const path = artifactPath(root, id)
+  const owed = Object.entries(SECTIONS)
+    .filter(([, meta]) => meta.owner && run.contributions.some((item) => item.role === meta.owner))
+    .map(([name, meta]) => ({ name, owner: meta.owner }))
+  if (!owed.length) return []
+  if (!existsSync(path)) return owed.map((s) => ({ ...s, why: 'no artifact was ever scaffolded' }))
+  const doc = readFileSync(path, 'utf8')
+  return owed
+    .filter(({ name }) => {
+      const body = sectionBody(doc, name)
+      return body === null || body === '' || /^_pending\b/.test(body)
+    })
+    .map((s) => ({ ...s, why: 'the section is still the scaffolded placeholder' }))
+}
+
+function artifact() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const { run } = load(root, id)
+  const path = artifactPath(root, id)
+  if (existsSync(path) && !args.includes('--force')) {
+    die('artifact already exists; write sections into it or pass --force to rescaffold', 4, { id })
+  }
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, artifactSkeleton(run), 'utf8')
+  output({
+    ok: true, id, artifact: relative(root, path).replaceAll('\\', '/'),
+    sections: Object.keys(SECTIONS),
+  })
+}
+
+function section() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const name = option('--name')
+  const from = option('--from')
+  if (!SECTIONS[name]) die(`--name must be one of: ${Object.keys(SECTIONS).join(', ')}`)
+  if (!from) die('--from is required: the file holding this section\'s body')
+  const { run } = load(root, id)
+  const owner = SECTIONS[name].owner
+  // One owner per section, enforced rather than requested. A role writing
+  // another role's section is how a plan quietly acquires its own approval.
+  if (owner && !run.team.includes(owner)) {
+    die('this section\'s owner is not on the team for this run', 5, { section: name, owner, team: run.team })
+  }
+  const source = resolve(root, from)
+  if (!inside(root, source)) die('--from escapes the project root', 2, { from })
+  if (!existsSync(source)) die('--from file does not exist', 2, { from: source })
+  const path = artifactPath(root, id)
+  if (!existsSync(path)) die('no artifact yet; run `artifact --id <id>` first', 4, { id })
+
+  const body = readFileSync(source, 'utf8').trim()
+  if (!body) die('--from file is empty; an empty section is not a written one', 2, { from })
+  const doc = readFileSync(path, 'utf8')
+  const at = sectionBounds(doc, name)
+  if (!at) die('artifact is missing this section marker; rescaffold it', 4, { section: name })
+  const heading = `## ${SECTIONS[name].title}`
+  const replaced = `${at.marker}\n${heading}\n\n${body}\n\n`
+  writeFileSync(path, doc.slice(0, at.start) + replaced + doc.slice(at.end), 'utf8')
+  output({ ok: true, id, section: name, owner: owner ?? 'forge', bytes: body.length })
+}
+
 function allowedPhases(role) {
   if (role === 'builder') return ['build', 'repair']
   if (role === 'verifier') return ['verify']
+  // Plan Reviewer reads a plan, never a candidate. Letting it contribute
+  // during verify would make it a second Verifier with none of the evidence,
+  // and two roles answering "is this correct" is the seam where contradictory
+  // findings appear.
+  if (role === 'plan-reviewer') return ['plan']
+  // Auditor is cold by construction: it reads the repository, not a diff, so
+  // it works before anything is built and never re-inspects a candidate.
+  if (role === 'auditor') return ['understand']
   if (SPECIALIST_ROLES.includes(role)) return ['understand', 'plan', 'verify']
   return ['understand', 'plan']
 }
@@ -370,7 +586,8 @@ function start() {
       selected: routing.selected,
       skipped: routing.skipped,
     },
-    approval_required: parseBoolean('--approval-required', requiresApproval(signals, risks)),
+    contract: TEAM.version,
+    approval_required: parseBoolean('--approval-required', requiresApproval(signals, risks, tier, kind)),
     approval: null,
     baseline: baseline(root),
     status: 'active',
@@ -387,6 +604,12 @@ function start() {
   output({
     ok: true, id, tier, team: run.team, routing: run.routing,
     approval_required: run.approval_required,
+    enforce: enforceTier(root),
+    // Printed verbatim as the routing block's first line. It is read from
+    // team.json, so it exists only when the skill directory resolved - which
+    // makes it evidence that the router ran rather than a number the model
+    // recalled. See SKILL.md, "Print the routing decision".
+    contract: `contract v${TEAM.version} · run ${id}`,
     record: relative(root, path).replaceAll('\\', '/'),
   })
 }
@@ -425,7 +648,16 @@ function note() {
   if (!feature.run.team.includes(role)) die('role is not selected for this run', 4, { role, team: feature.run.team })
   const permitted = allowedPhases(role)
   if (!permitted.includes(feature.run.phase)) {
-    die('role cannot contribute in the current phase', 5, { role, phase: feature.run.phase, permitted })
+    die('role cannot contribute in the current phase', 5, {
+      role,
+      phase: feature.run.phase,
+      permitted,
+      // Without this the deadlock is silent: Plan Reviewer is on the team and
+      // finish() requires every selected role to contribute, but it can only
+      // contribute during `plan`, so a run that goes understand -> build can
+      // never close and nothing says why.
+      resolve: `move the run to a phase this role can work in first: forge.mjs phase --id ${id} --to ${permitted[0]} --summary "<current truth>"`,
+    })
   }
   if (role === 'verifier') {
     const prior = new Set(feature.run.contributions.map((item) => item.role))
@@ -478,7 +710,32 @@ function note() {
     at: new Date().toISOString(),
   })
   save(feature.path, feature.run)
-  output({ ok: true, id, role })
+  // The ledger and the artifact were two writes of one event, reconciled by
+  // finish()'s 'sections' gap. They are one write now: a role that records a
+  // contribution has, by that act, filled the section it owns. An already
+  // written section is never overwritten - an explicit `section` call is
+  // still the way to place a body that is not the whole result file.
+  const placed = fillOwnedSection(root, id, role, resultPath)
+  output({ ok: true, id, role, ...(placed ? { section: placed } : {}) })
+}
+
+// Returns the section name if this note filled it, null otherwise.
+function fillOwnedSection(root, id, role, resultPath) {
+  const entry = Object.entries(SECTIONS).find(([, meta]) => meta.owner === role)
+  if (!entry) return null
+  const [name] = entry
+  const path = artifactPath(root, id)
+  if (!existsSync(path)) return null
+  const doc = readFileSync(path, 'utf8')
+  const at = sectionBounds(doc, name)
+  if (!at) return null
+  const current = sectionBody(doc, name)
+  if (current && !/^_pending\b/.test(current)) return null
+  const body = readFileSync(resultPath, 'utf8').trim()
+  if (!body) return null
+  const replaced = `${at.marker}\n## ${SECTIONS[name].title}\n\n${body}\n\n`
+  writeFileSync(path, doc.slice(0, at.start) + replaced + doc.slice(at.end), 'utf8')
+  return name
 }
 
 function phase() {
@@ -537,6 +794,9 @@ function lenses() {
     stale: parsed.stale ?? [],
     assessed: parsed.assessed ?? false,
     derived_from_project: parsed.derived_from_project ?? [],
+    // A survey from a different generation of the surveyor degrades lens
+    // depth silently. Recording it is what lets the report say so.
+    ...(parsed.schema_mismatch ? { schema_mismatch: parsed.schema_mismatch } : {}),
   }
   save(feature.path, feature.run)
   output({ ok: true, id, lenses: feature.run.lenses })
@@ -547,8 +807,18 @@ function approve() {
   const id = safeId(option('--id'))
   const feature = load(root, id)
   ensureActive(feature.run)
+  // A reviewer verdict is not user approval, and the easiest way to blur that
+  // is to record one as the other. An expert cannot authorise the work it is
+  // on the team to perform, so its name is not an accepted approver.
+  const by = option('--by', 'user')
+  if (ROLES.includes(by.toLowerCase())) {
+    die('a reviewer verdict is not user approval', 5, {
+      by,
+      resolve: 'record the person who approved. An expert PASS clears that expert\'s findings; it does not authorise the change.',
+    })
+  }
   feature.run.approval = {
-    by: option('--by', 'user'),
+    by,
     at: new Date().toISOString(),
     basis: option('--basis', 'Explicit approval in the active conversation.'),
     // The brief is the contract from here on. Recording its digest is what
@@ -572,7 +842,7 @@ function finish() {
   }
   const accepted = new Set(String(option('--accept-gaps', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))
-  const GAPS = ['risk', 'lenses', 'audit']
+  const GAPS = ['risk', 'lenses', 'audit', 'sections']
   const unknownGap = [...accepted].filter((value) => !GAPS.includes(value))
   if (unknownGap.length) die(`unknown gap(s): ${unknownGap.join(', ')}`, 2, { allowed: GAPS })
 
@@ -606,6 +876,17 @@ function finish() {
     gaps.push({
       gap: 'audit',
       why: 'the deterministic audit read an empty diff, so it proves nothing about the work; it inspected, and found, nothing',
+    })
+  }
+  // The ledger records that a role contributed; the artifact is what the next
+  // reader actually gets. A run that closes with a role's section still
+  // scaffolded has a complete record of work nobody can read, which is the
+  // one failure the single-artifact design exists to remove.
+  const unwritten = unwrittenSections(root, id, feature.run)
+  if (unwritten.length) {
+    gaps.push({
+      gap: 'sections',
+      why: `${unwritten.map((s) => `${s.name} (${s.owner})`).join(', ')} — ${unwritten[0].why}`,
     })
   }
   const blockingGaps = gaps.filter((item) => !accepted.has(item.gap))
@@ -769,6 +1050,11 @@ function report() {
   if (run.verification) out.push(`**Checks** · ${run.verification}`)
   const cycles = Math.max(0, (run.revision ?? 1) - 1)
   out.push(`**Loop** · ${run.revision} revision(s) · repair cycle ${cycles} of 2`)
+  // Never fall back to the CURRENT team.json version here. A run started
+  // before this field existed did not run under v${TEAM.version}; we simply do
+  // not know what it ran under, and printing today's number would state a fact
+  // about the past that nothing recorded. Unrecorded is the honest answer.
+  out.push(`**Forge** · contract ${run.contract ? `v${run.contract}` : 'UNRECORDED'} · run \`${run.id}\``)
   out.push(`**Approval** · ${run.approval ? `recorded ${run.approval.at}` : (run.approval_required ? 'REQUIRED, not yet recorded' : 'not required')}`)
 
   if (run.approval?.brief_sha && run.brief_sha_at_finish && run.approval.brief_sha !== run.brief_sha_at_finish) {
@@ -1008,6 +1294,8 @@ Internal recovery ledger for the autonomous Forge workflow.
          [--accept-gaps risk,lenses,audit]  (close without a required step;
           each accepted gap is named in the delivery report)
   cancel --id ID [--reason TEXT]
+  contract                      (the ordering tables, as JSON; what validate checks)
+  runs                          (fold every recorded run: routing hit rates, lens use)
 
 --risk is the router. Answer the behavioural questions in team.json and pass
 every flag that is true, or 'none' when none are. Omitting it is recorded as
@@ -1023,6 +1311,79 @@ All commands accept --root DIR. Users do not need to run these commands.
 `)
 }
 
-const handlers = { help, start, brief, lenses, list, status, note, phase, approve, audit, report, finish, cancel }
+// The ordering rules live in four places that must agree: TRANSITIONS (which
+// phase may follow which), allowedPhases (which phase a role may work in),
+// SECTIONS[].owner (which role writes which section) and team.json's tiers
+// (who is present at all). Each was individually reasoned and nothing checked
+// them as one surface. Printing them is what makes that checkable.
+function contract() {
+  output({
+    contract: TEAM.version,
+    enforce: enforceTier(projectRoot()),
+    analysis_schema: TEAM.analysis_schema ?? null,
+    phases: PHASES,
+    transitions: TRANSITIONS,
+    tiers: TEAM.tiers,
+    roles: Object.fromEntries(ROLES.map((role) => [role, {
+      phases: allowedPhases(role),
+      section: Object.entries(SECTIONS).find(([, meta]) => meta.owner === role)?.[0] ?? null,
+      specialist: SPECIALIST_ROLES.includes(role),
+    }])),
+    sections: Object.fromEntries(Object.entries(SECTIONS).map(([name, meta]) => [name, meta.owner])),
+  })
+}
+
+// Routing is measurable per run and was never measured across runs, although
+// every record needed already exists. This folds them: a role selected often
+// that finds nothing is over-routing, a role skipped and then implicated is
+// under-routing, and neither is visible one run at a time.
+function runs() {
+  const root = projectRoot()
+  const base = workRoot(root)
+  const stats = {
+    runs: 0, by_tier: {}, by_kind: {}, risk_unassessed: 0, lenses_unrecorded: 0,
+    approval_required: 0, repair_cycles: {}, roles: {}, lenses: {},
+  }
+  if (!existsSync(base)) return output(stats)
+  const role = (name) => (stats.roles[name] ??= { selected: 0, contributed: 0, found: 0, blocking: 0, skipped: 0 })
+  for (const entry of readdirSync(base, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const path = join(base, entry.name, 'run.json')
+    if (!existsSync(path)) continue
+    let run
+    try { run = JSON.parse(readFileSync(path, 'utf8')) } catch { continue }
+    stats.runs++
+    stats.by_tier[run.tier] = (stats.by_tier[run.tier] ?? 0) + 1
+    stats.by_kind[run.kind] = (stats.by_kind[run.kind] ?? 0) + 1
+    if (run.routing?.risk_assessed === false) stats.risk_unassessed++
+    if (!run.lenses) stats.lenses_unrecorded++
+    if (run.approval_required) stats.approval_required++
+    const cycles = Math.max(0, (run.revision ?? 1) - 1)
+    stats.repair_cycles[cycles] = (stats.repair_cycles[cycles] ?? 0) + 1
+    for (const name of run.team ?? []) role(name).selected++
+    for (const skip of run.routing?.skipped ?? []) {
+      const name = typeof skip === 'string' ? skip : skip.role
+      if (name) role(name).skipped++
+    }
+    const seen = new Set()
+    for (const item of run.contributions ?? []) {
+      if (!seen.has(item.role)) { role(item.role).contributed++; seen.add(item.role) }
+      if (item.severity && item.severity !== 'none') role(item.role).found++
+      if (['critical', 'high'].includes(item.severity)) role(item.role).blocking++
+    }
+    for (const [name, list] of Object.entries(run.lenses?.attached ?? {})) {
+      for (const lens of list) stats.lenses[lens] = (stats.lenses[lens] ?? 0) + 1
+      void name
+    }
+  }
+  // A role selected repeatedly that never records a finding is the signal the
+  // router cannot give you one run at a time.
+  for (const [name, row] of Object.entries(stats.roles)) {
+    row.find_rate = row.contributed ? Number((row.found / row.contributed).toFixed(2)) : null
+  }
+  output(stats)
+}
+
+const handlers = { help, start, brief, artifact, section, lenses, list, status, note, phase, approve, audit, report, finish, cancel, contract, runs }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()

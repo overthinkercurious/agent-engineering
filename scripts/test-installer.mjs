@@ -78,7 +78,12 @@ try {
     sameFile(join('ae-surveyor', 'scripts', 'analyze.mjs')) &&
     sameFile(join('ae-forge', 'SKILL.md')) &&
     sameFile(join('ae-forge', 'references', 'roles', 'security.md')) &&
-    Object.keys(combinedLock?.skills || {}).sort().join(',') === 'ae-forge,ae-surveyor'
+    // All eight ship together and the list is asserted rather than counted:
+    // a stage skill installed without ae-forge beside it cannot resolve its
+    // contract, and one silently dropped from the package would fail only at
+    // the moment someone tried to run that stage.
+    Object.keys(combinedLock?.skills || {}).sort().join(',') ===
+      'ae-audit,ae-build,ae-forge,ae-investigate,ae-plan,ae-plan-review,ae-surveyor,ae-verify'
   if (combinedComplete) process.stdout.write('  PASS  repeated multi-IDE install keeps both destinations in sync\n')
   else {
     failed++
