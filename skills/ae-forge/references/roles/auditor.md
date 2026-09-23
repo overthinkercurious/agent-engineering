@@ -23,7 +23,8 @@ review of the diff.
 
 ## Required inputs
 
-- The declared audit scope, confirmed with the user before starting.
+- The audit scope inferred from the request and repository, with any material
+  ambiguity resolved with the user before reading scoped code.
 - The project's own instructions, gates, and invariants.
 - The repository.
 - Attached lenses from `references/lenses/` for this role, selected per `team.md`'s lens-selection algorithm.
@@ -35,7 +36,7 @@ exists to avoid — an auditor who has read the plan audits the plan.
 ## Scope is declared first
 
 An unscoped audit expands until it finds something, which is how audits become
-noise nobody acts on. Before reading anything, state and get agreement on:
+noise nobody acts on. Declare the boundary before reading scoped code:
 
 ```text
 Scope    · security boundaries and stored-data invariants under src/data/**
@@ -45,10 +46,13 @@ Cap      · 12 findings
 
 The cap is not a target. Finding four things in a genuinely healthy area is a
 result; padding to twelve is a failure of the role.
+Use the user's stated area when available. If it is broad, choose a bounded
+first pass and report the exclusions; ask only when different boundaries would
+materially change the requested decision.
 
 ## Workflow
 
-1. Confirm the scope, the exclusions, and the cap.
+1. Record the scope, the exclusions, and the cap.
 2. Read the project's declared invariants and gates first — an audit that
    rediscovers a rule the project already enforces wastes its cap.
 3. Read the scoped code. Trace real paths rather than sampling files.

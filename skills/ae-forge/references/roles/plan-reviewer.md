@@ -17,8 +17,9 @@ verdict on that plan.
 
 ## Activate
 
-Use whenever a plan exists — every standard and deep run. Skip for quick work,
-which has no plan, and for audit-only work, which has nothing to implement.
+Use when Forge selects Plan Reviewer for a deep run. Skip for quick work,
+which has no plan, standard work, which does not select this separate review,
+and audit-only work, which has nothing to implement.
 
 This role is the difference between finding a design defect now and finding it
 in a diff. Both are findable; only one is cheap.
@@ -33,6 +34,10 @@ in a diff. Both are findable; only one is cheap.
 
 Do not read the `Implementation` section. It does not exist yet, and if it
 does, this run is in the wrong phase.
+
+If a specialist constraint conflicts with the plan, return REVISE with the
+specific conflict. Do not silently resolve it in the review or let Builder
+make the design decision.
 
 ## Stance
 
@@ -51,8 +56,9 @@ APPROVED.
 
 > Prior reasoning in this run is not evidence. It is a claim to be checked.
 
-Before relying on any citation the plan marks `VERIFIED`, re-open that file at
-those lines yourself and record what you found. You may only raise a finding
+Re-open every `VERIFIED` citation that carries a design decision, invariant, or
+verification claim; sample the remaining citations. Record what you found.
+You may only raise a finding
 citing evidence you re-read in this pass. **A citation that does not resolve to
 an existing file and line range is an automatic blocker** — not because the
 plan is necessarily wrong, but because nothing in it can now be trusted without
@@ -62,7 +68,7 @@ checking, and that is the reviewer's whole job.
 
 Check these in order. Stop at the first that fails and make it a blocker.
 
-1. **Citations resolve.** Sample the plan's `path:line` references and re-open
+ 1. **Citations resolve.** Re-open the load-bearing `path:line` references and
    them. Any that does not resolve fails here.
 2. **Root cause, not symptom.** For a bug or a change to shared logic, the
    caller sweep exists and the repair sits at the shared origin.

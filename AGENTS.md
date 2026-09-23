@@ -32,36 +32,11 @@ second agent runtime.
 | hooks/ | The enforcement tier. Loaded only on the plugin install path |
 | .codex-plugin/ | Codex package manifest |
 | .claude-plugin/ | Claude Code plugin and marketplace manifests |
-| scripts/ | Repository validation and acceptance tests; not shipped inside a skill |
-| evals/ | Golden routing cases and the planted-defect fixture; not packaged |
-| docs/DESIGN.md | Product boundary and deliberately excluded mechanisms |
+| package.json | npm package metadata and distribution allowlist |
+| README.md | User-facing installation and workflow guide |
+| LICENSE | Distribution license |
 
 Everything a skill needs at runtime must live inside its own directory.
-
-## Commands
-
-    npm test
-    npm run test:install
-    npm run eval -- list
-    node scripts/test-evals.mjs
-    node scripts/test-contract.mjs
-    node scripts/test-guard.mjs
-    bash scripts/validate-suite.sh
-    node scripts/validate-forge.mjs
-    node scripts/test-forge.mjs
-    node scripts/test-packaging.mjs
-    node scripts/test-docs-consistency.mjs
-    node scripts/test-lens-selection.mjs
-    node skills/ae-surveyor/scripts/verify-citations.mjs
-    bash scripts/test-scaffold.sh
-    bash scripts/test-artifacts.sh
-
-`npm run eval` (Layer B, `scripts/eval-depth.mjs`) needs a model-driven Forge
-run against a prepared fixture and is not part of `npm test`; see
-`evals/README.md` for `prepare`/`grade`.
-
-The test launcher finds Git Bash explicitly on Windows so it does not
-accidentally invoke the Windows Subsystem for Linux bash shim.
 
 ## Product invariants
 
@@ -82,16 +57,25 @@ accidentally invoke the Windows Subsystem for Linux bash shim.
   turns a rename into silent depth loss, which is the only fail-open path this
   kit is allowed to have and it must be reported when it fires.
 - Initialization improves context but never blocks ordinary Forge work.
+- Refresh deterministic analysis for each run when the analyzer is available;
+  stale generated knowledge is a reading lead, not current evidence.
 - Use the smallest team that covers the actual behavioral risk.
 - Builder and Verifier are required for completion.
+- Standard delivery uses Architect, Builder, and Verifier. A separate Plan
+  Reviewer is reserved for deep design risk.
 - Most work uses three roles. More than five requires genuinely independent
   risk boundaries and a plain-language explanation to the user.
+- Where isolation is unavailable, complete stages sequentially in one session,
+  recheck review evidence, and report the review context honestly.
 - Prefer native host subagents and permissions over custom adapters.
-- Keep one compact ignored recovery record per task, plus the approved brief
+- Keep one compact ignored recovery record per task, plus the frozen brief
   and one append-only result file per expert contribution.
 - Ask for approval only for material choices or authority boundaries.
 - Planning is not completion. Requested changes must be implemented and checked.
-- Independent verification inspects the exact diff and relevant test results.
+- Verification inspects the exact diff and relevant test results; isolated
+  review is claimed only when the host actually provided it.
+- Capture pre-existing dirty and untracked files at run start, then compare
+  task work against that baseline without attributing user changes to Builder.
 - The delivery report is rendered from the ledger, never recalled. A summary
   and the record it describes cannot be allowed to disagree.
 - Durable domain facts carry a `verified:` date and go in a lens, never in a
@@ -146,58 +130,8 @@ Pin shell, Node, Markdown, YAML, and JSON files to LF.
 
 This project was surveyed by [agent-engineering](https://github.com/overthinkercurious/agent-engineering).
 
-**Start here:** `.dev/knowledge/00-index.md` routes you to the one document
-that answers your question. Read that document, not all of them.
-
-| Question | Document |
-|---|---|
-| What is this built with? | `.dev/knowledge/stack.md` |
-| How is it shaped? What breaks if I change this? | `.dev/knowledge/architecture.md` |
-| What does the persisted data look like? | `.dev/knowledge/schema.md` |
-| How do I run, test and build it? | `.dev/knowledge/commands.md` |
-| Why is it built this way? | `.dev/knowledge/decisions.md` |
-| What is enforced, and by which command? | `.dev/rules/00-index.md` |
-
-The knowledge and rules documents are generated but committed. Content between
-the `agent-engineering` markers is rewritten on every run; anything outside
-the markers is preserved, so corrections go under `## Notes`.
-
-Every claim in a managed block is tagged. `OBSERVED` cites the exact
-`path:line` a parser or a reading pass actually checked. `INFERRED` states
-what it was reasoned from. `UNKNOWN` names what would resolve it. There is no
-fourth tag — a claim that isn't one of these three doesn't belong in the file.
-
-`.dev/rules/` carries two kinds of guidance, labeled apart because they carry
-different authority: **enforced rules**, backed by a command in this repository
-that fails when the rule is broken, and **stack conventions**, curated once
-inside the kit and copied in by detected stack — never enforced here, and this
-project's own code and docs always outrank them.
-
-`.dev/context/` holds the raw analysis dump. It is regenerated on every run and
-is not committed — except `.dev/context/host.json`, which is committed because
-it decides whether review roles run in an isolated context, and a clone that
-loses it silently downgrades to no isolation. `.dev/work/` holds ignored
-per-feature working artifacts.
-
-**The suite itself is not committed to this repository.** It is a dependency,
-listed in `skills-lock.json` and gitignored. In a fresh clone, restore it with:
-
-```bash
-npx skills@1.7.0 add overthinkercurious/agent-engineering --agent AGENT_ID --copy -y
-```
-
-Replace `AGENT_ID` with the current IDE's identifier from the installation table
-in the linked Agent Engineering README.
-
-Then ask the agent to run the survey. If the knowledge base looks out of date,
-re-run it: only the sections whose sources actually changed are regenerated.
+**This is the Agent Engineering source repository.** `skills/` is the tracked
+Root-level validation, evaluation, design, and generated survey artifacts are
+not part of the kit distribution. Runtime scripts and method references live
+inside their owning skill directories.
 <!-- agent-engineering:end -->
-
-> **Correction to the generated block above (this repository only).** Two of
-> its sentences describe a *consumer* project and are false here: this **is**
-> the suite's repository, so `skills/` is the product and must stay tracked,
-> and there is no `skills-lock.json` here and should not be.
->
-> `scaffold.sh` and `doctor.sh` now detect self-hosting (`ae_self_hosted` in
-> `lib.sh`) and omit the suite ignore rule, the untrack advice and the lock
-> warning. Running the survey here is safe.

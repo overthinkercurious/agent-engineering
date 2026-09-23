@@ -27,7 +27,8 @@ quick change that follows an established pattern without a design decision.
 - Investigator result for unexplained defects.
 - Project instructions, relevant architecture, current contracts, and callers.
 - Attached lenses from `references/lenses/` for this role, selected per `team.md`'s lens-selection algorithm.
-- Domain-expert constraints when a named specialist boundary is activated.
+- Domain-expert constraints when revising a draft after named specialists
+  inspect it. The first plan may precede those constraints.
 
 ## Workflow
 

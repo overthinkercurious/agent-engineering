@@ -1,8 +1,8 @@
 ---
 name: ae-forge
 description: >
-  Takes a software request from problem to implemented and independently
-  verified result using a small, risk-sized team. Use for features, bugs,
+  Takes a software request from problem to implemented and verified result
+  using a small, risk-sized team. Use for features, bugs,
   refactors, performance work, security work, technical planning, code review,
   or continuing an existing Agent Engineering task. The user provides the
   outcome; Forge selects the experts, coordinates their work, implements the
@@ -33,7 +33,7 @@ what exists versus what's still backlog.
 2. Select the smallest team that covers the risk.
 3. Plan only as much as safe implementation requires.
 4. Implement requested changes; planning alone is not delivery.
-5. Have a verifier independently inspect the result and run relevant checks.
+5. Have a verifier inspect the result separately and run relevant checks.
 6. Repair valid findings, then report what changed and what remains uncertain.
 
 Keep coordination internal. Give the user short progress updates and ask only
@@ -69,16 +69,16 @@ Inspect the project instructions and current work. Build the repository map
 ```bash
 # ae-surveyor installs as a sibling of this skill; use its analyzer when present.
 SV="$(dirname "$AE")/ae-surveyor"
-if [ -f "$SV/scripts/analyze.mjs" ] && [ ! -s .dev/context/analysis.json ]; then
+if [ -f "$SV/scripts/analyze.mjs" ]; then
   node "$SV/scripts/analyze.mjs" --budget-tokens 60000
 fi
 ```
 
 If `.dev/knowledge/` exists, read `00-index.md` first and follow it to the one
-or two documents that answer the current question. Otherwise use
-`.dev/context/analysis.json`'s ranked file list as the reading plan. Neither is
-a blocker: when no map can be produced, inspect the repository directly and say
-so in the report.
+or two relevant documents. Compare its source fingerprint with the fresh
+analysis; stale knowledge is a reading lead, not current evidence. Otherwise
+use `.dev/context/analysis.json`'s ranked files. If analysis is unavailable or
+its schema is incompatible, inspect the repository directly and report the gap.
 
 **Explore the repository once.** Isolated experts start with a clean context
 window, so an unbudgeted "go read the code" instruction is paid again by every
@@ -92,15 +92,19 @@ create one small record. Skip the record for explanation-only work.
 ```bash
 node "$AE/scripts/forge.mjs" list
 node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
-  --risk <comma-list|none> [--signals <comma-list>] [--domain <comma-list>]
+  --risk <comma-list|none> --tier <quick|standard|deep> \
+  --approval-reason <none|material-choice-or-new-authority> \
+  [--cause known --cause-evidence <repro-or-code-evidence>] \
+  [--signals <comma-list>] [--domain <comma-list>]
 ```
 
-`--signals` passes the request's own vocabulary — `oauth`, `payment`, `deploy`,
-`migration`, the words the user actually used. Signals only ever **add** a
-reviewer or raise a tier; they can never withhold one, which is why `--risk`
-stays the router and this stays optional. Pass it anyway: it is free, it
-catches the case where the behavioural questions were answered too narrowly,
-and it feeds lens selection.
+`--signals` passes vocabulary the user actually used. Signals may add a
+specialist but never lower the tier or remove a risk-selected role. Assess tier
+from scope, reversibility, and open design choices; use quick for a bounded,
+understood change, standard for meaningful design, and deep for difficult
+rollback or independent risk boundaries. Access, stored-shape, irreversible,
+and security work have a deep floor. For bugs and performance work, skip the
+Investigator only when the cause is demonstrated with `--cause-evidence`.
 
 ### Assess risk before starting
 
@@ -157,7 +161,7 @@ Before any expert works, print the routing block from `start`'s output — seven
 lines, once, then stay quiet:
 
 ```text
-Forge   · contract v2 · run 3f9c1a
+Forge   · contract v3 · run 3f9c1a
 Routing · deep · Architect → Security → Experience → Builder → Verifier
 Why     · risk=access (changes who may authenticate), risk=rendered (new login journey)
 Skipped · data (no stored-shape risk declared) · reliability (no runtime risk declared)
@@ -181,9 +185,9 @@ The `Enforce` line is `start`'s `enforce` field verbatim. It is read, never
 assumed, and `none` is the honest default. See `team.md`'s "Enforcement
 tiers" for what each tier does and, more importantly, what it does not.
 
-An audit-only request is different: select Verifier and only the relevant
-Architect, Security, Data, Experience, or Reliability expert. Do not add
-Builder or edit code unless the user also asked for fixes. A release-readiness
+An audit-only request is different: select Auditor, Verifier and only the
+relevant Security, Data, Experience, or Reliability expert. Do not add
+Architect or Builder or edit code unless the user also asked for fixes. A release-readiness
 review ("Release Auditor") is this same audit path with `kind: audit` — there
 is no separate release role; scope it to the relevant specialists (Reliability
 for rollout/observability, Security for exposure, Data for migration safety)
@@ -197,7 +201,12 @@ review, build and its verification — and running a pair concurrently means the
 reviewer judges a moving target.
 
 Six stages are separately installed skills. Scaffold the artifact first, then
-drive them in routing order:
+drive the selected roles in the order recorded by `start`. On deep delivery,
+selected named specialists give pre-build constraints after Architect and
+before Plan Reviewer. The reviewer reads those results and returns a conflicting
+plan to Architect for a focused revision. On audit-only work, selected
+specialists contribute before Auditor; Auditor performs its own cold read,
+then Verifier assesses the combined findings:
 
 ```bash
 node "$AE/scripts/forge.mjs" artifact --id <id>
@@ -213,9 +222,10 @@ node "$AE/scripts/forge.mjs" artifact --id <id>
 | Auditor | `ae-audit` | `Audit` |
 
 The five named specialists — Security, Data, Experience, Reliability, Product —
-are not separate skills. They attach to whichever stage is running, from
-`references/roles/`, the same way a lens does. Their findings go into that
-stage's result.
+are not separate skills. They use `references/roles/` and write their own
+result files and ledger notes. Forge supplies these results to downstream
+stages; a named specialist does not need another public skill or artifact
+section.
 
 ### How a stage is invoked
 
@@ -234,37 +244,16 @@ it was.
 - **Isolation available** — dispatch the stage with its skill name, the run id,
   the artifact path, the exact repository scope, and the specialists and lenses
   attached to it. It inherits nothing else, which is the point.
-- **No isolation** — tell the user to run the stage themselves:
-
-  ```text
-  Next · run /ae-plan in this session.
-  Run state is saved in .dev/runs/<id>.md. I resume once that stage writes its
-  section.
-  ```
-
-  This is the manual-drive path and it is a first-class outcome, not a
-  degradation to apologise for. Handing off by instruction costs one message
-  and keeps every gate; improvising the stage here costs nothing and keeps
-  none.
-
-**Never improvise a stage you could not invoke.** A Forge-approximated plan
-review or verification is exactly the failure this pipeline exists to prevent:
-it produces the same shaped answer with none of the guarantees, and the report
-will present it as though a review happened.
+- **No isolation** — execute each selected stage sequentially in this session.
+  Load its stage skill and selected role method, write its result, and record
+  the section before proceeding. Verifier reopens claims and runs checks
+  independently, while the report records `same-session` review context.
 
 ### Session boundaries
 
-After `ae-plan` and after `ae-build`, recommend a fresh session before the next
-stage:
-
-```text
-Session boundary recommended · start a new session and run: resume .dev/runs/<id>.md
-The next stage is adversarial and should not inherit this session's reasoning.
-```
-
-If the user continues in the same session anyway, the next stage's
-re-verification duty stops being advisory: every citation it relies on must be
-re-opened in that stage, including ones it can see being established.
+At each review boundary, reopen every cited source and re-run the relevant
+checks. A shared session does not provide context independence; record that
+limit with the Verifier contribution.
 
 Forge is the sole coordinator. Planning and review stages are read-only.
 Builder is the only stage that edits application code. Stages return to Forge
@@ -283,15 +272,16 @@ Record material contributions with:
 node "$AE/scripts/forge.mjs" note --id <id> --role <role> --summary "<result>"
 ```
 
+For Verifier, add `--review-context isolated` only when the host actually
+provided an isolated context; otherwise add `--review-context same-session`.
+
 ## Work autonomously
 
-Autonomy is about not narrating, not about not asking. Proceed without
-approval only for **quick** work: local, reversible, understood, with no open
-design choice and no approval-carrying risk flag. Everything else asks once,
-before implementation — when the tier is `standard` or `deep` (a plan exists,
-so there was a design the user could have disagreed with), or when the risk
-set names `access`, `stored-shape` or `irreversible`. `start` computes this and
-prints it; do not re-derive it.
+Work through routine local implementation without interrupting the user,
+regardless of tier. Before `start`, assess whether an unresolved material
+product/design choice or new authority is needed. Pass the specific reason to
+`--approval-reason`, or `none` when the request already authorises the work.
+Risk flags select expertise and depth; they do not imply an approval request.
 
 **A reviewer verdict is not user approval.** An expert clearing its findings
 says the change is sound; only the user says it is wanted. `approve` refuses a
@@ -299,9 +289,9 @@ role name as the approver for exactly this reason, and Builder checks the same
 condition independently before it edits anything. Two keys, because a gate
 enforced at one point is a gate one mistake opens.
 
-What autonomy still means: do not ask which file to edit, whether to write a
-test, how to name something, or whether to run the project's own checks. Ask
-once, about the plan, then work.
+Do not ask which file to edit, whether to write a test, how to name something,
+or whether to run the project's checks. When a material decision is needed,
+prepare the brief and ask one specific question.
 
 Four actions are gated at the moment of action, every run, no matter what was
 approved earlier: **pushing to a remote, merging, migrating a shared
@@ -322,10 +312,9 @@ The brief carries only the sections its tier calls for — a section outside the
 tier is omitted, never filled with "N/A". A quick brief is four sections; a
 four-page plan for a one-line fix is a defect, not thoroughness.
 
-After the user approves, record it with `approve`. That freezes the brief: it
-becomes the contract the release audit compares the delivered change against,
-so do not rewrite it afterwards. Do not ask for approval merely because a
-workflow stage exists.
+When approval is required, record the user's decision with `approve --by
+<user> --basis <decision-evidence>`. The brief freezes at approval; otherwise
+it freezes at the start of build. Do not rewrite a frozen brief.
 
 Write each expert's full result to `.dev/work/<id>/results/<role>.md` and pass
 the path to `note`. Downstream experts receive **paths and findings, never
@@ -392,7 +381,7 @@ it is judgment the Verifier owns, but two are not negotiable:
 
 | Kind | Done means | Non-negotiable |
 |---|---|---|
-| `bug` | the original reproduction now passes | re-run the **original** repro, not a new test that happens to pass; sweep callers |
+| `bug` | the original reproduction now passes | capture the failure before repair when reproducible; re-run the **same** repro; sweep callers |
 | `refactor` | **behaviour is unchanged** | existing tests pass **unmodified** — `finish` refuses otherwise |
 | `performance` | measured improvement under identical conditions | a before **and** after measurement; a percentile, not a mean |
 
@@ -407,7 +396,7 @@ and pass `--tests-changed-justified` to both `audit` and `finish`.
 |---|---|
 | `risk` | the behavioural questions were never answered, so specialists were selected by keyword alone |
 | `lenses` | lens selection was never recorded, so no domain depth is evidenced |
-| `audit` | the deterministic audit never ran, inspected an earlier revision, or read an empty diff |
+| `audit` | on delivery work, the deterministic diff audit never ran, inspected an earlier revision, or read an empty diff |
 | `sections` | a role contributed to the ledger but left its artifact section scaffolded |
 
 `sections` is the one that keeps the artifact honest: a ledger note says an
@@ -423,7 +412,7 @@ Finish a delivery record only after implementation and verification both
 contributed. An audit-only record requires the Verifier and no code change:
 
 ```bash
-node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" --verification "<checks and independent verdict>"
+node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" --verification "<checks and verifier verdict>"
 ```
 
 ## Stay quiet while working

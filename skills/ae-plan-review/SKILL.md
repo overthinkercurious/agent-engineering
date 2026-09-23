@@ -40,8 +40,10 @@ command and end the turn.
 
 Then read `$FORGE/references/team.md`, `$FORGE/references/roles/plan-reviewer.md`,
 any attached lenses, and the artifact's `Request`, `Plan`, `Decisions` and
-`Open questions` sections. **Do not read `Implementation`.** If it exists, this
-run is in the wrong stage.
+`Open questions` sections. Read each selected named specialist's pre-build
+result under `.dev/work/<id>/results/` as well. If any is missing, return to
+Forge before issuing a verdict. **Do not read `Implementation`.** If it exists,
+this run is in the wrong stage.
 
 ## State your boundary
 
@@ -66,8 +68,8 @@ reviews.
 
 > Prior reasoning in this run is not evidence. It is a claim to be checked.
 
-Before relying on any citation the plan marks `VERIFIED`, re-open that file at
-those lines **yourself, in this stage**, and record what you found in the
+Re-open every `VERIFIED` citation that carries a design decision, invariant,
+or verification claim, and sample the rest **yourself, in this stage**. Record what you found in the
 re-verification log. You may only raise a finding citing evidence you re-read.
 
 A citation that does not resolve to an existing file and line range is an
@@ -118,8 +120,8 @@ Next · /ae-plan — cycle 2, delta review only.
 ```
 
 On APPROVED or APPROVED WITH NOTES, hand back to Forge — **not to Builder**.
-Your approval says the plan is sound. It does not say the change is wanted,
-and that authority is the user's alone.
+Your approval says the plan is sound. Forge checks whether a material user
+decision is still pending before build.
 
 ## Hard stops
 

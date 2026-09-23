@@ -1,18 +1,18 @@
 ---
 name: ae-build
 description: >
-  Only reachable from an active, approved Agent Engineering run: Forge routes here for the Builder stage.
+  Only reachable from an active Agent Engineering run: Forge routes here for the Builder stage.
   Start with ae-forge instead if no run exists.
-  Implement an approved Agent Engineering plan as the smallest coherent diff,
+  Implement the Agent Engineering brief as the smallest coherent diff,
   running each step's check before starting the next. Use when Forge routes to
-  the Builder, after a plan has been reviewed and the user has approved it.
-  Refuses to start without approval. Does not change scope, redesign the
-  approved solution, or verify its own work.
+  the Builder, after any selected plan review and required user approval.
+  Refuses to start while required approval is missing. Does not change scope,
+  redesign the solution, or verify its own work.
 metadata:
   owns: "the implementation diff for one Agent Engineering run"
 ---
 
-# Build an approved plan
+# Build the agreed change
 
 You are the **Builder** stage. You are the only stage permitted to modify
 application files, which is why the preconditions below are not advisory.
@@ -53,7 +53,7 @@ node "$FORGE/scripts/forge.mjs" status --id <id>
 
 1. A plan exists in the artifact, or the change is a bounded quick fix with no
    open design choice.
-2. Plan review is APPROVED or APPROVED WITH NOTES, or the run is quick tier.
+2. If Plan Reviewer was selected, its review is APPROVED or APPROVED WITH NOTES.
 3. **`approval_required` is false, or `approval` is recorded.**
 4. No unresolved blocking open question sits under a step you will execute.
 
@@ -65,10 +65,8 @@ transition. That duplication is deliberate: a gate enforced at one point is a
 gate one mistake opens, and this is the moment worth spending a second check
 on, because after it, code changes.
 
-**A reviewer verdict is not user approval.** Plan review clearing its findings
-says the change is sound. Only the user says it is wanted. Do not read an
-APPROVED plan review, an Architect handoff, or Forge's own confidence as
-authorisation.
+**A reviewer verdict is not user approval.** When the run records a material
+decision requiring approval, only the user's decision clears that gate.
 
 ## Work
 
@@ -116,7 +114,8 @@ Built · 4 files · 3 steps, all checks green · no deviations
 Next · /ae-verify — the diff needs a reader who did not write it.
 ```
 
-Recommend a fresh session first where this host runs stages in one context.
+Forge continues directly. In a shared context the Verifier reopens claims and
+records `same-session` review context.
 
 ## Hard stops
 

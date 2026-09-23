@@ -1,23 +1,23 @@
 # Agent Engineering
 
 Agent Engineering gives a coding agent a small autonomous team for taking a
-software request from intent to implementation and independent verification.
+software request from intent to implementation and evidence-based verification.
 It is designed for people who want to describe the outcome, not operate an
 agent framework.
 
-**ae-forge** is the only skill you need to name. It selects a risk-sized team,
+**ae-forge** is the delivery skill you need to name. It selects a risk-sized team,
 drives each stage, enforces the gates, and reports the result.
 
-Behind it are six stage skills and one optional survey. You can invoke any of
-them directly when you want to drive a stage yourself, but you never have to:
+Behind it are six internal stage skills and one optional survey. Use
+`ae-surveyor` when you want durable project knowledge and rules:
 
 | Skill | Stage |
 |---|---|
 | `ae-forge` | Orchestrator — routes, gates, owns the run artifact |
 | `ae-investigate` | Establish the cause of a failure before anyone plans a fix |
 | `ae-plan` | Write the implementation plan |
-| `ae-plan-review` | Read that plan adversarially, before any code exists |
-| `ae-build` | Implement the approved plan |
+| `ae-plan-review` | Read a deep plan adversarially, before any code exists |
+| `ae-build` | Implement the agreed brief |
 | `ae-verify` | Independently verify the candidate and issue the verdict |
 | `ae-audit` | Audit the repository cold, with no plan and no diff |
 | `ae-surveyor` | Optional durable project knowledge and rules |
@@ -26,11 +26,10 @@ Stages run **sequentially, never concurrently**. The pairs that matter are
 adversarial — a plan and its review, a build and its verification — and running
 a pair at the same time means the reviewer is judging a moving target.
 
-Every stage reads and writes one committed file, `.dev/runs/<id>.md`. Each
-stage is invoked with a clean context and inherits nothing, so that file is the
-only channel between them: a decision recorded in a conversation does not
-exist. The bar the artifact has to meet is that a reader who has seen none of
-the run can review and implement from it alone.
+Every stage reads and writes one committed file, `.dev/runs/<id>.md`. Forge
+uses isolated contexts where the host confirms they are available; otherwise
+it executes stages sequentially in one session and reports that review context.
+The artifact must let a new reader review and implement from it alone.
 
 ## The normal experience
 
@@ -61,13 +60,13 @@ exclusive outcome:
 | Product | A new idea or feature outcome is genuinely ambiguous |
 | Investigator | A bug or performance problem has no demonstrated cause |
 | Architect | A meaningful design or multi-file change needs a safe plan |
-| Plan Reviewer | A plan exists and has not been read by anyone who did not write it |
+| Plan Reviewer | Deep design risk warrants a separate plan review |
 | Security | Trust, authorization, privacy, abuse, or payment risk is present |
 | Data | Stored-data invariants, migration, backfill, or recovery is affected |
 | Experience | A user journey, interface state, or accessibility behavior changes |
 | Reliability | Runtime failure, concurrency, performance, or recovery is affected |
 | Builder | Code, tests, or configuration must change |
-| Verifier | The implemented result needs independent inspection |
+| Verifier | The implemented result needs a separate verification pass |
 | Auditor | The repository itself needs a cold read, with no plan and no diff |
 
 Two of those exist because nobody else could answer their question. **Plan
@@ -80,7 +79,7 @@ not read the plan or the diff, because an auditor who knows what was intended
 audits the intention.
 
 Builder and Verifier are the minimum delivery team. Most changes use Architect,
-Plan Reviewer, Builder, and Verifier. Other experts are selected only when their exclusive
+Builder, and Verifier. Other experts are selected only when their exclusive
 boundary is present, and that selection is **behavioural, not lexical**: Forge
 answers a short set of questions about what the change actually does — does it
 change who can reach anything, does it change stored shape, does it change a
@@ -120,8 +119,8 @@ plan to review and nothing to implement — and they do not modify code.
 | Tier | Typical use | Default team |
 |---|---|---|
 | Quick | Local, reversible, well-understood correction | Builder, Verifier |
-| Standard | Meaningful feature, refactor, or multi-file change | Architect, Plan Reviewer, Builder, Verifier |
-| Deep | Security, payments, destructive data, public contracts, difficult rollback | Architect, Plan Reviewer, relevant named specialist, Builder, Verifier |
+| Standard | Meaningful feature, refactor, or multi-file change | Architect, Builder, Verifier |
+| Deep | Security, payments, destructive data, public contracts, difficult rollback | Architect, relevant technical specialists, Plan Reviewer, Builder, Verifier |
 
 An Investigator is added for unknown bugs and performance problems. Product is
 added for ambiguous ideas. Experience is selected for user-facing journeys;
@@ -131,20 +130,11 @@ risks require more.
 
 ## Autonomy and approval
 
-Forge asks once, before implementation, and then works without interrupting.
-
-Approval is required whenever a plan exists — any `standard` or `deep` run —
-and whenever the change carries an `access`, `stored-shape`, or `irreversible`
-risk. **Quick** work is the gate-free case: local, reversible, understood, with
-no open design choice.
-
-The rule is that anything with a design behind it had something the user could
-have disagreed with, and they should see it before code changes rather than
-after. A reviewer verdict is not user approval: an expert clearing its findings
-says the change is sound, only the user says it is wanted. Forge refuses to
-record a role as the approver, and Builder checks the same condition
-independently before editing — two keys, because a gate enforced at one point
-is a gate one mistake opens.
+Forge works through implementation without interrupting for routine local
+choices. It asks when an unresolved material product/design decision or new
+authority is needed. Tier and risk select depth; neither alone requires user
+approval. A reviewer verdict cannot grant user authority. Required approval
+is recorded with the decision basis before Builder starts.
 
 An audit-only run is never gated. It cannot enter build and cannot modify code,
 so there is no action to authorise.
@@ -157,12 +147,12 @@ change, never its release.
 Planning is not treated as delivery. Completion for a requested change requires:
 
 - an implementation contribution;
-- an independent verification contribution;
+- a verification contribution with its review context recorded;
 - relevant project checks;
 - no unresolved critical or high finding;
 - a concise delivery report.
 
-An audit-only request requires independent verification and a findings report,
+An audit-only request requires verification and a findings report,
 not an artificial implementation contribution.
 
 ## Installation
@@ -303,9 +293,9 @@ whatever is happening underneath.
 At the end you get one report, rendered from the run's own record rather than
 recalled: the routing decision, what each expert contributed, **what each one
 caught**, what was skipped and why, the checks that ran, and how many repair
-cycles it took. Because it is generated from the record, the summary and the
-work cannot disagree — which also makes it the instrument for checking that
-routing is behaving.
+cycles it took. Because it is generated from the record, the summary cannot
+contradict the recorded contributions; Verifier still checks those claims
+against repository state.
 
 ## Working files
 
@@ -315,7 +305,7 @@ Forge keeps a small ignored working directory per change at
 | File | Purpose |
 |---|---|
 | `run.json` | Team, phase, revision, approval, contributions — the recovery record |
-| `brief.md` | The reviewable plan. Frozen once approved, so the audit can check what was delivered against what was agreed |
+| `brief.md` | The reviewable plan. Frozen at approval or build, so the audit can check what was delivered against the agreed scope |
 | `results/` | One append-only file per expert contribution |
 
 The brief carries only the sections its risk tier calls for: four for a small
@@ -323,7 +313,7 @@ fix, eleven for a deep change. A four-page plan for a one-line fix is treated
 as a defect, not thoroughness.
 
 Together these make an interrupted task genuinely resumable — a new session
-reads the approved brief and the results rather than re-planning.
+reads the frozen brief and the results rather than re-planning.
 
 The bundled runner supports:
 
@@ -344,22 +334,6 @@ The bundled runner supports:
 
 Agents invoke these commands internally. Users normally never do.
 
-## Development
-
-Run `npm test`. The suite validates skill packaging, the Forge recovery and
-routing contract, lens selection, the deterministic ae-surveyor scripts, and a
-set of golden routing cases in `evals/` (Layer A: routing is a pure function
-of its inputs, so this runs in `npm test` with no model involved).
-
-`evals/` also carries a fixture repository with deliberately planted defects —
-an IDOR, an unbounded query, a missing reduced-motion guard, a non-idempotent
-retry — and `npm run eval` (Layer B), which materialises a scrubbed copy of
-the fixture (the in-file defect labels are stripped, so a run cannot read its
-own answers), then scores a completed Forge run against ground truth. This
-grades something the deterministic suite cannot reach: not just whether the
-right expert was called, but whether it was deep enough to find anything. See
-`evals/README.md`.
-
 ## Design principles
 
 - Use the smallest team that covers the actual risk.
@@ -367,7 +341,7 @@ right expert was called, but whether it was deep enough to find anything. See
 - Implement and verify; do not stop after producing plans.
 - Use native host agents instead of building another agent platform.
 - Route on behaviour, never on vocabulary; absence of a keyword is not safety.
-- Keep a lightweight record and one approved brief, not a document tree.
+- Keep a lightweight record and one frozen brief, not a document tree.
 - Put method in the experts and dated facts in the lenses, so depth can admit
   when it has gone stale.
 - Render the report from the record, so the summary cannot drift from the work.

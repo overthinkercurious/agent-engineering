@@ -60,7 +60,9 @@ Excluded · UI layer, build tooling, test fixtures
 Cap      · 12 findings
 ```
 
-Get agreement on this before you start. The cap is a ceiling, not a target:
+Use the user's stated area or choose a bounded first pass. Ask only when the
+boundary would materially change the requested decision. The cap is a ceiling,
+not a target:
 finding four things in a genuinely healthy area is a result, and padding to
 twelve is a failure of the role.
 

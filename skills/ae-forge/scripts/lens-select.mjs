@@ -169,8 +169,9 @@ function runCli() {
       const expected = team.analysis_schema ?? null
       if (expected !== null && analysis.schema !== expected) {
         schemaMismatch = { expected, found: analysis.schema ?? null }
+      } else {
+        derived = deriveDomains(analysis, team.domain_detectors ?? [])
       }
-      derived = deriveDomains(analysis, team.domain_detectors ?? [])
     } catch { /* an unreadable survey is a missing survey, not a hard failure */ }
   }
 

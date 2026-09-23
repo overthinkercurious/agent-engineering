@@ -1,4 +1,0 @@
-{
-  "name": "eval-fixture",
-  "scripts": { "test": "node --test", "lint": "eslint ." }
-}

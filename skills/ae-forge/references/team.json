@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "analysis_schema": 2,
   "roles": {
     "product": {
@@ -13,10 +13,6 @@
     "architect": {
       "owns": "technical design, system boundaries, impact map, and implementation plan",
       "file": "roles/architect.md"
-    },
-    "plan-reviewer": {
-      "owns": "independent judgment that a plan is safe, correct and implementable as written, before any code exists",
-      "file": "roles/plan-reviewer.md"
     },
     "security": {
       "owns": "trust, authorization, privacy, abuse, and security constraints",
@@ -34,17 +30,21 @@
       "owns": "runtime failure, performance, concurrency, observability, and operational recovery",
       "file": "roles/reliability.md"
     },
+    "plan-reviewer": {
+      "owns": "independent judgment that a plan is safe, correct and implementable as written, before any code exists",
+      "file": "roles/plan-reviewer.md"
+    },
     "builder": {
       "owns": "application and test changes implementing the accepted plan",
       "file": "roles/builder.md"
     },
-    "verifier": {
-      "owns": "integrated evidence and the final delivery verdict",
-      "file": "roles/verifier.md"
-    },
     "auditor": {
       "owns": "cold assessment of the repository as it stands today, read without a plan or a diff",
       "file": "roles/auditor.md"
+    },
+    "verifier": {
+      "owns": "integrated evidence and the final delivery verdict",
+      "file": "roles/verifier.md"
     }
   },
   "tiers": {
@@ -54,7 +54,6 @@
     ],
     "standard": [
       "architect",
-      "plan-reviewer",
       "builder",
       "verifier"
     ],
@@ -68,12 +67,10 @@
   "risk": {
     "access": {
       "role": "security",
-      "approval": true,
       "question": "Does this change who can read, do, or reach anything? (authentication, authorization, tenancy, secrets, payments)"
     },
     "stored-shape": {
       "role": "data",
-      "approval": true,
       "question": "Does this change the shape of persisted data, or move or delete existing data?"
     },
     "rendered": {
@@ -86,7 +83,6 @@
     },
     "irreversible": {
       "role": null,
-      "approval": true,
       "question": "Is any part of this destructive, production-affecting, spending money, or a public contract change?"
     }
   },
@@ -558,11 +554,14 @@
   "acceptance": {
     "feature": {
       "means": "the new behaviour is evidenced",
-      "requires": []
+      "requires": [
+        "map each acceptance criterion to an observed behaviour or meaningful check"
+      ]
     },
     "bug": {
       "means": "the original reproduction now passes and every sibling caller is repaired",
       "requires": [
+        "capture the original failure before changing code when it is reproducible",
         "re-run the ORIGINAL reproduction, not a new test that happens to pass",
         "caller sweep at the shared origin"
       ]
@@ -584,7 +583,9 @@
     },
     "security": {
       "means": "every pre-build constraint maps to evidence in the diff",
-      "requires": []
+      "requires": [
+        "exercise the changed access boundary with an allowed and a denied case"
+      ]
     },
     "idea": {
       "means": "materially different options were considered and one accepted with a reason",

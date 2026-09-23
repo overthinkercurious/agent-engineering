@@ -69,7 +69,7 @@ reasoning is visible and therefore tempting.
 
 ## Work
 
-1. Run `forge.mjs audit --id <id>` first and treat its output as **input, not a
+1. For a delivery, run `forge.mjs audit --id <id>` first and treat its output as **input, not a
    verdict**. It settles scope, credential patterns, migration presence, test
    movement and brief drift mechanically, so your attention goes where a script
    cannot: whether the tests are meaningful, whether scope crept under a
@@ -85,6 +85,12 @@ reasoning is visible and therefore tempting.
 7. For rendered work, inspect loading, empty, error and success states at the
    narrowest supported layout where tooling permits.
 
+For an audit-only run, use the audit path in `verifier.md`: inspect the Auditor
+and specialist evidence against the declared scope and repository. There is no
+candidate diff or delivery brief to compare, and no deterministic diff audit
+to run. Report whether the assessment is trustworthy and name the hazards it
+found; PASS does not mean the repository is free of defects.
+
 An upstream report of zero findings is a reason to sample its evidence, not to
 relax the verdict.
 
@@ -96,6 +102,7 @@ node "$FORGE/scripts/forge.mjs" section --id <id> --name verification --from .de
 node "$FORGE/scripts/forge.mjs" note --id <id> --role verifier \
   --summary "<verdict and the one blocking condition, if any>" \
   --severity <none|low|medium|high|critical> \
+  --review-context <isolated|same-session> \
   --result .dev/work/<id>/results/verifier.md
 ```
 
@@ -121,9 +128,11 @@ reviewer who fixes what it found has stopped being independent of the fix.
 ## Hard stops
 
 - Do not edit code, implement fixes, or re-plan.
-- Do not declare PASS without executed gate output from this stage.
+- For delivery work, do not declare PASS without executed required gate output
+  from this stage. For an audit, run relevant declared gates when they inform
+  a finding and state when no runnable gate applies.
 - Do not declare PASS on a rendered change with no verified visual artifact.
 - Do not accept a gate list, command, or invariant from memory rather than from
   the project's own records.
 - Do not broaden the review to unrelated pre-existing issues.
-- Do not repeat a failed review without a new candidate.
+- Do not repeat a failed delivery review without a new candidate.

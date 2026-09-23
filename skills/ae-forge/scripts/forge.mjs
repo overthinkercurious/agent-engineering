@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -23,42 +23,10 @@ const TRANSITIONS = {
   repair: ['verify', 'blocked'],
   blocked: ['understand', 'plan', 'build', 'verify', 'repair'],
 }
-const RISK_SIGNALS = new Set(
-  ['security', 'data', 'reliability'].flatMap((role) => TEAM.signals[role]),
-)
-const QUICK_SIGNALS = new Set(['copy', 'style', 'docs', 'typo', 'local', 'mechanical'])
-const APPROVAL_SIGNALS = new Set([
-  'destructive', 'irreversible', 'production', 'deploy', 'deployment',
-  'external', 'payment', 'spend', 'spending', 'access-grant', 'credential',
-  'public-contract', 'breaking-change',
-])
+const DEEP_RISKS = new Set(['access', 'stored-shape', 'irreversible'])
 
 const RISK = TEAM.risk ?? {}
 const RISK_FLAGS = Object.keys(RISK)
-
-// Three independent reasons to stop and ask, and the tier is the one that
-// fires most often on purpose.
-//
-// The old predicate asked only about risk flags and keyword signals, and only
-// `irreversible` carried approval - so a deep, six-expert run touching
-// authentication and stored data walked into build without a single question.
-// That is not autonomy, it is a gate whose default is open.
-//
-// `tier !== 'quick'` is the "a plan exists" rule: anything past quick has an
-// Architect on the team, which means a design was chosen, which means there
-// was something the user could have disagreed with. Quick work stays
-// genuinely gate-free - local, reversible, no open design choice - so this
-// adds a question where one was owed, not ceremony everywhere.
-// An audit-only run is the one exception, and it is not a loophole: it cannot
-// enter build and cannot modify code, so there is no action to authorise.
-// Asking the user to approve a read-only review is the ceremony this gate is
-// supposed to be distinguishable from.
-function requiresApproval(signals, risks, tier, kind) {
-  if (kind === 'audit') return false
-  return risks.some((flag) => RISK[flag]?.approval)
-    || signals.some((value) => APPROVAL_SIGNALS.has(value))
-    || (tier !== undefined && tier !== 'quick')
-}
 
 // `--risk none` is an explicit assessment that found nothing. An ABSENT
 // --risk is not: it means the behavioural questions were never answered, and
@@ -183,33 +151,25 @@ function splitSignals() {
 // additive escalation - a keyword may ADD a role, never withhold one - because
 // an exact-match vocabulary silently misses near-synonyms (oauth, sso, rbac),
 // and a router that fails open is worse than no router at all.
-function chooseTier(kind, signals, risks) {
+function chooseTier(kind, risks) {
   const requested = option('--tier')
+  if (!requested && kind !== 'audit') die('--tier is required for a delivery run: assess size, reversibility, and design risk')
   if (requested && !TIERS.includes(requested)) die(`tier must be one of: ${TIERS.join(', ')}`)
-  const deepFlag = risks.some((flag) => RISK[flag]?.approval || RISK[flag]?.role)
-  const inferred = kind === 'security' || deepFlag || signals.some((value) => RISK_SIGNALS.has(value))
-    ? 'deep'
-    : signals.length && signals.every((value) => QUICK_SIGNALS.has(value))
-      ? 'quick'
-      : 'standard'
-  if (!requested) return inferred
-  return TIERS[Math.max(TIERS.indexOf(requested), TIERS.indexOf(inferred))]
+  const floor = kind === 'security' || risks.some((flag) => DEEP_RISKS.has(flag)) ? 'deep' : 'quick'
+  return TIERS[Math.max(TIERS.indexOf(requested ?? 'standard'), TIERS.indexOf(floor))]
 }
 
-function tierReason(kind, signals, risks, tier) {
+function tierReason(kind, risks, tier) {
   if (kind === 'security') return 'kind=security'
-  const flag = risks.find((value) => RISK[value]?.approval || RISK[value]?.role)
-  if (flag) return `risk=${flag}`
-  const signal = signals.find((value) => RISK_SIGNALS.has(value))
-  if (signal) return `escalated by signal "${signal}"`
-  if (tier === 'quick') return 'local, reversible, and understood'
-  return 'several files or a meaningful design choice'
+  const flag = risks.find((value) => DEEP_RISKS.has(value))
+  if (flag) return `minimum deep tier: risk=${flag}`
+  return `assessed ${tier} from scope, reversibility, and design risk`
 }
 
 // Returns both the team and why each role was selected or skipped, so the
 // delivery report can show the routing decision instead of the model
 // recalling it. A skipped role with no recorded reason is a routing bug.
-function chooseTeam(kind, tier, signals, risks) {
+function chooseTeam(kind, tier, signals, risks, cause) {
   const selected = {}
   const skipped = {}
   const take = (role, reason) => { if (!selected[role]) selected[role] = reason }
@@ -227,19 +187,16 @@ function chooseTeam(kind, tier, signals, risks) {
 
   if (tier !== 'quick') {
     take('architect', 'tier is standard or deeper')
-    // A plan nobody adversarially read is a plan whose defects are found by
-    // Builder, in code, after they are expensive. Plan Reviewer exists for
-    // exactly the window between "a design was chosen" and "code was written",
-    // so it is selected by the same condition that creates that window.
-    take('plan-reviewer', 'a plan exists and must be read by someone who did not write it')
+    if (tier === 'deep') take('plan-reviewer', 'deep design risk merits a separate plan review')
+    else skipped['plan-reviewer'] = 'standard tier: Verifier reviews the delivered result'
   } else {
     skipped.architect = 'quick tier: no open design choice'
     skipped['plan-reviewer'] = 'quick tier: no plan to review'
   }
 
-  if (kind === 'bug' || kind === 'performance' || signals.includes('unknown')) {
-    take('investigator', `kind=${kind === 'performance' ? 'performance' : kind === 'bug' ? 'bug' : 'feature'}, cause not demonstrated`)
-  } else skipped.investigator = 'no undiagnosed defect'
+  if (((kind === 'bug' || kind === 'performance') && cause !== 'known') || signals.includes('unknown')) {
+    take('investigator', 'cause not demonstrated')
+  } else skipped.investigator = 'cause already demonstrated or no defect to diagnose'
 
   if (kind === 'idea' || signals.includes('ambiguous') || signals.includes('product')) {
     take('product', kind === 'idea' ? 'kind=idea' : 'outcome is materially ambiguous')
@@ -301,7 +258,36 @@ function enforceTier(root) {
   } catch { return 'none' }
 }
 
-function baseline(root) {
+const KIT_PATH = /(^|\/)skills\/ae-[^/]+\//
+const SNAPSHOT_FILE_LIMIT = 1024 * 1024
+const SNAPSHOT_TOTAL_LIMIT = 4 * SNAPSHOT_FILE_LIMIT
+
+function gitNames(root, argv) {
+  const selfHosted = git(root, ['ls-files', '--error-unmatch', 'skills/ae-forge/SKILL.md']) !== null
+  return (git(root, [...argv, '-z']) ?? '').split('\0').filter(Boolean)
+    .filter((name) => !name.startsWith('.dev/') && (selfHosted || !KIT_PATH.test(name)))
+}
+
+function fileDigest(path) {
+  try { return createHash('sha256').update(readFileSync(path)).digest('hex') } catch { return null }
+}
+
+function contextStatus(root) {
+  const analysisPath = join(root, '.dev', 'context', 'analysis.json')
+  if (!existsSync(analysisPath)) return { analysis: 'missing', knowledge: 'unknown' }
+  try {
+    const analysis = JSON.parse(readFileSync(analysisPath, 'utf8'))
+    if (analysis.schema !== TEAM.analysis_schema) {
+      return { analysis: 'schema-mismatch', expected: TEAM.analysis_schema, found: analysis.schema ?? null, knowledge: 'unknown' }
+    }
+    const indexPath = join(root, '.dev', 'knowledge', '00-index.md')
+    if (!existsSync(indexPath)) return { analysis: 'current', knowledge: 'absent' }
+    const snapshot = readFileSync(indexPath, 'utf8').match(/<!-- agent-engineering:snapshot:([a-f0-9]+) -->/)?.[1]
+    return { analysis: 'current', knowledge: snapshot && snapshot === analysis.provenance?.fingerprint ? 'current' : 'stale' }
+  } catch { return { analysis: 'unreadable', knowledge: 'unknown' } }
+}
+
+function baseline(root, id) {
   let head = null
   try {
     head = execFileSync('git', ['rev-parse', '--short', 'HEAD'],
@@ -312,7 +298,34 @@ function baseline(root) {
   if (existsSync(analysis)) {
     map = createHash('sha256').update(readFileSync(analysis, 'utf8')).digest('hex').slice(0, 16)
   }
-  return { head, analysis: map, at: new Date().toISOString() }
+  const files = {}
+  let copied = 0
+  if (head) {
+    const dirty = gitNames(root, ['diff', '--name-only', '--no-renames', 'HEAD'])
+    const untracked = gitNames(root, ['ls-files', '--others', '--exclude-standard'])
+    for (const name of new Set([...dirty, ...untracked])) {
+      const absolute = resolve(root, name)
+      if (!inside(root, absolute)) continue
+      const entry = { initial: untracked.includes(name) ? 'untracked' : 'tracked', existed: false }
+      try {
+        const state = lstatSync(absolute)
+        if (!state.isFile()) { entry.limitation = 'not a regular file'; files[name] = entry; continue }
+        entry.existed = true
+        entry.sha256 = fileDigest(absolute)
+        if (state.size > SNAPSHOT_FILE_LIMIT || copied + state.size > SNAPSHOT_TOTAL_LIMIT) {
+          entry.limitation = 'baseline file exceeds snapshot limit'
+        } else {
+          const snapshot = join(workRoot(root), id, 'baseline', createHash('sha256').update(name).digest('hex'))
+          mkdirSync(dirname(snapshot), { recursive: true })
+          copyFileSync(absolute, snapshot)
+          entry.snapshot = relative(root, snapshot).replaceAll('\\', '/')
+          copied += state.size
+        }
+      } catch { entry.limitation = 'baseline file unreadable or deleted' }
+      files[name] = entry
+    }
+  }
+  return { head, analysis: map, files, at: new Date().toISOString() }
 }
 
 const ACCEPTANCE = TEAM.acceptance ?? {}
@@ -330,18 +343,47 @@ const TEST_PATH = /(^|[\/\\])(tests?|spec|__tests__)[\/\\]|[._-](test|spec)\.[a-
 // dangerous one. `includeUntracked` exists for the one other caller that
 // wants the opposite question answered - "was any test touched at all" - not
 // this one.
-function changedTestFiles(root, from, includeUntracked = false) {
-  if (!from) return null
-  try {
-    const out = execFileSync('git', ['diff', '--name-only', from],
-      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-    const tracked = out.split('\n').map((line) => line.trim()).filter(Boolean)
-    if (!includeUntracked) return tracked.filter((line) => TEST_PATH.test(line))
-    const untracked = (execFileSync('git', ['ls-files', '--others', '--exclude-standard'],
-      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) ?? '')
-      .split('\n').map((line) => line.trim()).filter(Boolean)
-    return [...new Set([...tracked, ...untracked])].filter((line) => TEST_PATH.test(line))
-  } catch { return null }
+function changedTestFiles(root, baseline, includeUntracked = false) {
+  if (!baseline?.head) return null
+  const diff = taskDiff(root, baseline)
+  return diff.names.filter((name) => TEST_PATH.test(name) &&
+    (includeUntracked || !diff.untracked.includes(name)))
+}
+
+function taskDiff(root, baseline) {
+  const from = baseline?.head
+  const tracked = from ? gitNames(root, ['diff', '--name-only', '--no-renames', from]) : []
+  const untracked = gitNames(root, ['ls-files', '--others', '--exclude-standard'])
+  const names = []
+  const added = []
+  const uncertain = []
+  let preexistingUnchanged = 0
+  for (const name of new Set([...tracked, ...untracked])) {
+    const prior = baseline?.files?.[name]
+    const absolute = resolve(root, name)
+    if (!inside(root, absolute)) continue
+    if (prior && (!prior.existed && !existsSync(absolute) ||
+      (prior.existed && prior.sha256 && prior.sha256 === fileDigest(absolute)))) {
+      preexistingUnchanged++
+      continue
+    }
+    names.push(name)
+    if (prior) {
+      if (!prior.snapshot) { uncertain.push(name); continue }
+      const previous = resolve(root, prior.snapshot)
+      if (!inside(root, previous) || !existsSync(previous)) { uncertain.push(name); continue }
+      const comparison = spawnSync('git', ['diff', '--no-index', '--unified=0', '--', previous, absolute],
+        { cwd: root, encoding: 'utf8' })
+      if (comparison.error || comparison.status > 1) { uncertain.push(name); continue }
+      added.push(...(comparison.stdout ?? '').split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')))
+    } else if (untracked.includes(name)) {
+      try { added.push(...readFileSync(absolute, 'utf8').split('\n')) } catch { uncertain.push(name) }
+    } else if (from) {
+      const diff = git(root, ['diff', '--unified=0', from, '--', name]) ?? ''
+      added.push(...diff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')))
+    }
+  }
+  return { names, added, untracked, uncertain, preexistingUnchanged }
 }
 
 function briefPath(root, id) {
@@ -371,9 +413,9 @@ function brief() {
     `> Team: ${run.team.join(' → ')}`,
     `> Baseline: ${run.baseline?.head ?? 'UNKNOWN'} · approval ${run.approval_required ? 'required' : 'not required'}`,
     '',
-    '_This brief is the approved contract. After approval it is frozen: the',
-    'release audit compares the delivered change against this text, so',
-    'rewriting it destroys the answer to "did we build what was approved?"_',
+    '_This brief is the implementation contract. It is frozen at approval',
+    'when approval is required, or at the start of build otherwise. The audit',
+    'compares the delivered change against that frozen text._',
     '',
   ]
   for (const [heading, minTier, prompt] of BRIEF_SECTIONS) {
@@ -398,11 +440,9 @@ function artifactSkeleton(run) {
     `> ${run.tier} · ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
     `> Team: ${run.team.join(' → ')}`,
     '',
-    '_Every section below is written by exactly one role, at the end of its own',
-    'stage. This file is the only channel between roles: each is invoked with a',
-    'clean context and inherits nothing, so a decision recorded only in a',
-    'conversation does not exist. The bar is that a reader who has seen none of',
-    'this run can review and implement from this file alone._',
+    '_Every section below has one owner. Isolated stages use this file as their',
+    'handoff; same-session stages re-open its evidence. A reader who has seen',
+    'none of this run should be able to review and implement from it alone._',
     '',
   ]
   for (const [key, meta] of Object.entries(SECTIONS)) {
@@ -516,14 +556,6 @@ function allowedPhases(role) {
   return ['understand', 'plan']
 }
 
-function parseBoolean(name, fallback) {
-  const value = option(name)
-  if (value === null) return fallback
-  if (value === 'true') return true
-  if (value === 'false') return false
-  die(`${name} must be true or false`)
-}
-
 function runPath(root, id) {
   const path = join(workRoot(root), safeId(id), 'run.json')
   if (!inside(root, path)) die('run path escapes project root')
@@ -563,10 +595,17 @@ function start() {
   if (existsSync(path)) die('run already exists; resume it instead', 4, { id })
   const signals = splitSignals()
   const { risks, assessed } = splitRisks()
+  if (option('--approval-required') !== null) die('--approval-required is retired; pass --approval-reason none or the material decision')
+  const approvalReason = kind === 'audit' ? 'none' : option('--approval-reason')?.trim()
+  if (!approvalReason) die('--approval-reason none|TEXT is required for delivery work')
+  const cause = option('--cause') ?? ((kind === 'bug' || kind === 'performance') ? 'unknown' : null)
+  if (cause && !['known', 'unknown'].includes(cause)) die('--cause must be known or unknown')
+  const causeEvidence = option('--cause-evidence')?.trim() ?? null
+  if (cause === 'known' && !causeEvidence) die('--cause-evidence is required when the cause is known')
   const domains = [...new Set(String(option('--domain', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
-  const tier = chooseTier(kind, signals, risks)
-  const routing = chooseTeam(kind, tier, signals, risks)
+  const tier = chooseTier(kind, risks)
+  const routing = chooseTeam(kind, tier, signals, risks, cause)
   const now = new Date().toISOString()
   const run = {
     schema: 1,
@@ -575,21 +614,25 @@ function start() {
     kind,
     signals,
     risks,
+    cause,
+    cause_evidence: causeEvidence,
     domains,
     tier,
     team: routing.team,
     routing: {
       risk_assessed: assessed,
       tier_reason: assessed
-        ? tierReason(kind, signals, risks, tier)
-        : `${tierReason(kind, signals, risks, tier)} (risk not assessed: specialists selected by keyword only)`,
+        ? tierReason(kind, risks, tier)
+        : `${tierReason(kind, risks, tier)} (risk not assessed: specialists selected by keyword only)`,
       selected: routing.selected,
       skipped: routing.skipped,
     },
     contract: TEAM.version,
-    approval_required: parseBoolean('--approval-required', requiresApproval(signals, risks, tier, kind)),
+    approval_reason: approvalReason,
+    approval_required: approvalReason !== 'none',
     approval: null,
-    baseline: baseline(root),
+    baseline: baseline(root, id),
+    context: contextStatus(root),
     status: 'active',
     phase: 'understand',
     revision: 0,
@@ -604,6 +647,8 @@ function start() {
   output({
     ok: true, id, tier, team: run.team, routing: run.routing,
     approval_required: run.approval_required,
+    approval_reason: run.approval_reason,
+    context: run.context,
     enforce: enforceTier(root),
     // Printed verbatim as the routing block's first line. It is read from
     // team.json, so it exists only when the skill directory resolved - which
@@ -659,7 +704,22 @@ function note() {
       resolve: `move the run to a phase this role can work in first: forge.mjs phase --id ${id} --to ${permitted[0]} --summary "<current truth>"`,
     })
   }
+  if (role === 'plan-reviewer' && feature.run.contract >= 3) {
+    const prior = new Set(feature.run.contributions
+      .filter((item) => ['understand', 'plan'].includes(item.phase))
+      .map((item) => item.role))
+    const missing = feature.run.team
+      .filter((selected) => selected === 'architect' || SPECIALIST_ROLES.includes(selected))
+      .filter((selected) => !prior.has(selected))
+    if (missing.length) {
+      die('Plan Reviewer must read the plan and selected specialist constraints first', 5, { missing })
+    }
+  }
   if (role === 'verifier') {
+    const reviewContext = option('--review-context')
+    if (feature.run.contract >= 3 && !['isolated', 'same-session'].includes(reviewContext)) {
+      die('Verifier must record --review-context isolated|same-session', 2)
+    }
     const prior = new Set(feature.run.contributions.map((item) => item.role))
     const missingPrior = feature.run.team.filter((selected) => selected !== 'verifier' && !prior.has(selected))
     const reviewedCandidate = new Set(feature.run.contributions
@@ -707,6 +767,7 @@ function note() {
     severity: severity ?? null,
     residual: residual ?? undefined,
     result: relative(root, resultPath).split('\\').join('/'),
+    ...(role === 'verifier' && option('--review-context') ? { review_context: option('--review-context') } : {}),
     at: new Date().toISOString(),
   })
   save(feature.path, feature.run)
@@ -759,6 +820,14 @@ function phase() {
     const required = feature.run.team.filter((role) => !['builder', 'verifier'].includes(role))
     const missing = required.filter((role) => !contributed.has(role))
     if (missing.length) die('pre-build expert contributions are required before build', 5, { missing })
+    if (feature.run.contract >= 3 && feature.run.team.includes('plan-reviewer')) {
+      const roles = feature.run.contributions.map((item) => item.role)
+      const reviewAt = roles.lastIndexOf('plan-reviewer')
+      const inputsAt = Math.max(...['architect', ...SPECIALIST_ROLES].map((role) => roles.lastIndexOf(role)))
+      if (reviewAt <= inputsAt) {
+        die('Plan Reviewer must review the latest plan and specialist constraints before build', 5, { id })
+      }
+    }
   }
   if (to === 'build' && feature.run.approval_required && !feature.run.approval) {
     die('material approval is required before build', 5, { id })
@@ -768,6 +837,9 @@ function phase() {
   }
   if (to === 'build' || to === 'repair') {
     feature.run.revision = (feature.run.revision || 0) + 1
+  }
+  if (to === 'build' && !feature.run.approval_required && feature.run.contract >= 3) {
+    feature.run.brief_sha_at_build = briefDigest(root, id)
   }
   feature.run.phase = to
   feature.run.summary = summary
@@ -807,10 +879,18 @@ function approve() {
   const id = safeId(option('--id'))
   const feature = load(root, id)
   ensureActive(feature.run)
+  if (feature.run.contract >= 3 && !feature.run.approval_required) {
+    die('this run has no pending material decision to approve', 5, { id })
+  }
+  if (feature.run.contract >= 3 && ['build', 'verify', 'repair'].includes(feature.run.phase)) {
+    die('approval must be recorded before build', 5, { id, phase: feature.run.phase })
+  }
   // A reviewer verdict is not user approval, and the easiest way to blur that
   // is to record one as the other. An expert cannot authorise the work it is
   // on the team to perform, so its name is not an accepted approver.
-  const by = option('--by', 'user')
+  const by = option('--by', feature.run.contract >= 3 ? null : 'user')
+  const basis = option('--basis', feature.run.contract >= 3 ? null : 'Explicit approval in the active conversation.')
+  if (!by?.trim() || !basis?.trim()) die('--by and --basis are required to record the user decision')
   if (ROLES.includes(by.toLowerCase())) {
     die('a reviewer verdict is not user approval', 5, {
       by,
@@ -820,7 +900,7 @@ function approve() {
   feature.run.approval = {
     by,
     at: new Date().toISOString(),
-    basis: option('--basis', 'Explicit approval in the active conversation.'),
+    basis,
     // The brief is the contract from here on. Recording its digest is what
     // lets the audit answer "did we build what was approved?" rather than
     // "did we build what the brief now says?".
@@ -863,14 +943,14 @@ function finish() {
   if (!feature.run.lenses) {
     gaps.push({ gap: 'lenses', why: 'lens selection was never recorded, so no domain depth is evidenced' })
   }
-  if (feature.run.audit?.revision !== feature.run.revision) {
+  if (feature.run.kind !== 'audit' && feature.run.audit?.revision !== feature.run.revision) {
     gaps.push({
       gap: 'audit',
       why: feature.run.audit
         ? `the deterministic audit inspected revision ${feature.run.audit.revision}, not the current ${feature.run.revision}`
         : 'the deterministic audit never ran',
     })
-  } else if (feature.run.audit?.inspected_nothing) {
+  } else if (feature.run.kind !== 'audit' && feature.run.audit?.inspected_nothing) {
     // The audit ran and read an empty diff. Ran-but-read-nothing must not
     // close a run as quietly as ran-and-found-nothing.
     gaps.push({
@@ -916,6 +996,9 @@ function finish() {
   if (!verifierReview) {
     die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
   }
+  if (feature.run.contract >= 3 && !verifierReview.review_context) {
+    die('Verifier review context was not recorded', 5, { id })
+  }
   // Keep findings until their owner explicitly records the remaining severity.
   // A missing severity or a new revision does not silently resolve a blocker.
   //
@@ -954,7 +1037,7 @@ function finish() {
   // Per-kind acceptance: most of it is judgment the Verifier owns, but a
   // refactor that rewrote its own tests is mechanically checkable, so check it.
   if (feature.run.kind === 'refactor' && !args.includes('--tests-changed-justified')) {
-    const touched = changedTestFiles(root, feature.run.baseline?.head)
+    const touched = changedTestFiles(root, feature.run.baseline)
     if (touched && touched.length) {
       die('a refactor changed test files, so behaviour preservation is unproven', 5, {
         acceptance: ACCEPTANCE.refactor?.means ?? 'behaviour is unchanged',
@@ -971,6 +1054,7 @@ function finish() {
   feature.run.summary = summary
   feature.run.verification = auditJustified
     ? `${verification} · Audit adjudication: ${auditJustification}` : verification
+  feature.run.review_context = verifierReview.review_context ?? 'unrecorded'
   feature.run.result = result
   save(feature.path, feature.run)
   output({ ok: true, id, status: 'done', summary, verification, result: feature.run.result })
@@ -1036,6 +1120,8 @@ function report() {
       out.push('> **Lens note.** No domain input and no survey, so no domain depth was applied. That is untested, not clean.', '')
     }
   }
+  if (run.context?.knowledge === 'stale') out.push('> **Project knowledge stale.** Read current source before relying on generated knowledge.', '')
+  if (run.context?.analysis === 'schema-mismatch') out.push('> **Project analysis incompatible.** Automatic domain depth is unverified.', '')
 
   const skipped = Object.entries(run.routing?.skipped ?? {})
   if (skipped.length) {
@@ -1048,6 +1134,9 @@ function report() {
       + (failed.length ? ` · needs review: ${failed.map((c) => c.check).join(', ')}` : ''))
   }
   if (run.verification) out.push(`**Checks** · ${run.verification}`)
+  const reviewContext = run.review_context ?? run.contributions
+    .filter((item) => item.role === 'verifier').at(-1)?.review_context ?? 'unrecorded'
+  out.push(`**Review context** · ${reviewContext === 'isolated' ? 'isolated' : reviewContext === 'same-session' ? 'same session; not context independent' : 'unrecorded'}`)
   const cycles = Math.max(0, (run.revision ?? 1) - 1)
   out.push(`**Loop** · ${run.revision} revision(s) · repair cycle ${cycles} of 2`)
   // Never fall back to the CURRENT team.json version here. A run started
@@ -1056,9 +1145,11 @@ function report() {
   // about the past that nothing recorded. Unrecorded is the honest answer.
   out.push(`**Forge** · contract ${run.contract ? `v${run.contract}` : 'UNRECORDED'} · run \`${run.id}\``)
   out.push(`**Approval** · ${run.approval ? `recorded ${run.approval.at}` : (run.approval_required ? 'REQUIRED, not yet recorded' : 'not required')}`)
+  if (run.approval_reason && run.approval_reason !== 'none') out.push(`**Decision needed** · ${run.approval_reason}`)
 
-  if (run.approval?.brief_sha && run.brief_sha_at_finish && run.approval.brief_sha !== run.brief_sha_at_finish) {
-    out.push('', '> **Scope note.** The brief changed after approval. Compare the delivered change against what was approved before releasing.')
+  const frozenBrief = run.approval?.brief_sha ?? run.brief_sha_at_build
+  if (frozenBrief && run.brief_sha_at_finish && frozenBrief !== run.brief_sha_at_finish) {
+    out.push('', '> **Scope note.** The brief changed after it was frozen. Compare the delivered change against the agreed scope before releasing.')
   }
   for (const item of run.accepted_gaps ?? []) {
     out.push('', `> **Accepted gap: ${item.gap}.** ${item.why}. This run was closed without it, deliberately.`)
@@ -1108,24 +1199,17 @@ function audit() {
   // `git diff` only sees tracked files, so a brand-new untracked file - the
   // most likely place for a leaked credential to sit - would be invisible to
   // every check below. Include untracked files and treat them as wholly added.
-  const tracked = from
-    ? (git(root, ['diff', '--name-only', from]) ?? '').split('\n').map((line) => line.trim()).filter(Boolean)
-    : []
   // A project that installed this kit but has not yet wired ae-surveyor's
   // .gitignore fragment leaves the kit's own skill files untracked, which
   // would otherwise inflate every count below with this run's own tooling
   // rather than the work it produced. Exclude by the same pattern the
   // fragment itself uses (**/skills/ae-*/), so the exclusion holds regardless
   // of whether the project's .gitignore has caught up yet.
-  const KIT_PATH = /(^|\/)skills\/ae-[^/]+\//
-  const untracked = (git(root, ['ls-files', '--others', '--exclude-standard']) ?? '')
-    .split('\n').map((line) => line.trim()).filter(Boolean)
-    .filter((name) => !name.startsWith('.dev/') && !KIT_PATH.test(name))
-  const names = [...new Set([...tracked, ...untracked])]
-  const diff = from ? (git(root, ['diff', '--unified=0', from]) ?? '') : ''
-  const added = diff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++'))
-  for (const name of untracked) {
-    try { added.push(...readFileSync(join(root, name), 'utf8').split('\n')) } catch { /* binary or unreadable */ }
+  const task = taskDiff(root, run.baseline)
+  const { names, added } = task
+  if (task.uncertain.length) {
+    add('baseline', 'UNKNOWN', `${task.uncertain.length} changed file(s) lack an exact initial snapshot`)
+    findings.push({ check: 'baseline', severity: 'medium', detail: `directly compare baseline for: ${task.uncertain.slice(0, 10).join(', ')}` })
   }
 
   // An empty diff is not a clean diff. When the baseline is already the
@@ -1139,7 +1223,7 @@ function audit() {
       `nothing differs from baseline ${from}; the mechanical checks read an empty diff and prove nothing about the work`)
   }
 
-  // 1. Scope: every changed file should appear in the approved brief.
+  // 1. Scope: every changed file should appear in the frozen brief.
   const briefFile = briefPath(root, id)
   if (existsSync(briefFile) && names.length) {
     const brief = readFileSync(briefFile, 'utf8')
@@ -1147,7 +1231,7 @@ function audit() {
     add('scope', unplanned.length ? 'REVIEW' : 'OK',
       unplanned.length ? `${unplanned.length} changed file(s) are not named in the brief` : `${names.length} changed file(s), all named in the brief`)
     for (const name of unplanned.slice(0, 20)) {
-      findings.push({ check: 'scope', severity: 'medium', detail: `${name} changed but is not named in the approved brief` })
+      findings.push({ check: 'scope', severity: 'medium', detail: `${name} changed but is not named in the brief` })
     }
   } else if (names.length) {
     add('scope', 'UNKNOWN', 'no brief to compare the changed files against')
@@ -1178,7 +1262,7 @@ function audit() {
     // Tracked-only, deliberately: a brand-new untracked test is ordinary
     // added coverage, not evidence a refactor quietly changed behaviour. The
     // risk this branch exists for is rewriting an existing test.
-    const testsTouched = changedTestFiles(root, from) ?? []
+    const testsTouched = changedTestFiles(root, run.baseline) ?? []
     const justified = args.includes('--tests-changed-justified')
     add('tests', testsTouched.length ? (justified ? 'REVIEW' : 'FAIL') : 'OK',
       testsTouched.length ? (justified ? 'test edits declared justified; Verifier must inspect the rationale' : `refactor changed ${testsTouched.length} test file(s); behaviour preservation is unproven`) : 'existing tests unmodified')
@@ -1188,7 +1272,7 @@ function audit() {
     // typically brand new and would never appear in `git diff` at all, so
     // asking only "was any test touched" must see it or this check reports
     // "no test changed" while a fresh test sits unrecorded on disk.
-    const testsTouched = changedTestFiles(root, from, true) ?? []
+    const testsTouched = changedTestFiles(root, run.baseline, true) ?? []
     add('tests', testsTouched.length ? 'OK' : 'REVIEW',
       testsTouched.length ? `${testsTouched.length} test file(s) changed` : 'no test file changed by this work')
     if (!testsTouched.length) findings.push({ check: 'tests', severity: 'medium', detail: 'no test changed; confirm the behaviour is covered by an existing one' })
@@ -1212,13 +1296,14 @@ function audit() {
     }
   }
 
-  // 6. Did the contract move after it was approved?
-  if (run.approval?.brief_sha) {
+  // 6. Did the contract move after it was frozen?
+  const frozenBrief = run.approval?.brief_sha ?? run.brief_sha_at_build
+  if (frozenBrief) {
     const now = briefDigest(root, id)
-    const drifted = now && now !== run.approval.brief_sha
+    const drifted = now && now !== frozenBrief
     add('brief-drift', drifted ? 'REVIEW' : 'OK',
-      drifted ? 'the brief changed after approval' : 'the brief matches what was approved')
-    if (drifted) findings.push({ check: 'brief-drift', severity: 'high', detail: 'the approved contract was edited after approval' })
+      drifted ? 'the brief changed after it was frozen' : 'the brief matches its frozen version')
+    if (drifted) findings.push({ check: 'brief-drift', severity: 'high', detail: 'the implementation contract was edited after freeze' })
   }
 
   const blocking = findings.filter((f) => ['critical', 'high'].includes(f.severity))
@@ -1244,6 +1329,8 @@ function audit() {
     id,
     kind: run.kind,
     changed_files: names.length,
+    preexisting_unchanged: task.preexistingUnchanged,
+    baseline_uncertain: task.uncertain,
     checks,
     findings,
     verdict: blocking.length ? 'BLOCKING FINDINGS'
@@ -1274,17 +1361,19 @@ function help() {
 Internal recovery ledger for the autonomous Forge workflow.
 
   start  --title TEXT --kind KIND --risk FLAGS [--domain a,b] [--signals a,b]
-         [--tier quick|standard|deep]
+         --tier quick|standard|deep --approval-reason none|TEXT
+         [--cause known|unknown --cause-evidence TEXT]
   list
   status --id ID
   note   --id ID --role ROLE --summary TEXT --result PATH [--severity S]
+         [--review-context isolated|same-session] (Verifier)
          [--residual TEXT]  (accept a blocking-severity finding this run will
           not repair - an inherited defect, or one whose fix is a product
           decision; requires --severity and is named in the delivery report)
   phase  --id ID --to PHASE --summary TEXT
   brief  --id ID [--force]
   lenses --id ID --json '<lens-select.mjs output>'
-  approve --id ID [--by NAME] [--basis TEXT]
+  approve --id ID --by NAME --basis TEXT
   audit  --id ID [--tests-changed-justified] (release checks; exit 5 on blockers)
   report --id ID
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]

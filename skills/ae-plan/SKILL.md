@@ -44,10 +44,12 @@ Then read, in this order and no further:
 2. `$FORGE/references/roles/architect.md` — your method and output form.
 3. Any lenses Forge attached for `architect`.
 4. `.dev/runs/<id>.md`, sections `Request`, `Investigation`, `Decisions`,
-   `Open questions` only.
+   `Open questions` and, on a revision, the current `Plan review`.
+5. On a revision, the selected specialists' pre-build result files under
+   `.dev/work/<id>/results/`.
 
-Do not read `Plan review`, `Implementation`, or `Verification`. The first does
-not exist yet; the others mean you are in the wrong stage.
+Do not read `Implementation` or `Verification`; these mean you are in the wrong
+stage. On the initial plan, `Plan review` does not exist yet.
 
 ## State your boundary
 
@@ -92,24 +94,22 @@ node "$FORGE/scripts/forge.mjs" note --id <id> --role architect \
 ```
 
 The section write is not optional and not a copy of the note. The note is the
-ledger entry; the section is what the next stage actually reads, and it is
-invoked with a clean context that inherits nothing from this one. `finish`
+ledger entry; the section is what the next stage actually reads, whether its
+context is isolated or shared. `finish`
 refuses to close a run whose contributing role left its section scaffolded.
 
 ## Hand back
 
 Print the plan's location, the depth tier, and the count of open questions.
-Then stop:
+Then hand back to Forge:
 
 ```text
 Plan written · .dev/runs/<id>.md · standard · 1 open question (blocks step 4)
-Next · /ae-plan-review — the plan needs a reader who did not write it.
+Next · Forge dispatches the next selected role.
 ```
 
-Recommend a fresh session before that stage when this host runs stages in one
-accumulating context. The next role is adversarial and should not inherit your
-reasoning; if the user continues here anyway, the reviewer's re-verification
-duty becomes mandatory rather than advisory.
+Plan Reviewer runs only when selected for deep work. In a shared context, each
+review role reopens the evidence it uses.
 
 ## Hard stops
 

@@ -24,11 +24,5 @@
     "LICENSE",
     "kit-version.txt"
   ],
-  "private": false,
-  "scripts": {
-    "validate": "node scripts/validate-forge.mjs",
-    "eval": "node scripts/eval-depth.mjs",
-    "test": "node scripts/test-all.mjs",
-    "test:install": "node scripts/test-installer.mjs"
-  }
+  "private": false
 }

@@ -99,7 +99,7 @@ function preToolUse(input) {
     process.stderr.write(
       `Agent Engineering: run ${run.id} (${run.tier}) requires approval before any file is edited.\n` +
       'The brief is the thing to approve, not this message. Show it, then record the\n' +
-      `user's decision:  forge.mjs approve --id ${run.id} --by "<person>"\n` +
+      `user's decision:  forge.mjs approve --id ${run.id} --by "<person>" --basis "<decision>"\n` +
       'A reviewer verdict is not user approval.\n')
     return DENY
   }

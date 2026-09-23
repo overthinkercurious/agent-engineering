@@ -108,6 +108,11 @@ for id in $(ae_target_ids "$TSV"); do
     fail "$disp detected but $ifile has no agent-engineering block - re-run ae-surveyor"
   fi
 
+  if ae_self_hosted "$ROOT"; then
+    ae_info "self-hosted: source skills/ is the product; no installed copy is expected"
+    continue
+  fi
+
   # Skills present where this tool looks for them?
   sd="$ROOT/$skdir"
   if [ -d "$sd" ]; then

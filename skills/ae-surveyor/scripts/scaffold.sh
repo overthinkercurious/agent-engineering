@@ -112,7 +112,19 @@ for id in $(ae_target_ids "$TSV"); do
 
   case "$style" in
     import) ae_render "$ASSETS/claude-import.md" > "$BODY" ;;
-    block)  ae_render "$ASSETS/pointer-block.md" > "$BODY" ;;
+    block)
+      ae_render "$ASSETS/pointer-block.md" > "$BODY"
+      if ae_self_hosted "$ROOT"; then
+        awk '/^\*\*The suite itself is not committed/{exit} {print}' "$BODY" > "$BODY.self"
+        mv "$BODY.self" "$BODY"
+        cat >> "$BODY" <<'EOF'
+
+**This is the Agent Engineering source repository.** `skills/` is the tracked
+product. There is no `skills-lock.json` or installed suite copy to restore.
+Refresh the survey when the knowledge snapshot is stale.
+EOF
+      fi
+      ;;
     *)      ae_die "unknown pointer_style '$style' for target '$id'" ;;
   esac
 
@@ -187,16 +199,23 @@ fi
 ae_head ".gitignore"
 ae_render "$ASSETS/gitignore.fragment" > "$BODY"
 if ae_self_hosted "$ROOT"; then
-  # Keep the .dev/ rules, drop the suite rule. Writing the skills/ae-*/
-  # pattern into this kit own repository hides its product from git status.
-  grep -v "skills/ae-" "$BODY" > "$BODY.self" && mv "$BODY.self" "$BODY"
+  # Keep the .dev/ rules, drop consumer install advice and the suite rule.
+  # Writing skills/ae-*/ here would hide the product from git status.
+  awk 'BEGIN {print "# Self-hosted: skills/ is the tracked product."} /^# Raw analysis dump/ {keep=1} keep {print}' "$BODY" > "$BODY.self"
+  mv "$BODY.self" "$BODY"
   ae_warn "self-hosted: kept .dev/ rules, omitted the suite rule - skills/ is the product here"
 fi
 GI="$ROOT/.gitignore"
 st="$(ae_write_block "$GI" "# " "$BODY" "$DRY")"
 case "$st" in
   unchanged) ae_info ".gitignore unchanged" ;;
-  *)         ae_ok ".gitignore $st (suite excluded, analysis excluded)" ;;
+  *)
+    if ae_self_hosted "$ROOT"; then
+      ae_ok ".gitignore $st (source skills tracked, analysis excluded)"
+    else
+      ae_ok ".gitignore $st (suite excluded, analysis excluded)"
+    fi
+    ;;
 esac
 note "$st" ".gitignore"
 

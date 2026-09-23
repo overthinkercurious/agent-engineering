@@ -90,13 +90,23 @@ let both roles issue competing answers to the same question.
 
 1. Product only when the requested outcome is materially ambiguous.
 2. Investigator before architecture for unexplained bugs or performance issues.
-3. Architect and selected named specialists before build.
-4. Builder alone performs implementation.
-5. Selected named specialists inspect the candidate in their own boundary.
-6. Verifier independently evaluates the integrated result last.
+3. Architect drafts the design, then selected named specialists record their
+   pre-build constraints. For a quick change, specialists give constraints
+   against the bounded request without inventing a plan.
+4. On deep work, Plan Reviewer reads the plan and every selected specialist
+   result. If a constraint changes the design, return it to Architect for a
+   focused revision before reviewing the revised plan.
+5. Builder alone performs implementation and reads all selected constraints.
+6. Selected technical specialists (Security, Data, Experience, Reliability)
+   inspect the candidate in their own boundary. Product defines the outcome
+   before design and does not perform a candidate review.
+7. Verifier evaluates the integrated result last and records review context.
 
 Quick changes may omit Product, Investigator, Architect, and named specialists.
-Audit-only work omits Builder and cannot modify application code.
+Audit-only work omits Builder and cannot modify application code. Selected
+specialists examine their scoped boundaries, Auditor makes the cold assessment,
+and Verifier assesses the combined findings. Auditor does not read the earlier
+specialist results, preserving its independent read.
 
 ## Dispatch tiers
 
@@ -106,8 +116,8 @@ the project**, never assumed:
 - `native-parallel` — concurrent isolated dispatch, confirmed for this host.
 - `native-sequential` — isolation confirmed, concurrency not.
 - `none` — no confirmed isolation. Run explicit sequential role passes in this
-  session and disclose in the report that the final review was not
-  context-independent.
+  session. Record `same-session` on the Verifier note and disclose that review
+  context in the report.
 
 `ae-surveyor` resolves every known host's tier from its own `targets.yml` at
 scaffold time and publishes the table to `.dev/context/host.json`. Read that
@@ -128,10 +138,8 @@ resolve that sibling stops rather than improvising, which is what keeps the
 coupling honest.
 
 Assume `none` only when that file is missing or your own row is not in it, and
-say which of the two it was. Assuming `none` on a host that supports isolation
-is not the safe choice it looks like: it collapses Builder and Verifier into
-one context, and the independent review this team depends on stops existing
-while still being reported as though it happened.
+say which. Use isolated dispatch when confirmed. A same-session Verifier must
+reopen claims and run checks directly; the report must state its context.
 
 ## Enforcement tiers
 
