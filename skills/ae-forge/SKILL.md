@@ -63,8 +63,19 @@ Say the directory could not be resolved, print the restore command
 --copy -y`, or set `AE_SKILL_DIR`), and end the turn. A shell that cannot run
 the resolution at all is the same condition.
 
-Inspect the project instructions and current work. Build the repository map
-**once per run**, before any expert starts, and give every expert the same map:
+Inspect the project instructions and current work. Before a **new** Forge run,
+check for `.dev/knowledge/00-index.md`, the five knowledge documents, and
+`.dev/rules/00-index.md`. If
+they are missing, run the sibling `ae-surveyor` skill through its six stages
+first, including verification and the final index. Tell the user that the
+first survey is in progress. Do not substitute `analyze.mjs` for a complete
+survey. Resume an existing Forge run without repeating this first-run step.
+`forge.mjs start` checks that the durable knowledge exists and explains the
+missing prerequisite when it does not. If Surveyor is unavailable or fails,
+report the reason and stop this new run; do not claim it was surveyed.
+
+Build the repository map **once per run**, before any expert starts, and give
+every expert the same map:
 
 ```bash
 # ae-surveyor installs as a sibling of this skill; use its analyzer when present.
@@ -74,11 +85,11 @@ if [ -f "$SV/scripts/analyze.mjs" ]; then
 fi
 ```
 
-If `.dev/knowledge/` exists, read `00-index.md` first and follow it to the one
-or two relevant documents. Compare its source fingerprint with the fresh
-analysis; stale knowledge is a reading lead, not current evidence. Otherwise
-use `.dev/context/analysis.json`'s ranked files. If analysis is unavailable or
-its schema is incompatible, inspect the repository directly and report the gap.
+Read `.dev/knowledge/00-index.md` first and follow it to the one or two
+relevant documents. Compare its source fingerprint with the fresh analysis;
+stale knowledge is a reading lead, not current evidence. If analysis is
+unavailable or its schema is incompatible, inspect the repository directly and
+report the gap.
 
 **Explore the repository once.** Isolated experts start with a clean context
 window, so an unbudgeted "go read the code" instruction is paid again by every
@@ -265,6 +276,19 @@ routing — the report renders from this:
 ```bash
 node "$AE/scripts/forge.mjs" lenses --id <id>   --json "$(node "$AE/scripts/lens-select.mjs" --team <roles> [--domain <words>])"
 ```
+
+Immediately before each selected role starts work, record its current focus:
+
+```bash
+node "$AE/scripts/forge.mjs" focus --id <id> --role <role> --summary "<what this role is doing now>"
+```
+
+Use this for same-session work as well as isolated dispatch. `focus` records
+the current role, its stage skill, and attached lenses in `.dev/runs/<id>.md`.
+`note` closes that focus and appends the completed contribution to the stage
+log. `phase`, `lenses`, `approve`, `finish`, and `cancel` also refresh the live
+status. During a long role, update `focus` when its work materially changes;
+the displayed timestamp is the last recorded update, not a heartbeat.
 
 Record material contributions with:
 
@@ -489,12 +513,10 @@ accounting, or coordination files alongside it.
 - Do not deploy, publish, spend money, access new private systems, or perform a
   destructive action without the authority required by the user and project.
 - Do not expand a bounded request into unrelated cleanup.
-- Do not turn missing **optional** Agent Engineering metadata into a refusal to
-  help. A missing survey, an absent lens, and an unwritten `decisions.md` are
-  optional: proceed and say what was unavailable. `scripts/` is **not**
-  optional — without it nothing gates the run, so an unresolved skill
-  directory stops the run instead of degrading it. The difference is whether
-  the missing thing was going to say no to something.
+- Do not turn missing metadata into a refusal to help after the first survey.
+  Stale knowledge, an absent lens, and an unresolved judgment in `decisions.md`
+  are reported while work proceeds. A new run requires first-run survey
+  knowledge. `scripts/` is also required because it gates the run.
 - Do not run an expert pass, print a routing block, or write a delivery report
   while the skill directory is unresolved. A Forge-shaped answer produced
   without Forge's gates is the failure this kit exists to prevent.

@@ -8,8 +8,9 @@ agent framework.
 **ae-forge** is the delivery skill you need to name. It selects a risk-sized team,
 drives each stage, enforces the gates, and reports the result.
 
-Behind it are six internal stage skills and one optional survey. Use
-`ae-surveyor` when you want durable project knowledge and rules:
+Behind it are six internal stage skills and a first-run project survey.
+`ae-forge` invokes `ae-surveyor` before the first new run in a repository, so
+later requests can use durable project knowledge and rules:
 
 | Skill | Stage |
 |---|---|
@@ -20,7 +21,7 @@ Behind it are six internal stage skills and one optional survey. Use
 | `ae-build` | Implement the agreed brief |
 | `ae-verify` | Independently verify the candidate and issue the verdict |
 | `ae-audit` | Audit the repository cold, with no plan and no diff |
-| `ae-surveyor` | Optional durable project knowledge and rules |
+| `ae-surveyor` | First-run durable project knowledge and rules; refreshable later |
 
 Stages run **sequentially, never concurrently**. The pairs that matter are
 adversarial — a plan and its review, a build and its verification — and running
@@ -210,8 +211,10 @@ After that, normal work starts with a request such as:
 > Use ae-forge to implement team invitations, prevent cross-tenant access, and
 > independently verify the result.
 
-Initialization is optional. `ae-forge` can work directly from an uninitialized
-repository.
+On the first new Forge request, the kit completes Surveyor before selecting a
+feature team. Existing runs can resume without repeating the survey. Later
+runs refresh the repository analysis and check whether the durable knowledge
+is current.
 
 ### Antigravity activation
 
@@ -257,7 +260,7 @@ installer also provides `npx skills@1.7.0 update --project -y`, but repeating th
 explicit install command is this kit's supported update path because the target
 IDEs and copy mode remain unambiguous.
 
-The skills require Node.js. ae-surveyor also uses Bash for its optional scaffold
+The skills require Node.js. ae-surveyor also uses Bash for its scaffold
 and doctor commands.
 
 ### Runtime expectations
@@ -277,9 +280,9 @@ access a new private system, or perform destructive work.
 
 ## Optional project initialization
 
-Use ae-surveyor when a repository is large, unfamiliar, or will be worked on
-repeatedly. It creates .dev/knowledge and .dev/rules.
-Initialization improves future context but is not a prerequisite for Forge.
+Forge runs ae-surveyor once before starting a new request in an uninitialized
+repository. It creates `.dev/knowledge` and `.dev/rules`. Run ae-surveyor again
+when the knowledge needs a refresh.
 
 ## What you see, and what you get back
 
@@ -287,8 +290,10 @@ Forge prints the routing decision once, before any work starts — including
 **what it decided to skip, and why**. A review the team chose not to run is the
 one thing you cannot infer from the result, so it is always shown.
 
-Then it stays quiet. A five-expert run produces about ten lines of progress,
-whatever is happening underneath.
+The current handler, skill, lenses, phase, and last update are also visible in
+`.dev/runs/<task-id>.md`. Its stage log fills as experts finish. The timestamp
+shows the last recorded event, so a long step may remain unchanged until its
+focus is updated or its result is recorded.
 
 At the end you get one report, rendered from the run's own record rather than
 recalled: the routing decision, what each expert contributed, **what each one
@@ -325,6 +330,7 @@ The bundled runner supports:
 | list | List current and completed runs |
 | status | Read one run |
 | note | Record an expert's contribution, severity, and result file |
+| focus | Record which role, skill, and lenses are handling the request now |
 | phase | Record a meaningful workflow boundary |
 | approve | Record material user approval, freezing the brief |
 | audit | Run the deterministic release checks |

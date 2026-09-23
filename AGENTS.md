@@ -9,8 +9,8 @@ Agent Engineering ships eight skills behind **two user-facing surfaces**:
 
 - ae-forge takes a software request through a risk-sized expert team,
   implementation, and independent verification.
-- ae-surveyor optionally creates durable repository knowledge and enforceable rules
-  for large or long-lived projects.
+- ae-surveyor creates durable repository knowledge and enforceable rules before
+  the first new Forge run in a project that lacks them.
 
 The other six — ae-investigate, ae-plan, ae-plan-review, ae-build, ae-verify,
 ae-audit — are dispatch targets, not routing surfaces. Forge invokes them one
@@ -56,7 +56,8 @@ Everything a skill needs at runtime must live inside its own directory.
   is versioned and its version is asserted. A consumer reading it with `?? []`
   turns a rename into silent depth loss, which is the only fail-open path this
   kit is allowed to have and it must be reported when it fires.
-- Initialization improves context but never blocks ordinary Forge work.
+- A new Forge run completes Surveyor once when durable project knowledge is
+  absent; existing runs can resume, and stale knowledge does not block work.
 - Refresh deterministic analysis for each run when the analyzer is available;
   stale generated knowledge is a reading lead, not current evidence.
 - Use the smallest team that covers the actual behavioral risk.

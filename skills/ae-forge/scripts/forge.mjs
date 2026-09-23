@@ -15,6 +15,11 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const TEAM = JSON.parse(readFileSync(resolve(SCRIPT_DIR, '..', 'references', 'team.json'), 'utf8'))
 const ROLES = Object.keys(TEAM.roles)
 const SPECIALIST_ROLES = Object.keys(TEAM.signals)
+const ROLE_SKILLS = {
+  investigator: 'ae-investigate', architect: 'ae-plan',
+  'plan-reviewer': 'ae-plan-review', builder: 'ae-build',
+  verifier: 'ae-verify', auditor: 'ae-audit',
+}
 const TRANSITIONS = {
   understand: ['plan', 'build', 'verify', 'blocked'],
   plan: ['build', 'verify', 'blocked'],
@@ -287,6 +292,15 @@ function contextStatus(root) {
   } catch { return { analysis: 'unreadable', knowledge: 'unknown' } }
 }
 
+function surveyReady(root) {
+  const base = join(root, '.dev', 'knowledge')
+  const files = ['00-index.md', 'stack.md', 'architecture.md', 'schema.md', 'commands.md', 'decisions.md']
+    .map((name) => join(base, name))
+  files.push(join(root, '.dev', 'rules', '00-index.md'))
+  return files.every((path) => existsSync(path) && statSync(path).size > 0
+    && !readFileSync(path, 'utf8').includes('TODO (judgment)'))
+}
+
 function baseline(root, id) {
   let head = null
   try {
@@ -448,11 +462,48 @@ function artifactSkeleton(run) {
   for (const [key, meta] of Object.entries(SECTIONS)) {
     lines.push(`<!-- forge:section:${key} -->`, `## ${meta.title}`, '')
     if (key === 'request') lines.push(run.title, '')
-    else if (key === 'status') lines.push(`ACTIVE · phase ${run.phase}`, '')
-    else if (key === 'stage-log') lines.push('| # | Role | Phase | Revision | Result |', '|---:|---|---|---:|---|', '')
+    else if (key === 'status') lines.push(liveStatus(run), '')
+    else if (key === 'stage-log') lines.push(stageLog(run), '')
     else lines.push(`_pending — owned by ${meta.owner ?? 'Forge'}_`, '')
   }
   return `${lines.join('\n').trimEnd()}\n`
+}
+
+function liveStatus(run) {
+  const active = run.active_role
+  const role = active?.role ?? (run.status !== 'active' ? 'none'
+    : Object.hasOwn(run, 'active_role') ? 'forge' : 'unrecorded')
+  const skill = role === 'forge' ? 'ae-forge' : (ROLE_SKILLS[role] ?? 'ae-forge specialist')
+  const lenses = run.lenses?.attached?.[role] ?? []
+  return [
+    `**State:** ${run.status} · **Phase:** ${run.phase} · **Updated:** ${run.updated_at}`,
+    `**Current handler:** ${run.status !== 'active' ? 'none'
+      : role === 'unrecorded' ? 'unrecorded (this run predates focus tracking)'
+        : `${role} (${skill})`}`,
+    `**Lenses:** ${lenses.length ? lenses.join(', ') : 'none attached'}`,
+    `**Now:** ${active?.summary ?? run.summary}`,
+  ].join('\n\n')
+}
+
+function stageLog(run) {
+  const lines = ['| # | Completed at | Role | Phase | Revision | Result |', '|---:|---|---|---|---:|---|']
+  for (const [index, item] of run.contributions.entries()) {
+    const summary = String(item.summary).replaceAll('|', '\\|').replace(/\s+/g, ' ')
+    lines.push(`| ${index + 1} | ${item.at} | ${item.role} | ${item.phase} | ${item.revision} | ${summary} |`)
+  }
+  return lines.join('\n')
+}
+
+function syncLiveSections(root, run) {
+  const path = artifactPath(root, run.id)
+  if (!existsSync(path)) return
+  let doc = readFileSync(path, 'utf8')
+  for (const [name, body] of [['status', liveStatus(run)], ['stage-log', stageLog(run)]]) {
+    const at = sectionBounds(doc, name)
+    if (!at) die('artifact is missing a live section marker', 4, { section: name, path })
+    doc = doc.slice(0, at.start) + `${at.marker}\n## ${SECTIONS[name].title}\n\n${body}\n\n` + doc.slice(at.end)
+  }
+  writeFileSync(path, doc, 'utf8')
 }
 
 // One parser, used by both the writer and the completion check. Two
@@ -578,6 +629,7 @@ function save(path, run) {
   const temporary = `${path}.tmp-${process.pid}`
   writeFileSync(temporary, `${JSON.stringify(run, null, 2)}\n`, 'utf8')
   renameSync(temporary, path)
+  syncLiveSections(dirname(dirname(dirname(dirname(path)))), run)
 }
 
 function ensureActive(run) {
@@ -586,6 +638,12 @@ function ensureActive(run) {
 
 function start() {
   const root = projectRoot()
+  if (!surveyReady(root)) {
+    die('first-run project survey is required before a new Forge run', 5, {
+      resolve: 'Run the sibling ae-surveyor skill through all six stages, then retry Forge. Existing runs can still be resumed.',
+      expected: 'completed .dev/knowledge/00-index.md and five knowledge documents, plus .dev/rules/00-index.md',
+    })
+  }
   const title = option('--title')
   const kind = option('--kind')
   if (!title) die('--title is required')
@@ -635,6 +693,7 @@ function start() {
     context: contextStatus(root),
     status: 'active',
     phase: 'understand',
+    active_role: null,
     revision: 0,
     summary: 'Run created.',
     contributions: [],
@@ -678,7 +737,25 @@ function list() {
 
 function status() {
   const root = projectRoot()
-  output(load(root, safeId(option('--id'))).run)
+  const { run } = load(root, safeId(option('--id')))
+  syncLiveSections(root, run)
+  output(run)
+}
+
+function focus() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const role = option('--role')
+  const summary = option('--summary')
+  const feature = load(root, id)
+  ensureActive(feature.run)
+  if (role !== 'forge' && !feature.run.team.includes(role)) {
+    die('role is not selected for this run', 4, { role, team: feature.run.team })
+  }
+  if (!summary) die('--summary is required')
+  feature.run.active_role = { role, summary, at: new Date().toISOString() }
+  save(feature.path, feature.run)
+  output({ ok: true, id, role, skill: ROLE_SKILLS[role] ?? 'ae-forge', lenses: feature.run.lenses?.attached?.[role] ?? [] })
 }
 
 function note() {
@@ -770,6 +847,7 @@ function note() {
     ...(role === 'verifier' && option('--review-context') ? { review_context: option('--review-context') } : {}),
     at: new Date().toISOString(),
   })
+  if (feature.run.active_role?.role === role) feature.run.active_role = null
   save(feature.path, feature.run)
   // The ledger and the artifact were two writes of one event, reconciled by
   // finish()'s 'sections' gap. They are one write now: a role that records a
@@ -1051,6 +1129,7 @@ function finish() {
   feature.run.brief_sha_at_finish = briefDigest(root, id)
   feature.run.status = 'done'
   feature.run.phase = 'done'
+  feature.run.active_role = null
   feature.run.summary = summary
   feature.run.verification = auditJustified
     ? `${verification} · Audit adjudication: ${auditJustification}` : verification
@@ -1350,6 +1429,7 @@ function cancel() {
   ensureActive(feature.run)
   feature.run.status = 'cancelled'
   feature.run.phase = 'cancelled'
+  feature.run.active_role = null
   feature.run.summary = option('--reason', 'Cancelled by user.')
   save(feature.path, feature.run)
   output({ ok: true, id, status: 'cancelled' })
@@ -1365,6 +1445,7 @@ Internal recovery ledger for the autonomous Forge workflow.
          [--cause known|unknown --cause-evidence TEXT]
   list
   status --id ID
+  focus  --id ID --role ROLE|forge --summary TEXT
   note   --id ID --role ROLE --summary TEXT --result PATH [--severity S]
          [--review-context isolated|same-session] (Verifier)
          [--residual TEXT]  (accept a blocking-severity finding this run will
@@ -1473,6 +1554,6 @@ function runs() {
   output(stats)
 }
 
-const handlers = { help, start, brief, artifact, section, lenses, list, status, note, phase, approve, audit, report, finish, cancel, contract, runs }
+const handlers = { help, start, brief, artifact, section, lenses, list, status, focus, note, phase, approve, audit, report, finish, cancel, contract, runs }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()

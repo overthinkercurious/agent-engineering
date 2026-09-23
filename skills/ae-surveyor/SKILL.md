@@ -4,9 +4,8 @@ description: >
   Establishes durable, evidence-backed project knowledge and enforceable rules
   before any specialist team works on this repository. Use when the user asks
   to initialize, index, analyze, onboard, document, survey, or refresh a
-  project for AI-assisted development. Optional: other skills work directly
-  from the repository when no survey exists, at the cost of re-reading it
-  every session.
+  project for AI-assisted development. Forge invokes this before its first new
+  run when durable project knowledge is absent.
 metadata:
   owns: "surveying a project once and producing the pointer-based knowledge, rules, and index other skills consult instead of re-reading the repository"
 ---
