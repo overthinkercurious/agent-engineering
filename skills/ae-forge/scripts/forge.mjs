@@ -250,16 +250,15 @@ const BRIEF_SECTIONS = [
 
 // Recorded at start so the audit can tell whether the repository moved under
 // the brief. Stale context is a silent correctness failure otherwise.
-// The enforcement tier is read, never assumed - the same rule the dispatch
-// tier already follows. The marker exists only because the SessionStart hook
-// actually ran in this session, so its presence is evidence rather than a
-// claim. Absent means 'none', and 'none' is the honest default.
+// A marker can outlive its session. Only the current host session ID can
+// establish that the SessionStart hook ran for this run of the agent.
 function enforceTier(root) {
   try {
     const path = join(root, '.dev', 'context', 'enforce.json')
     if (!existsSync(path)) return 'none'
     const marker = JSON.parse(readFileSync(path, 'utf8'))
-    return marker.enforce === 'native' ? 'native' : 'none'
+    const session = process.env.CLAUDE_CODE_SESSION_ID
+    return session && marker.enforce === 'native' && marker.session_id === session ? 'native' : 'none'
   } catch { return 'none' }
 }
 
@@ -993,10 +992,14 @@ function finish() {
   const id = safeId(option('--id'))
   const summary = option('--summary')
   const verification = option('--verification')
-  const result = option('--result', 'PASS')
+  const requestedResult = option('--result')
   if (!summary || !verification) die('--summary and --verification are required')
+  const feature = load(root, id)
+  // Older runs may predate an explicit verdict field. Preserve their resume
+  // path while requiring current-contract runs to name and evidence it.
+  const result = requestedResult ?? (feature.run.contract >= 3 ? null : 'PASS')
   if (!['PASS', 'PASS WITH RESIDUAL RISK'].includes(result)) {
-    die('--result must be PASS or PASS WITH RESIDUAL RISK')
+    die('--result must explicitly be PASS or PASS WITH RESIDUAL RISK')
   }
   const accepted = new Set(String(option('--accept-gaps', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))
@@ -1004,7 +1007,6 @@ function finish() {
   const unknownGap = [...accepted].filter((value) => !GAPS.includes(value))
   if (unknownGap.length) die(`unknown gap(s): ${unknownGap.join(', ')}`, 2, { allowed: GAPS })
 
-  const feature = load(root, id)
   ensureActive(feature.run)
   if (feature.run.phase !== 'verify') die('run must be in verify phase before finish', 5, { phase: feature.run.phase })
   if (feature.run.approval_required && !feature.run.approval) die('material approval is missing', 5, { id })
@@ -1076,6 +1078,23 @@ function finish() {
   }
   if (feature.run.contract >= 3 && !verifierReview.review_context) {
     die('Verifier review context was not recorded', 5, { id })
+  }
+  if (feature.run.contract >= 3) {
+    const recordedVerdict = (body) => body.match(/^### Verdict\s*\r?\n\s*(PASS WITH RESIDUAL RISK|PASS|FAIL)\s*$/m)?.[1] ?? null
+    const reviewPath = resolve(root, verifierReview.result)
+    const reviewText = inside(root, reviewPath) && existsSync(reviewPath)
+      ? readFileSync(reviewPath, 'utf8') : ''
+    const artifactFile = artifactPath(root, id)
+    const artifactVerdict = existsSync(artifactFile)
+      ? recordedVerdict(sectionBody(readFileSync(artifactFile, 'utf8'), 'verification') ?? '') : null
+    if (recordedVerdict(reviewText) !== result || artifactVerdict !== result) {
+      die('finish verdict disagrees with the Verifier result or artifact', 5, {
+        requested: result,
+        verifier: recordedVerdict(reviewText),
+        artifact: artifactVerdict,
+        resolve: 'record the current Verifier verdict in its result and Verification section, then finish with that verdict',
+      })
+    }
   }
   // Keep findings until their owner explicitly records the remaining severity.
   // A missing severity or a new revision does not silently resolve a blocker.

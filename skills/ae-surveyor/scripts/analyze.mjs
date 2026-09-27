@@ -20,6 +20,7 @@ import { execFileSync } from 'node:child_process'
 import { join, relative, extname, basename, dirname, isAbsolute, resolve, sep } from 'node:path'
 import { createHash } from 'node:crypto'
 import { sense, manifestKind, redact, maskComments } from './sense.mjs'
+import { ANALYSIS_SCHEMA } from './artifact-support.mjs'
 
 // ---------------------------------------------------------------- args ------
 
@@ -543,7 +544,7 @@ const parsedCount = files.filter((f) => f.parsed).length
 const pct = (n, d) => d ? +(n / d * 100).toFixed(1) : null
 
 const result = {
-  schema: 2,
+  schema: ANALYSIS_SCHEMA,
   generated_at: new Date().toISOString(),
   root: ROOT,
   git: { head, branch, commits_last_12mo: commitsSeen, is_repo: !!head, dirty: !!gitStatus, changed_files: [...new Set(changedFiles)].sort() },

@@ -145,20 +145,19 @@ reopen claims and run checks directly; the report must state its context.
 
 Two tiers, and like `dispatch` the tier is **read, never assumed**:
 
-- `native` — a host-level hook refuses an edit while a run still needs
-  approval, and while a run is in `verify`. Available where this kit is
-  installed as a plugin whose hooks the host loads.
+- `native` — a host-level hook refuses configured edit-tool calls while a run
+  still needs approval, and while a run is in `verify`. Available where this
+  kit is installed as a plugin whose hooks the host loads.
 - `none` — the default everywhere else. The same two rules still hold; they
   are enforced by `forge.mjs` when it is called, and by nothing when it is not.
 
-Read `.dev/context/enforce.json`. That marker is written only by this kit's
-`SessionStart` hook, so its presence is evidence the tier is live rather than
-a claim that it should be; `start` reads it for you and prints it.
+`start` reports `native` only when the `SessionStart` marker matches this host's
+current session ID. A marker left by an earlier session reports `none`.
 
 Never describe `native` as a sandbox. Hooks load from a file this model can
-edit, and a subagent's tool calls may not reach them. It is defence in depth:
-it closes the gap where an edit happens without `forge.mjs` being called at
-all, and it closes nothing else.
+edit, a subagent's tool calls may not reach them, and the configured hook
+intercepts named edit tools but not shell writes. It is defence in depth for
+those tools, not a general filesystem boundary.
 
 ## Lens selection
 
@@ -167,11 +166,12 @@ exclusive ownership as stated in that role's own file. Selection is mechanical, 
 judgment call — run it rather than eyeballing `team.json`:
 
 ```bash
-node "$AE/scripts/lens-select.mjs" --team <selected-roles> [--domain <words>]
+node "$AE/scripts/lens-select.mjs" --id <run-id>
 ```
 
-1. Pass the exact team chosen above. The script reads
-   `.dev/context/analysis.json` itself and derives domain tags from what is
+1. Pass the run ID. The script reads the recorded team, request signals, and
+   domain hints from the run, so the lens decision cannot omit request context.
+   It also reads `.dev/context/analysis.json` and derives domain tags from what is
    actually in the repository, so a React dependency attaches the
    web-performance and accessibility lenses whether or not anyone asked.
    `--domain` adds anything the project cannot reveal — never a substitute

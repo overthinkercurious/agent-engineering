@@ -38,6 +38,15 @@ export function stamp(a, text) {
 
 export { KIT_VERSION }
 
+// The generated analysis is the Surveyor's input contract. Reject another
+// generation before fallback fields can turn renamed data into empty tables.
+export const ANALYSIS_SCHEMA = 2
+export function assertAnalysisSchema(analysis) {
+  if (analysis?.schema !== ANALYSIS_SCHEMA) {
+    throw new Error(`analysis.json schema ${analysis?.schema ?? 'missing'} is incompatible; expected ${ANALYSIS_SCHEMA}. Re-run analyze.mjs with this kit.`)
+  }
+}
+
 const slots = /<!-- agent-engineering:judgment:([a-z0-9-]+):start -->([\s\S]*?)<!-- agent-engineering:judgment:\1:end -->/g
 const staleStart = '<!-- agent-engineering:previous-synthesis:start -->'
 const staleEnd = '<!-- agent-engineering:previous-synthesis:end -->'

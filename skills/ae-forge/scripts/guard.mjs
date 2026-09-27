@@ -64,20 +64,21 @@ function isBookkeeping(root, filePath) {
 }
 
 function sessionStart(input) {
-  // The marker is evidence, not a claim: it exists only because this hook
-  // actually ran in this session, which is the same reason the routing block
-  // copies its contract number out of team.json rather than typing it.
+  // A marker can survive a session. Bind it to the host's session ID so a
+  // later session cannot inherit a false native-enforcement claim.
   try {
     const root = input.cwd || process.cwd()
     const dir = join(root, '.dev', 'context')
     if (!existsSync(dir)) return ALLOW // an unsurveyed project keeps no context
     writeFileSync(join(dir, 'enforce.json'), `${JSON.stringify({
       enforce: 'native',
+      session_id: input.session_id ?? null,
       by: 'agent-engineering guard.mjs',
       enforces: ['approval-before-edit', 'verifier-does-not-repair'],
       limits: [
         'hooks load in this host only; every other host is enforce: none',
         'a subagent\'s tool calls may not reach this hook',
+        'only the configured edit tools are intercepted; shell writes may bypass it',
         'the hook file is editable by the model it constrains',
       ],
       at: new Date().toISOString(),

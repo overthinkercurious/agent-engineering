@@ -19,7 +19,8 @@
 //      LENS STALE rather than quoting a threshold nobody rechecked.
 //
 // Usage as a library: import { selectLenses } from './lens-select.mjs'
-// Usage as a CLI: node lens-select.mjs --team architect,builder --domain react
+// Usage as a CLI: node lens-select.mjs --id <forge-run-id>
+//                 or --team architect,builder --domain react
 //                 (reads .dev/context/analysis.json automatically when present)
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -149,9 +150,26 @@ function runCli() {
   const split = (v) => v.split(',').map((x) => x.trim()).filter(Boolean)
   const teamPath = resolve(option('--team-json', resolve(SCRIPT_DIR, '..', 'references', 'team.json')))
   const team = loadTeamContract(teamPath)
-  const roles = split(option('--team'))
-  const signals = split(option('--signals'))
-  const supplied = split(option('--domain') || option('--stack'))
+  const runId = option('--id')
+  let run = null
+  if (runId) {
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId)) {
+      process.stderr.write('--id must be a Forge run ID\n')
+      process.exit(2)
+    }
+    try {
+      run = JSON.parse(readFileSync(join(process.cwd(), '.dev', 'work', runId, 'run.json'), 'utf8'))
+      if (run.id !== runId || !Array.isArray(run.team) || !Array.isArray(run.signals) || !Array.isArray(run.domains)) {
+        throw new Error('incomplete run record')
+      }
+    } catch (error) {
+      process.stderr.write(`cannot read Forge run ${runId}: ${error.message}\n`)
+      process.exit(2)
+    }
+  }
+  const roles = run ? run.team : split(option('--team'))
+  const signals = run ? run.signals : split(option('--signals'))
+  const supplied = run ? run.domains : split(option('--domain') || option('--stack'))
 
   // Read the survey automatically. The project is the most reliable source of
   // domain truth available, and it does not depend on anyone remembering.

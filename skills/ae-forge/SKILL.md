@@ -85,6 +85,14 @@ if [ -f "$SV/scripts/analyze.mjs" ]; then
 fi
 ```
 
+`--budget-tokens` sizes the analyzer's suggested reading set, not the run's
+total context or an expert's permission to inspect source. Check
+`selection.deferred_high_signal` and `selection.deferred_control_files` in the
+fresh analysis. Read any deferred file needed to answer the request or verify
+a changed boundary, and record what remained unread. Increase the estimate or
+inspect a targeted area when the selection misses important files; never treat
+the estimate as a quality ceiling or a reason to end the task.
+
 Read `.dev/knowledge/00-index.md` first and follow it to the one or two
 relevant documents. Compare its source fingerprint with the fresh analysis;
 stale knowledge is a reading lead, not current evidence. If analysis is
@@ -136,8 +144,9 @@ request never decides whether a review happens. **An empty risk set is not
 evidence of safety** — it records that you assessed and found none. Omitting
 `--risk` entirely is recorded as unassessed and reported to the user.
 
-Domain depth adapts to the project on its own: `lens-select.mjs` reads the
-survey's sensor dump and derives domain tags from what the repository actually
+Domain depth adapts to the request and project: `lens-select.mjs` reads the
+run's recorded request signals and domain hints, then the survey's sensor dump
+and derives domain tags from what the repository actually
 contains, so a Stripe dependency reaches the payments lens and an OpenAI
 dependency reaches the AI/LLM lens without anyone naming them. Pass `--domain`
 only for what the project cannot reveal — a target platform, a standard the
@@ -274,7 +283,8 @@ Record what the lenses decided, so lens routing is as measurable as role
 routing — the report renders from this:
 
 ```bash
-node "$AE/scripts/forge.mjs" lenses --id <id>   --json "$(node "$AE/scripts/lens-select.mjs" --team <roles> [--domain <words>])"
+node "$AE/scripts/forge.mjs" lenses --id <id> \
+  --json "$(node "$AE/scripts/lens-select.mjs" --id <id>)"
 ```
 
 Immediately before each selected role starts work, record its current focus:
@@ -436,7 +446,8 @@ Finish a delivery record only after implementation and verification both
 contributed. An audit-only record requires the Verifier and no code change:
 
 ```bash
-node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" --verification "<checks and verifier verdict>"
+node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" \
+  --verification "<checks and verifier verdict>" --result "<PASS|PASS WITH RESIDUAL RISK>"
 ```
 
 ## Stay quiet while working

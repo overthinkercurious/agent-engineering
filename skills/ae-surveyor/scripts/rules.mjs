@@ -15,7 +15,7 @@
 
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, isAbsolute, relative, resolve } from 'node:path'
-import { commandEntries, ciEntries, commandTable, stamp, table, writeManaged } from './artifact-support.mjs'
+import { assertAnalysisSchema, commandEntries, ciEntries, commandTable, stamp, table, writeManaged } from './artifact-support.mjs'
 
 const argv = process.argv.slice(2)
 const arg = (n, d) => { const i = argv.indexOf(n); return i === -1 ? d : argv[i + 1] }
@@ -37,6 +37,10 @@ let a
 const raw = readFileSync(IN, 'utf8')
 try { a = JSON.parse(raw) } catch (e) {
   process.stderr.write(`analysis.json is not valid JSON: ${e.message}\n`)
+  process.exit(2)
+}
+try { assertAnalysisSchema(a) } catch (e) {
+  process.stderr.write(`${e.message}\n`)
   process.exit(2)
 }
 

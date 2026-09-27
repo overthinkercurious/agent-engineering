@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Agent Engineering",
     "shortDescription": "A project-aware specialist team for shipping software",
-    "longDescription": "Agent Engineering selects a risk-sized product and engineering team to understand, plan, implement, audit, and verify a change. Optional project indexing improves context but never blocks delivery.",
+    "longDescription": "Agent Engineering surveys a project before its first new delivery run, then selects a risk-sized team to understand, plan, implement, audit, and verify a change.",
     "developerName": "overthinkercurious",
     "category": "Developer Tools",
     "capabilities": [

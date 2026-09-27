@@ -20,7 +20,7 @@
 
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { commandEntries, ciEntries, invocation, stamp, table, writeManaged } from './artifact-support.mjs'
+import { assertAnalysisSchema, commandEntries, ciEntries, invocation, stamp, table, writeManaged } from './artifact-support.mjs'
 
 const argv = process.argv.slice(2)
 const arg = (n, d) => { const i = argv.indexOf(n); return i === -1 ? d : argv[i + 1] }
@@ -45,6 +45,9 @@ const raw = readFileSync(IN, 'utf8')
 let a
 try { a = JSON.parse(raw) } catch (e) {
   process.stderr.write(`analysis.json is not valid JSON: ${e.message}\n`); process.exit(2)
+}
+try { assertAnalysisSchema(a) } catch (e) {
+  process.stderr.write(`${e.message}\n`); process.exit(2)
 }
 
 // A judgment slot is the only place a model may write inside the managed
