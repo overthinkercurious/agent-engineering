@@ -123,16 +123,18 @@ Planning, review, and challenge are mandatory for every delivery. An
 Investigator is added for unknown bugs and performance problems. Product is
 added for ambiguous ideas. Experience is selected for user-facing journeys;
 Security, Data, and Reliability are selected for their named risk boundaries.
-Five roles is the normal maximum; Forge explains when genuinely independent
-risks require more.
+Forge adds every role whose behavioural risk or matched domain boundary is
+present. It does not impose a numeric team cap.
 
 ## Autonomy and approval
 
-Forge works through implementation without interrupting for routine local
-choices. It asks when an unresolved material product/design decision or new
-authority is needed. Risk selects specialist coverage; it does not require user
-approval. A reviewer verdict cannot grant user authority. Required approval
-is recorded with the decision basis before Builder starts.
+Forge works autonomously through investigation, planning, and internal review.
+Every delivery then pauses for explicit user approval of the reviewed and
+challenged plan before Builder starts. Risk selects specialist coverage; it
+never bypasses this gate. A reviewer verdict cannot grant user authority.
+Forge renders an approval packet containing the request, plan, review, and
+challenge before asking. A verifier finding requires the same explicit approval
+for its repair scope before Builder changes code again.
 
 An audit-only run is never gated. It cannot enter build and cannot modify code,
 so there is no action to authorise.
@@ -307,7 +309,7 @@ Forge keeps a small ignored working directory per change at
 | File | Purpose |
 |---|---|
 | `run.json` | Team, phase, revision, approval, contributions — the recovery record |
-| `brief.md` | The reviewable plan. Frozen at approval or build, so the audit can check what was delivered against the agreed scope |
+| `brief.md` | The user-reviewable plan. Frozen at approval with the exact Plan section, so the audit can check what was delivered against agreed scope |
 | `results/` | One append-only file per expert contribution |
 
 The brief always exposes the decisions and evidence needed by the reviewer and
@@ -330,6 +332,7 @@ The bundled runner supports:
 | focus | Record which role, skill, and lenses are handling the request now |
 | phase | Record a meaningful workflow boundary |
 | approve | Record material user approval, freezing the brief |
+| approval-packet | Render the exact plan or repair scope for the user decision |
 | audit | Run the deterministic release checks |
 | report | Render the delivery summary from the record |
 | finish | Close only after implementation and verification contributed |

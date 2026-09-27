@@ -121,8 +121,8 @@ Next · Forge returns the blocker to Architect, then dispatches both passes agai
 ```
 
 On APPROVED or APPROVED WITH NOTES, hand back to Forge — never to Builder.
-Reviewer approval proceeds to Challenger; Challenger approval lets Forge check
-both current verdicts and any user decision before build.
+Reviewer approval proceeds to Challenger; Challenger approval makes Forge show
+the plan to the user and wait for explicit approval before build.
 
 ## Hard stops
 

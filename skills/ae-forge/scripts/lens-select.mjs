@@ -117,7 +117,7 @@ export function selectLenses(team, roles, signals, stackSignals = [], options = 
         || b.byRequest - a.byRequest
         || b.byProject - a.byProject)
 
-    if (scored.length) attached[role] = scored.slice(0, 2).map((m) => m.name)
+    if (scored.length) attached[role] = scored.map((m) => m.name)
   }
 
   // A named-but-unwritten domain must announce itself. This is the mechanism

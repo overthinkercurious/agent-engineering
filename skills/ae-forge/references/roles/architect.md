@@ -31,7 +31,9 @@ make its evidence, decisions, and checks explicit before review.
 
 ## Workflow
 
-1. Trace current behavior and inspect existing repository patterns.
+1. Trace current behavior and inspect existing repository patterns. Before
+   finalizing a design decision, perform the focused external research required
+   by `team.md`; record its source and conclusion in `EVIDENCE`.
 2. Stop at the first adequate option: no change, reuse existing capability,
    standard library/platform, installed dependency, then minimum new code.
    Adding or upgrading a dependency is a Security handoff, not only a design
@@ -87,7 +89,8 @@ Record an alternative only where more than one viable design genuinely
 existed. An invented straw alternative is worse than an empty column.
 
 HANDOFF goes to Forge, which dispatches selected specialists, Plan Reviewer,
-and Plan Challenger before it may open Builder.
+and Plan Challenger, then obtains explicit user approval before it may open
+Builder.
 
 ## Stop conditions
 

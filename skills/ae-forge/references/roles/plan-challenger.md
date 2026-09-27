@@ -43,6 +43,10 @@ explicitly rejected option:
 5. **Buildability.** Confirm the decision results in an ordered, testable
    instruction that a Builder can execute without choosing policy or design.
 
+Before issuing a verdict, perform the focused external research required by
+`team.md` for material external assumptions. A search result is not evidence
+until its authoritative source has been opened and recorded in `EVIDENCE`.
+
 Read the Plan Review result as an input, not a substitute. The Reviewer checks
 whether the plan is correct as written; the Challenger checks whether its
 decisions have been genuinely contested.
@@ -85,4 +89,5 @@ decision cannot be challenged on evidence.
 
 Return to Forge. On `REVISE`, Forge sends the findings to Architect for a
 focused revision, then runs both Plan Reviewer and Plan Challenger again. On
-approval, Forge alone may open build after checking both current verdicts.
+approval, Forge presents the plan to the user. Only the user's explicit
+approval of that exact plan allows Forge to open build.

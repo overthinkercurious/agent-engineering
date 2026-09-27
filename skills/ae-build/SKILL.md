@@ -51,7 +51,7 @@ node "$FORGE/scripts/forge.mjs" status --id <id>
 
 1. A plan exists in the artifact.
 2. Plan Reviewer and Plan Challenger both returned APPROVED or APPROVED WITH NOTES for the current plan.
-3. **`approval_required` is false, or `approval` is recorded.**
+3. **`approval` is recorded after the current Reviewer and Challenger passes.**
 4. No unresolved blocking open question sits under a step you will execute.
 
 Name the missing one and stop. Do not start and unwind — a half-applied plan is
@@ -62,8 +62,8 @@ transition. That duplication is deliberate: a gate enforced at one point is a
 gate one mistake opens, and this is the moment worth spending a second check
 on, because after it, code changes.
 
-**A reviewer verdict is not user approval.** When the run records a material
-decision requiring approval, only the user's decision clears that gate.
+**A reviewer verdict is not user approval.** Only the user's decision on the
+current reviewed and challenged plan clears the gate.
 
 ## Work
 

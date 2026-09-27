@@ -63,6 +63,10 @@ an existing file and line range is an automatic blocker** — not because the
 plan is necessarily wrong, but because nothing in it can now be trusted without
 checking, and that is the reviewer's whole job.
 
+Before issuing a verdict, perform the focused external research required by
+`team.md` for every external dependency, platform, standard, or policy claim
+on which the plan relies. Record the source and conclusion in `EVIDENCE`.
+
 ## Workflow
 
 Check these in order. Stop at the first that fails and make it a blocker.

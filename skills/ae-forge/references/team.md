@@ -51,6 +51,14 @@ Rules that make the form mean something:
 - **`EVIDENCE` rows are things you opened or ran in this pass**, not things
   you already believed. `How checked` is `read`, `ran, exit <n>`, or
   `grep <pattern> → <n> hits`.
+- **External research precedes every final approach or verdict.** Every role
+  finalizing a design, specialist constraint, review, challenge, or repair
+  scope uses the host's available web/search tool for a focused check. Use
+  authoritative primary sources for time-sensitive platform, dependency,
+  standards, security, policy, or API claims; local code remains the evidence
+  for repository behaviour. Record the source URL/title, access date, and
+  conclusion in `EVIDENCE`. If search is unavailable, write `RESEARCH
+  UNAVAILABLE` in `UNKNOWNS` and do not label the external claim `VERIFIED`.
 - **An empty section is written as `none`**, never deleted. A missing section
   and a section with nothing in it say different things, and only one of them
   is a result.
@@ -97,11 +105,14 @@ let both roles issue competing answers to the same question.
    specialist result. Plan Challenger then challenges each material decision
    in the reviewed plan. A REVISE from either returns the plan to Architect
    for a focused revision, followed by a new Reviewer and Challenger pass.
-5. Builder alone performs implementation and reads all selected constraints.
-6. Selected technical specialists (Security, Data, Experience, Reliability)
+5. Forge presents the current reviewed and challenged plan to the user and
+   waits for explicit approval. A reviewer or challenger verdict is never user
+   authorization. Any plan change repeats review, challenge, and user approval.
+6. Builder alone performs implementation and reads all selected constraints.
+7. Selected technical specialists (Security, Data, Experience, Reliability)
    inspect the candidate in their own boundary. Product defines the outcome
    before design and does not perform a candidate review.
-7. Verifier evaluates the integrated result last and records review context.
+8. Verifier evaluates the integrated result last and records review context.
 
 Delivery runs may omit Product, Investigator, and named specialists, but never
 Architect, Plan Reviewer, or Plan Challenger. Risk changes specialist coverage,
@@ -178,11 +189,11 @@ node "$AE/scripts/lens-select.mjs" --id <run-id>
    web-performance and accessibility lenses whether or not anyone asked.
    `--domain` adds anything the project cannot reveal — never a substitute
    for the survey.
-2. The script attaches at most **2** matching lenses per role, ranked by
-   signal-match count (`lenses[*].signals` scored against the combined
-   request + stack signals; ties keep `team.json`'s declared order). A role
-   with no matching lens proceeds on its own file alone — that is the normal
-   case, not a gap.
+2. The script attaches **every** matching lens per role, ranked by
+   signal-match count (`lenses[*].signals` scored against the combined request
+   + stack signals; ties keep `team.json`'s declared order). A role with no
+   matching lens proceeds on its own file alone — that is the normal case, not
+   a gap.
 3. Read only the attached lens files, the same way only selected role files
    are read — never the full catalog in `references/lenses/_index.md` beyond
    its own listing.

@@ -22,7 +22,7 @@ for routing. Then read only each selected workflow named by its `file` field.
 Do not load workflows for experts who were not selected.
 
 `team.md`'s lens-selection section (and `team.json`'s `lenses` block) attach
-at most two domain lenses per selected role from `references/lenses/`.
+every matching domain lens per selected role from `references/lenses/`.
 Lenses add platform/protocol depth; they never replace a role's own file.
 Load only the lenses actually attached — `references/lenses/_index.md` lists
 what exists versus what's still backlog.
@@ -74,6 +74,16 @@ survey. Resume an existing Forge run without repeating this first-run step.
 missing prerequisite when it does not. If Surveyor is unavailable or fails,
 report the reason and stop this new run; do not claim it was surveyed.
 
+Runs created before contract v5 cannot enter implementation because they lack
+the mandatory user-plan-approval record. Return them to planning and create a
+new current-contract run rather than treating a historic internal review as current user
+authorization.
+
+Runs created before contract v6 also cannot enter repair: they lack the
+mandatory user approval that bounds a repair to the verifier finding. Return
+them to Plan and create a current-contract run rather than applying a repair
+outside a recorded decision.
+
 Build the repository map **once per run**, before any expert starts, and give
 every expert the same map:
 
@@ -112,7 +122,6 @@ create one small record. Skip the record for explanation-only work.
 node "$AE/scripts/forge.mjs" list
 node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
   --risk <comma-list|none> \
-  --approval-reason <none|material-choice-or-new-authority> \
   [--cause known --cause-evidence <repro-or-code-evidence>] \
   [--signals <comma-list>] [--domain <comma-list>]
 ```
@@ -177,7 +186,7 @@ Why     · risk=access (changes who may authenticate), risk=rendered (new login 
 Skipped · data (no stored-shape risk declared) · reliability (no runtime risk declared)
         · investigator (no undiagnosed defect) · product (outcome already specified)
 Lenses  · ui-finish → experience, builder
-Approval· required before build (external provider registration)
+Approval· required after Reviewer and Challenger approval; waiting for the user
 Enforce · native (approval gate gated in the host) | none (gates are advisory)
 ```
 
@@ -312,11 +321,10 @@ provided an isolated context; otherwise add `--review-context same-session`.
 
 ## Work autonomously
 
-Work through routine local implementation without interrupting the user,
-regardless of risk. Before `start`, assess whether an unresolved material
-product/design choice or new authority is needed. Pass the specific reason to
-`--approval-reason`, or `none` when the request already authorises the work.
-Risk flags select specialist expertise; they do not imply an approval request.
+Work through investigation, planning, specialist review, and challenge
+autonomously. Before implementation, always show the reviewed plan and wait
+for the user's explicit approval. Risk flags select specialist expertise; they
+never remove this approval gate.
 
 **A reviewer verdict is not user approval.** An expert clearing its findings
 says the change is sound; only the user says it is wanted. `approve` refuses a
@@ -325,8 +333,11 @@ condition independently before it edits anything. Two keys, because a gate
 enforced at one point is a gate one mistake opens.
 
 Do not ask which file to edit, whether to write a test, how to name something,
-or whether to run the project's checks. When a material decision is needed,
-prepare the brief and ask one specific question.
+or whether to run the project's checks. After Plan Challenger approves, show a
+concise decision record: intended behavior, affected boundaries, alternatives
+rejected, verification plan, residual risks, and every open question. Ask one
+clear question: **“Approve this plan for implementation?”** Do not call
+`approve` until the user explicitly answers yes.
 
 Four actions are gated at the moment of action, every run, no matter what was
 approved earlier: **pushing to a remote, merging, migrating a shared
@@ -336,8 +347,8 @@ people depend on, so a plan-time "yes" cannot cover them — the person saying
 yes has not seen the diff yet. Editing files, running checks, and committing
 locally are not in this set and need no separate approval.
 
-Approval is a document, not a paragraph. Scaffold the brief and fill it, then
-point the user at it:
+Approval is a document and a user decision. Scaffold the brief and fill it,
+then point the user at it:
 
 ```bash
 node "$AE/scripts/forge.mjs" brief --id <id>
@@ -346,12 +357,15 @@ node "$AE/scripts/forge.mjs" brief --id <id>
 The brief always carries the decision and verification sections used by the
 reviewer and challenger. Keep each concise: a four-page plan for a one-line
 fix is a defect, not thoroughness.
-Fill its `TODO` sections before approval or build. The ledger rejects a missing
-or unfinished brief, and rejects edits to an approved brief before build.
+Fill its `TODO` sections before user approval. Move the run to `approval` only
+after both review passes approve the current plan. The ledger rejects a missing
+or unfinished brief, a changed reviewed plan, and edits to an approved brief
+before build.
 
-When approval is required, record the user's decision with `approve --by
-<user> --basis <decision-evidence>`. The brief freezes at approval; otherwise
-it freezes at the start of build. Do not rewrite a frozen brief.
+Record the user's decision with `approve --by <user> --basis
+<decision-evidence>`. Approval is required for every delivery run. It freezes
+both the brief and the exact Plan section; any change returns the work to Plan
+Reviewer, Plan Challenger, and the user. Do not rewrite a frozen brief.
 
 Write each expert's first full result to `.dev/work/<id>/results/<role>.md` and
 give every later pass a new filename, such as `<role>-2.md`. Pass that path to
@@ -374,21 +388,25 @@ Use these phases internally:
 
 1. **Understand:** inspect instructions, reproduce bugs, and identify unknowns.
 2. **Plan:** state acceptance behavior and the smallest implementation path.
-3. **Build:** edit the code and tests in small coherent steps.
-4. **Verify:** inspect the exact diff and run the project's relevant checks.
-5. **Repair:** fix valid findings and verify again, for at most two cycles.
+3. **Approval:** render `approval-packet --id <id>`, show the reviewed and
+   challenged plan, and wait for explicit user approval.
+4. **Build:** edit the code and tests in small coherent steps.
+5. **Verify:** inspect the exact diff and run the project's relevant checks.
+6. **Repair:** after a verifier finding, return to Approval, show the repair
+   packet, and obtain explicit user approval before each in-scope repair; return
+   to Plan when the repair changes the approved approach, then verify again.
    Record a new Builder contribution for each repair before returning to Verify.
    Keep the second cycle focused on the repair: confirm named blockers are
    closed and check for regressions. Any newly discovered critical/high defect
    within the accepted scope still blocks completion, even if it predates the
    repair. At the two-cycle limit, report the blocker and stop.
-6. **Finish:** leave the repository in a coherent state and give one concise
+7. **Finish:** leave the repository in a coherent state and give one concise
    delivery report.
 
 Update the recovery record at meaningful boundaries:
 
 ```bash
-node "$AE/scripts/forge.mjs" phase --id <id> --to <understand|plan|build|verify|repair|blocked> --summary "<current truth>"
+node "$AE/scripts/forge.mjs" phase --id <id> --to <understand|plan|approval|build|verify|repair|blocked> --summary "<current truth>"
 ```
 
 ## Quality rules

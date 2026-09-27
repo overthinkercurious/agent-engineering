@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 const args = process.argv.slice(2)
 const command = args[0] || 'help'
 const KINDS = ['idea', 'feature', 'bug', 'refactor', 'performance', 'security', 'audit']
-const PHASES = ['understand', 'plan', 'build', 'verify', 'repair', 'blocked']
+const PHASES = ['understand', 'plan', 'approval', 'build', 'verify', 'repair', 'blocked']
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const TEAM = JSON.parse(readFileSync(resolve(SCRIPT_DIR, '..', 'references', 'team.json'), 'utf8'))
 const ROLES = Object.keys(TEAM.roles)
@@ -20,12 +20,15 @@ const ROLE_SKILLS = {
   verifier: 'ae-verify', auditor: 'ae-audit',
 }
 const TRANSITIONS = {
-  understand: ['plan', 'build', 'verify', 'blocked'],
-  plan: ['build', 'verify', 'blocked'],
+  understand: ['plan', 'verify', 'blocked'],
+  plan: ['approval', 'verify', 'blocked'],
+  approval: ['plan', 'build', 'repair', 'blocked'],
   build: ['verify', 'blocked'],
-  verify: ['repair', 'blocked'],
+  // A failed verification either needs a user-approved, in-scope repair or a
+  // return to design. The former cannot quietly expand the accepted change.
+  verify: ['plan', 'approval', 'repair', 'blocked'],
   repair: ['verify', 'blocked'],
-  blocked: ['understand', 'plan', 'build', 'verify', 'repair'],
+  blocked: ['understand', 'plan', 'approval', 'build', 'verify', 'repair'],
 }
 
 const RISK = TEAM.risk ?? {}
@@ -161,7 +164,10 @@ function splitSignals() {
 function chooseTeam(kind, signals, risks, cause) {
   const selected = {}
   const skipped = {}
-  const take = (role, reason) => { if (!selected[role]) selected[role] = reason }
+  const take = (role, reason) => {
+    if (!selected[role]) selected[role] = reason
+    delete skipped[role]
+  }
 
   for (const role of SPECIALIST_ROLES) {
     const flag = RISK_FLAGS.find((value) => RISK[value]?.role === role && risks.includes(value))
@@ -172,6 +178,18 @@ function chooseTeam(kind, signals, risks, cause) {
     if (kind === 'performance' && role === 'reliability') { take(role, 'kind=performance'); continue }
     const declared = RISK_FLAGS.find((value) => RISK[value]?.role === role)
     skipped[role] = declared ? `no ${declared} risk declared` : 'no matching risk or signal'
+  }
+
+  // A matching domain lens can reveal a specialist boundary even when the
+  // request did not use one of that specialist's narrow routing words. This
+  // remains additive: declared behavioural risk still wins, and a domain tag
+  // can only add the specialist roles that own that lens's boundary.
+  for (const [lensName, lens] of Object.entries(TEAM.lenses ?? {})) {
+    const signal = (lens.signals ?? []).find((value) => signals.includes(value))
+    if (!signal) continue
+    for (const role of lens.attaches_to ?? []) {
+      if (SPECIALIST_ROLES.includes(role)) take(role, `domain lens=${lensName} (signal "${signal}")`)
+    }
   }
 
   if (kind !== 'audit') {
@@ -422,7 +440,7 @@ function brief() {
     `> Baseline: ${run.baseline?.head ?? 'UNKNOWN'} · approval ${run.approval_required ? 'required' : 'not required'}`,
     '',
     '_This brief is the implementation contract. It is frozen at approval',
-    'when approval is required, or at the start of build otherwise. The audit',
+    'when the user approves it. The audit',
     'compares the delivered change against that frozen text._',
     '',
   ]
@@ -659,9 +677,9 @@ function start() {
   if (existsSync(path)) die('run already exists; resume it instead', 4, { id })
   const signals = splitSignals()
   const { risks, assessed } = splitRisks()
-  if (option('--approval-required') !== null) die('--approval-required is retired; pass --approval-reason none or the material decision')
-  const approvalReason = kind === 'audit' ? 'none' : option('--approval-reason')?.trim()
-  if (!approvalReason) die('--approval-reason none|TEXT is required for delivery work')
+  if (option('--approval-required') !== null || option('--approval-reason') !== null) {
+    die('approval is mandatory after Plan Reviewer and Plan Challenger; do not pass an approval override')
+  }
   const cause = option('--cause') ?? ((kind === 'bug' || kind === 'performance') ? 'unknown' : null)
   if (cause && !['known', 'unknown'].includes(cause)) die('--cause must be known or unknown')
   const causeEvidence = option('--cause-evidence')?.trim() ?? null
@@ -669,7 +687,7 @@ function start() {
   const domains = [...new Set(String(option('--domain', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
   if (option('--tier') !== null) die('--tier is retired: every delivery plans, reviews, and challenges before build')
-  const routing = chooseTeam(kind, signals, risks, cause)
+  const routing = chooseTeam(kind, [...signals, ...domains], risks, cause)
   const now = new Date().toISOString()
   const run = {
     schema: 1,
@@ -691,8 +709,8 @@ function start() {
       skipped: routing.skipped,
     },
     contract: TEAM.version,
-    approval_reason: approvalReason,
-    approval_required: approvalReason !== 'none',
+    approval_reason: kind === 'audit' ? 'none' : 'mandatory user approval of the reviewed and challenged plan',
+    approval_required: kind !== 'audit',
     approval: null,
     baseline: baseline(root, id),
     context: contextStatus(root),
@@ -930,10 +948,16 @@ function phase() {
     die('invalid phase transition', 4, { from, to })
   }
   const contributed = new Set(feature.run.contributions.map((item) => item.role))
+  if (['approval', 'build'].includes(to) && feature.run.kind !== 'audit' && feature.run.contract < 5) {
+    die('this run predates mandatory user plan approval; return to plan and create a new v5 run before implementation', 5, { id, contract: feature.run.contract ?? 'unrecorded' })
+  }
   if (to === 'build' && feature.run.kind === 'audit') {
     die('audit-only runs do not enter build; start a delivery run to apply fixes', 5, { id })
   }
-  if (to === 'build') {
+  if (to === 'repair' && feature.run.kind !== 'audit' && feature.run.contract < 6) {
+    die('this run predates mandatory repair-scope approval; return to plan and create a new v6 run before repairing', 5, { id, contract: feature.run.contract ?? 'unrecorded' })
+  }
+  if (['approval', 'build'].includes(to) && feature.run.kind !== 'audit') {
     const required = feature.run.team.filter((role) => !['builder', 'verifier'].includes(role))
     const missing = required.filter((role) => !contributed.has(role))
     const latestReviewer = feature.run.contributions.filter((item) => item.role === 'plan-reviewer').at(-1)
@@ -946,7 +970,7 @@ function phase() {
     if (feature.run.contract >= 4 && missing.includes('plan-challenger')) {
       die('Plan Challenger must challenge the latest reviewed plan before build', 5, { id })
     }
-    if (missing.length) die('pre-build expert contributions are required before build', 5, { missing })
+    if (missing.length) die('pre-build expert contributions are required before user approval', 5, { missing })
     if (feature.run.contract >= 4 && feature.run.team.includes('plan-reviewer')) {
       const roles = feature.run.contributions.map((item) => item.role)
       const reviewAt = roles.lastIndexOf('plan-reviewer')
@@ -971,17 +995,36 @@ function phase() {
         die('Plan challenge artifact does not match the latest challenger verdict', 5, { id, verdict })
       }
       if (review.plan_sha && createHash('sha256').update(sectionBody(doc, 'plan') ?? '').digest('hex') !== review.plan_sha) {
-        die('Plan changed after its challenge; return it to Plan Reviewer and Plan Challenger', 5, { id })
+        die('plan changed after challenge and user approval; return it to Plan Reviewer, Plan Challenger, and the user', 5, { id })
       }
     }
   }
   if (to === 'build' && feature.run.approval_required && !feature.run.approval) {
-    die('material approval is required before build', 5, { id })
+    die('user approval of the reviewed and challenged plan is required before build', 5, { id })
+  }
+  if (to === 'repair' && feature.run.approval_required) {
+    const verifier = feature.run.contributions.filter((item) => item.role === 'verifier').at(-1)
+    const approvedAt = feature.run.approval?.at ? Date.parse(feature.run.approval.at) : NaN
+    const verifiedAt = verifier?.at ? Date.parse(verifier.at) : NaN
+    if (!feature.run.approval || !verifier || !Number.isFinite(approvedAt) || !Number.isFinite(verifiedAt) || approvedAt < verifiedAt) {
+      die('user must approve the repair scope after the verifier finding; move to approval, present the approval packet, and record approval before repair', 5, { id })
+    }
+    if (!verifier.severity || verifier.severity === 'none' || verifier.revision !== feature.run.revision) {
+      die('repair requires a current verifier finding; return to Plan for a discretionary change', 5, { id })
+    }
   }
   if (to === 'build' && feature.run.contract >= 3) {
     const digest = readyBriefDigest(root, id)
     if (feature.run.approval?.brief_sha !== undefined && feature.run.approval.brief_sha !== digest) {
       die('implementation brief changed after approval', 5, { id })
+    }
+    if (feature.run.contract >= 5) {
+      const artifactFile = artifactPath(root, id)
+      const plan = existsSync(artifactFile) ? sectionBody(readFileSync(artifactFile, 'utf8'), 'plan') : null
+      const planSha = plan ? createHash('sha256').update(plan).digest('hex') : null
+      if (!feature.run.approval?.plan_sha || feature.run.approval.plan_sha !== planSha) {
+        die('plan changed after user approval; return it to review, challenge, and user approval', 5, { id })
+      }
     }
   }
   if (to === 'verify' && feature.run.kind !== 'audit') {
@@ -1033,8 +1076,9 @@ function approve() {
   const id = safeId(option('--id'))
   const feature = load(root, id)
   ensureActive(feature.run)
-  if (feature.run.contract >= 3 && !feature.run.approval_required) {
-    die('this run has no pending material decision to approve', 5, { id })
+  if (feature.run.kind === 'audit') die('audit-only runs have no implementation plan to approve', 5, { id })
+  if (feature.run.contract >= 5 && feature.run.phase !== 'approval') {
+    die('user approval is requested only after plan review and challenge; move to approval when both passes are current', 5, { id, phase: feature.run.phase })
   }
   if (feature.run.contract >= 3 && ['build', 'verify', 'repair'].includes(feature.run.phase)) {
     die('approval must be recorded before build', 5, { id, phase: feature.run.phase })
@@ -1052,6 +1096,32 @@ function approve() {
     })
   }
   const digest = feature.run.contract >= 3 ? readyBriefDigest(root, id) : briefDigest(root, id)
+  let planSha
+  if (feature.run.contract >= 5) {
+    const artifactFile = artifactPath(root, id)
+    const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
+    const plan = sectionBody(doc, 'plan')
+    if (!plan || /^_pending\b/.test(plan)) die('a written Plan is required before user approval', 5, { id })
+    const reviews = feature.run.contributions
+    const reviewAt = reviews.map((item) => item.role).lastIndexOf('plan-reviewer')
+    const challengeAt = reviews.map((item) => item.role).lastIndexOf('plan-challenger')
+    const reviewer = reviews[reviewAt]
+    const challenger = reviews[challengeAt]
+    if (!reviewer || !challenger || challengeAt <= reviewAt) {
+      die('Plan Reviewer and Plan Challenger must complete in order before user approval', 5, { id })
+    }
+    if (!['APPROVED', 'APPROVED WITH NOTES'].includes(reviewer.verdict) || !['APPROVED', 'APPROVED WITH NOTES'].includes(challenger.verdict)) {
+      die('both Plan Reviewer and Plan Challenger must approve before user approval', 5, { id })
+    }
+    planSha = createHash('sha256').update(plan).digest('hex')
+    if (reviewer.plan_sha !== planSha || challenger.plan_sha !== planSha) {
+      die('the plan changed after review or challenge; rerun both passes before user approval', 5, { id })
+    }
+    if (planReviewVerdict(sectionBody(doc, 'plan-review')) !== reviewer.verdict
+      || planReviewVerdict(sectionBody(doc, 'plan-challenge')) !== challenger.verdict) {
+      die('plan review artifacts do not match the current reviewer and challenger verdicts', 5, { id })
+    }
+  }
   feature.run.approval = {
     by,
     at: new Date().toISOString(),
@@ -1060,9 +1130,47 @@ function approve() {
     // lets the audit answer "did we build what was approved?" rather than
     // "did we build what the brief now says?".
     brief_sha: digest,
+    ...(planSha ? { plan_sha: planSha } : {}),
   }
   save(feature.path, feature.run)
   output({ ok: true, id, approval: feature.run.approval })
+}
+
+// Render the exact decision context together. This avoids asking the user for
+// a bare "yes" when the plan, challenge, or repair boundary is stale or hidden.
+function approvalPacket() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const feature = load(root, id)
+  ensureActive(feature.run)
+  if (feature.run.kind === 'audit') die('audit-only runs have no implementation plan to approve', 5, { id })
+  const path = artifactPath(root, id)
+  if (!existsSync(path)) die('run artifact is missing; create it before presenting an approval packet', 5, { id })
+  const doc = readFileSync(path, 'utf8')
+  const body = (name) => sectionBody(doc, name) ?? '_pending_'
+  const verifier = feature.run.contributions.filter((item) => item.role === 'verifier').at(-1)
+  const repair = feature.run.phase === 'approval' && verifier
+  const verifierResult = repair && verifier.result && existsSync(resolve(root, verifier.result))
+    ? readFileSync(resolve(root, verifier.result), 'utf8').trim()
+    : body('verification')
+  process.stdout.write([
+    `# ${repair ? 'Repair approval' : 'Plan approval'} packet · ${id}`,
+    '',
+    '## Request', body('request'),
+    '',
+    '## Plan', body('plan'),
+    '',
+    '## Plan review', body('plan-review'),
+    '',
+    '## Plan challenge', body('plan-challenge'),
+    ...(repair ? ['', '## Verification finding that defines the repair scope', verifierResult] : []),
+    '',
+    '## Decision requested',
+    repair
+      ? 'Approve this repair scope, which is limited to resolving the verification finding without changing the approved plan?'
+      : 'Approve this plan for implementation?',
+    '',
+  ].join('\n'))
 }
 
 function finish() {
@@ -1088,7 +1196,7 @@ function finish() {
   ensureActive(feature.run)
   ensureRecordedResults(root, feature.run)
   if (feature.run.phase !== 'verify') die('run must be in verify phase before finish', 5, { phase: feature.run.phase })
-  if (feature.run.approval_required && !feature.run.approval) die('material approval is missing', 5, { id })
+  if (feature.run.approval_required && !feature.run.approval) die('user approval is missing', 5, { id })
 
   // The kit's own principle, applied to its newest surface: a workflow step
   // the model was asked to perform but can silently skip is not a step, it is
@@ -1565,7 +1673,6 @@ function help() {
 Internal recovery ledger for the autonomous Forge workflow.
 
   start  --title TEXT --kind KIND --risk FLAGS [--domain a,b] [--signals a,b]
-         --approval-reason none|TEXT
          [--cause known|unknown --cause-evidence TEXT]
   list
   status --id ID
@@ -1579,6 +1686,7 @@ Internal recovery ledger for the autonomous Forge workflow.
   brief  --id ID [--force]
   lenses --id ID --json '<lens-select.mjs output>'
   approve --id ID --by NAME --basis TEXT
+  approval-packet --id ID       (show the exact plan or repair scope for the user decision)
   audit  --id ID [--tests-changed-justified] (release checks; exit 5 on blockers)
   report --id ID
   finish --id ID --summary TEXT --verification TEXT [--result TEXT]
@@ -1676,6 +1784,6 @@ function runs() {
   output(stats)
 }
 
-const handlers = { help, start, brief, artifact, section, lenses, list, status, focus, note, phase, approve, audit, report, finish, cancel, contract, runs }
+const handlers = { help, start, brief, artifact, section, lenses, list, status, focus, note, phase, approve, approvalPacket, 'approval-packet': approvalPacket, audit, report, finish, cancel, contract, runs }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()
