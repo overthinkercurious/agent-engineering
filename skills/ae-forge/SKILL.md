@@ -31,7 +31,7 @@ what exists versus what's still backlog.
 
 1. Understand the request and the repository.
 2. Select the smallest team that covers the risk.
-3. Plan only as much as safe implementation requires.
+3. Produce an evidence-backed plan, then independently review and challenge every material decision before implementation.
 4. Implement requested changes; planning alone is not delivery.
 5. Have a verifier inspect the result separately and run relevant checks.
 6. Repair valid findings, then report what changed and what remains uncertain.
@@ -111,19 +111,17 @@ create one small record. Skip the record for explanation-only work.
 ```bash
 node "$AE/scripts/forge.mjs" list
 node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
-  --risk <comma-list|none> --tier <quick|standard|deep> \
+  --risk <comma-list|none> \
   --approval-reason <none|material-choice-or-new-authority> \
   [--cause known --cause-evidence <repro-or-code-evidence>] \
   [--signals <comma-list>] [--domain <comma-list>]
 ```
 
 `--signals` passes vocabulary the user actually used. Signals may add a
-specialist but never lower the tier or remove a risk-selected role. Assess tier
-from scope, reversibility, and open design choices; use quick for a bounded,
-understood change, standard for meaningful design, and deep for difficult
-rollback or independent risk boundaries. Access, stored-shape, irreversible,
-and security work have a deep floor. For bugs and performance work, skip the
-Investigator only when the cause is demonstrated with `--cause-evidence`.
+specialist but never remove a risk-selected role. Every delivery run has the
+same pre-build sequence: Architect, Plan Reviewer, and Plan Challenger. For
+bugs and performance work, skip Investigator only when the cause is
+demonstrated with `--cause-evidence`.
 
 ### Assess risk before starting
 
@@ -159,21 +157,13 @@ is an internal recovery aid, not an approval bureaucracy.
 Kinds are `idea`, `feature`, `bug`, `refactor`, `performance`, `security`, and
 `audit`.
 
-## Size the team
+## Route the team
 
 Classify by behavior and risk, not filenames:
 
-- **Quick:** local, reversible, understood, and low-risk. Builder + Verifier.
-- **Standard:** several files or a meaningful design choice. Architect +
-  Builder + Verifier. Add Investigator for an unknown defect.
-- **Deep:** trust boundaries, payments, permissions, destructive data changes,
-  public contracts, or difficult rollback. Architect + Builder + Verifier plus
-  only the relevant Security, Data, Reliability, Experience, Product, or
-  Investigator expert.
-
-Three roles are the normal team. Five is the maximum without telling the user
-why multiple independent risk boundaries require more. Do not run every expert,
-every checklist, or a separate critic merely because they exist.
+Every delivery starts with Architect, Plan Reviewer, Plan Challenger, Builder,
+and Verifier. Add only the relevant Security, Data, Reliability, Experience,
+Product, or Investigator expert. Do not add experts merely because they exist.
 
 ### Print the routing decision
 
@@ -181,8 +171,8 @@ Before any expert works, print the routing block from `start`'s output — seven
 lines, once, then stay quiet:
 
 ```text
-Forge   · contract v3 · run 3f9c1a
-Routing · deep · Architect → Security → Experience → Builder → Verifier
+Forge   · contract v4 · run 3f9c1a
+Routing · Architect → Security → Experience → Plan Reviewer → Plan Challenger → Builder → Verifier
 Why     · risk=access (changes who may authenticate), risk=rendered (new login journey)
 Skipped · data (no stored-shape risk declared) · reliability (no runtime risk declared)
         · investigator (no undiagnosed defect) · product (outcome already specified)
@@ -203,7 +193,7 @@ decision gets caught on the first run instead of the tenth.
 
 The `Enforce` line is `start`'s `enforce` field verbatim. It is read, never
 assumed, and `none` is the honest default. See `team.md`'s "Enforcement
-tiers" for what each tier does and, more importantly, what it does not.
+modes" for what each mode does and, more importantly, what it does not.
 
 An audit-only request is different: select Auditor, Verifier and only the
 relevant Security, Data, Experience, or Reliability expert. Do not add
@@ -220,11 +210,12 @@ dispatch: the stages that matter are adversarial in pairs — plan and its
 review, build and its verification — and running a pair concurrently means the
 reviewer judges a moving target.
 
-Six stages are separately installed skills. Scaffold the artifact first, then
-drive the selected roles in the order recorded by `start`. On deep delivery,
+Six stage skills are separately installed. Scaffold the artifact first, then
+drive the selected roles in the order recorded by `start`. On every delivery,
 selected named specialists give pre-build constraints after Architect and
-before Plan Reviewer. The reviewer reads those results and returns a conflicting
-plan to Architect for a focused revision. On audit-only work, selected
+before Plan Reviewer. Plan Challenger reads the review and challenges every
+material decision. A REVISE from either returns the plan to Architect for a
+focused revision, followed by both passes again. On audit-only work, selected
 specialists contribute before Auditor; Auditor performs its own cold read,
 then Verifier assesses the combined findings:
 
@@ -232,18 +223,16 @@ then Verifier assesses the combined findings:
 node "$AE/scripts/forge.mjs" artifact --id <id>
 ```
 
-For a selected Plan Reviewer, record the explicit verdict in its result and
-`Plan review` section. `REVISE` sends the plan back to Architect; after the
-revision, run Plan Reviewer again. The build phase opens only when the latest
-review says `APPROVED` or `APPROVED WITH NOTES` and the reviewed Plan section
-has not changed. Standard runs omit this separate stage by design; Verifier
-still reviews the delivered change.
+Record explicit verdicts for both Plan Reviewer and Plan Challenger. The build
+phase opens only when both latest verdicts say `APPROVED` or `APPROVED WITH
+NOTES` and the challenged Plan section has not changed.
 
 | Stage | Skill | Writes section |
 |---|---|---|
 | Investigator | `ae-investigate` | `Investigation` |
 | Architect | `ae-plan` | `Plan` |
 | Plan Reviewer | `ae-plan-review` | `Plan review` |
+| Plan Challenger | `ae-plan-review` | `Plan challenge` |
 | Builder | `ae-build` | `Implementation` |
 | Verifier | `ae-verify` | `Verification` |
 | Auditor | `ae-audit` | `Audit` |
@@ -268,7 +257,7 @@ cat .dev/context/host.json   # committed by ae-surveyor stage 1
 ```
 
 Find **your own** row in `hosts` — you know which tool you are running as — and
-use its `dispatch` value. Do not infer a tier from `detected_in_project`; that
+use its `dispatch` value. Do not infer a dispatch capability from `detected_in_project`; that
 field describes what this repository contains, not what is executing. If the
 file is absent or your row is not in it, assume `none` and say which of the two
 it was.
@@ -324,10 +313,10 @@ provided an isolated context; otherwise add `--review-context same-session`.
 ## Work autonomously
 
 Work through routine local implementation without interrupting the user,
-regardless of tier. Before `start`, assess whether an unresolved material
+regardless of risk. Before `start`, assess whether an unresolved material
 product/design choice or new authority is needed. Pass the specific reason to
 `--approval-reason`, or `none` when the request already authorises the work.
-Risk flags select expertise and depth; they do not imply an approval request.
+Risk flags select specialist expertise; they do not imply an approval request.
 
 **A reviewer verdict is not user approval.** An expert clearing its findings
 says the change is sound; only the user says it is wanted. `approve` refuses a
@@ -354,9 +343,9 @@ point the user at it:
 node "$AE/scripts/forge.mjs" brief --id <id>
 ```
 
-The brief carries only the sections its tier calls for — a section outside the
-tier is omitted, never filled with "N/A". A quick brief is four sections; a
-four-page plan for a one-line fix is a defect, not thoroughness.
+The brief always carries the decision and verification sections used by the
+reviewer and challenger. Keep each concise: a four-page plan for a one-line
+fix is a defect, not thoroughness.
 Fill its `TODO` sections before approval or build. The ledger rejects a missing
 or unfinished brief, and rejects edits to an approved brief before build.
 
@@ -381,8 +370,7 @@ After resolving or adjudicating a blocker, append that role's evidence and a
 follow-up note with its remaining severity (`none` if clear). Omitting severity
 does not clear an earlier blocker.
 
-Use these phases internally, omitting Plan only for quick work with no open
-design choice:
+Use these phases internally:
 
 1. **Understand:** inspect instructions, reproduce bugs, and identify unknowns.
 2. **Plan:** state acceptance behavior and the smallest implementation path.
@@ -484,7 +472,7 @@ to a hard minimum:
 | Approval needed | the brief's path and the decision being asked | the brief |
 | Completion | the delivery report | ~20 lines |
 
-A five-role deep run should produce about ten lines of chat before the final
+A five-role delivery run should produce about ten lines of chat before the final
 report, however much work happened underneath. Never narrate file-by-file
 progress, expert reasoning, ledger commands, or phase vocabulary.
 

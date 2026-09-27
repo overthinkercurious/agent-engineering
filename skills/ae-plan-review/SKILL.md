@@ -1,20 +1,21 @@
 ---
 name: ae-plan-review
 description: >
-  Dispatch target only for the Plan Reviewer stage of an active deep ae-forge
-  run. Forge invokes it after the Architect and selected specialists, before
-  build, to return APPROVED, APPROVED WITH NOTES, or REVISE. For a standalone
-  plan review request, start with ae-forge. This stage reopens citations and
-  does not rewrite the plan or add requirements.
+  Dispatch target only for the Plan Reviewer or Plan Challenger stage of an
+  active ae-forge delivery run. Forge invokes both after the Architect and
+  selected specialists, before build. For a standalone plan review request,
+  start with ae-forge. This stage reopens evidence and never rewrites the plan
+  or adds requirements.
 metadata:
   owns: "the independent verdict on whether a plan is safe to implement as written"
 ---
 
-# Review a plan
+# Review or challenge a plan
 
-You are the **Plan Reviewer** stage. You read a plan written by someone else
-and decide whether building it is safe. You are the cheapest place in this
-pipeline to find a design defect, and the last one before it becomes a diff.
+Forge tells you whether this invocation is **Plan Reviewer** or **Plan
+Challenger**. Read the matching role file. Reviewer checks correctness as
+written; Challenger tests every material decision against its strongest
+evidence-backed opposing case. Both run before every delivery build.
 
 ## Resolve the contract
 
@@ -35,7 +36,8 @@ improvised without its contract produces a verdict with no rule behind it,
 which reads exactly like one that has a rule behind it. Print the restore
 command and end the turn.
 
-Then read `$FORGE/references/team.md`, `$FORGE/references/roles/plan-reviewer.md`,
+Then read `$FORGE/references/team.md`, the matching role file (`plan-reviewer.md`
+or `plan-challenger.md`),
 any attached lenses, and the artifact's `Request`, `Plan`, `Decisions` and
 `Open questions` sections. Read each selected named specialist's pre-build
 result under `.dev/work/<id>/results/` as well. If any is missing, return to
@@ -79,9 +81,8 @@ see its reasoning, which is exactly why you must not rely on it.
 
 ## Work
 
-Follow `plan-reviewer.md`: six criteria in order, stop at the first failure,
-delta-only review on cycle 2 and later, at most five findings, every finding
-carrying all seven columns or being dropped.
+Follow the selected role file. Both roles use delta-only review on cycle 2 and
+later, at most five findings, and the shared seven-column findings table.
 
 Two severity caps apply and both exist to stop reviews becoming feature
 requests:
@@ -95,15 +96,15 @@ requests:
 ## Record the result
 
 ```bash
-node "$FORGE/scripts/forge.mjs" section --id <id> --name plan-review --from .dev/work/<id>/results/plan-reviewer.md
-node "$FORGE/scripts/forge.mjs" note --id <id> --role plan-reviewer \
+node "$FORGE/scripts/forge.mjs" section --id <id> --name <plan-review|plan-challenge> --from .dev/work/<id>/results/<role>.md
+node "$FORGE/scripts/forge.mjs" note --id <id> --role <plan-reviewer|plan-challenger> \
   --summary "<verdict and the one blocking condition, if any>" \
   --severity <none|low|medium|high|critical> \
-  --result .dev/work/<id>/results/plan-reviewer.md
+  --result .dev/work/<id>/results/<role>.md
 ```
 
-On a second review, use a new result filename in both commands, such as
-`plan-reviewer-2.md`. Preserve the first verdict and its evidence.
+On a second pass, use a new result filename in both commands, such as
+`plan-reviewer-2.md` or `plan-challenger-2.md`. Preserve prior evidence.
 
 Severity must match the verdict. REVISE with no critical or high finding is a
 contradiction, and the verdict is the thing that is wrong.
@@ -115,13 +116,13 @@ worked; the section is the only thing the next stage can read.
 ## Hand back
 
 ```text
-Plan review · REVISE · 1 blocker: the retry path re-enters the same lock
-Next · /ae-plan — cycle 2, delta review only.
+Plan review or challenge · REVISE · 1 blocker: the retry path re-enters the same lock
+Next · Forge returns the blocker to Architect, then dispatches both passes again.
 ```
 
-On APPROVED or APPROVED WITH NOTES, hand back to Forge — **not to Builder**.
-Your approval says the plan is sound. Forge checks whether a material user
-decision is still pending before build.
+On APPROVED or APPROVED WITH NOTES, hand back to Forge — never to Builder.
+Reviewer approval proceeds to Challenger; Challenger approval lets Forge check
+both current verdicts and any user decision before build.
 
 ## Hard stops
 

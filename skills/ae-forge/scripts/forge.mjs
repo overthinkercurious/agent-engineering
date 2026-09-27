@@ -9,7 +9,6 @@ import { fileURLToPath } from 'node:url'
 const args = process.argv.slice(2)
 const command = args[0] || 'help'
 const KINDS = ['idea', 'feature', 'bug', 'refactor', 'performance', 'security', 'audit']
-const TIERS = ['quick', 'standard', 'deep']
 const PHASES = ['understand', 'plan', 'build', 'verify', 'repair', 'blocked']
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const TEAM = JSON.parse(readFileSync(resolve(SCRIPT_DIR, '..', 'references', 'team.json'), 'utf8'))
@@ -17,7 +16,7 @@ const ROLES = Object.keys(TEAM.roles)
 const SPECIALIST_ROLES = Object.keys(TEAM.signals)
 const ROLE_SKILLS = {
   investigator: 'ae-investigate', architect: 'ae-plan',
-  'plan-reviewer': 'ae-plan-review', builder: 'ae-build',
+  'plan-reviewer': 'ae-plan-review', 'plan-challenger': 'ae-plan-review', builder: 'ae-build',
   verifier: 'ae-verify', auditor: 'ae-audit',
 }
 const TRANSITIONS = {
@@ -28,7 +27,6 @@ const TRANSITIONS = {
   repair: ['verify', 'blocked'],
   blocked: ['understand', 'plan', 'build', 'verify', 'repair'],
 }
-const DEEP_RISKS = new Set(['access', 'stored-shape', 'irreversible'])
 
 const RISK = TEAM.risk ?? {}
 const RISK_FLAGS = Object.keys(RISK)
@@ -122,6 +120,7 @@ const SECTIONS = {
   investigation: { title: 'Investigation', owner: 'investigator' },
   plan: { title: 'Plan', owner: 'architect' },
   'plan-review': { title: 'Plan review', owner: 'plan-reviewer' },
+  'plan-challenge': { title: 'Plan challenge', owner: 'plan-challenger' },
   approval: { title: 'Approval', owner: null },
   implementation: { title: 'Implementation', owner: 'builder' },
   verification: { title: 'Verification', owner: 'verifier' },
@@ -156,25 +155,10 @@ function splitSignals() {
 // additive escalation - a keyword may ADD a role, never withhold one - because
 // an exact-match vocabulary silently misses near-synonyms (oauth, sso, rbac),
 // and a router that fails open is worse than no router at all.
-function chooseTier(kind, risks) {
-  const requested = option('--tier')
-  if (!requested && kind !== 'audit') die('--tier is required for a delivery run: assess size, reversibility, and design risk')
-  if (requested && !TIERS.includes(requested)) die(`tier must be one of: ${TIERS.join(', ')}`)
-  const floor = kind === 'security' || risks.some((flag) => DEEP_RISKS.has(flag)) ? 'deep' : 'quick'
-  return TIERS[Math.max(TIERS.indexOf(requested ?? 'standard'), TIERS.indexOf(floor))]
-}
-
-function tierReason(kind, risks, tier) {
-  if (kind === 'security') return 'kind=security'
-  const flag = risks.find((value) => DEEP_RISKS.has(value))
-  if (flag) return `minimum deep tier: risk=${flag}`
-  return `assessed ${tier} from scope, reversibility, and design risk`
-}
-
 // Returns both the team and why each role was selected or skipped, so the
 // delivery report can show the routing decision instead of the model
 // recalling it. A skipped role with no recorded reason is a routing bug.
-function chooseTeam(kind, tier, signals, risks, cause) {
+function chooseTeam(kind, signals, risks, cause) {
   const selected = {}
   const skipped = {}
   const take = (role, reason) => { if (!selected[role]) selected[role] = reason }
@@ -190,13 +174,10 @@ function chooseTeam(kind, tier, signals, risks, cause) {
     skipped[role] = declared ? `no ${declared} risk declared` : 'no matching risk or signal'
   }
 
-  if (tier !== 'quick') {
-    take('architect', 'tier is standard or deeper')
-    if (tier === 'deep') take('plan-reviewer', 'deep design risk merits a separate plan review')
-    else skipped['plan-reviewer'] = 'standard tier: Verifier reviews the delivered result'
-  } else {
-    skipped.architect = 'quick tier: no open design choice'
-    skipped['plan-reviewer'] = 'quick tier: no plan to review'
+  if (kind !== 'audit') {
+    take('architect', 'every delivery starts with an evidence-backed plan')
+    take('plan-reviewer', 'every plan receives an independent correctness review')
+    take('plan-challenger', 'every material plan decision is challenged before build')
   }
 
   if (((kind === 'bug' || kind === 'performance') && cause !== 'known') || signals.includes('unknown')) {
@@ -212,10 +193,11 @@ function chooseTeam(kind, tier, signals, risks, cause) {
     // is comparing against one are not merely unused here - they would have
     // nothing to read. Auditor replaces them: it reads the repository as it
     // stands, which is a different question from "is this change correct".
-    for (const role of ['builder', 'architect', 'plan-reviewer', 'investigator', 'product']) delete selected[role]
+    for (const role of ['builder', 'architect', 'plan-reviewer', 'plan-challenger', 'investigator', 'product']) delete selected[role]
     skipped.builder = 'audit-only: cannot modify code'
     skipped.architect = 'audit-only: nothing is being designed'
     skipped['plan-reviewer'] = 'audit-only: there is no plan to review'
+    skipped['plan-challenger'] = 'audit-only: there is no future implementation decision to challenge'
     skipped.investigator = 'audit-only: assesses existing hazards rather than diagnosing one defect'
     skipped.product = 'audit-only: assesses the declared scope rather than defining a new outcome'
     take('auditor', 'owns the cold assessment of the repository as it stands')
@@ -230,22 +212,21 @@ function chooseTeam(kind, tier, signals, risks, cause) {
   return { team: order, selected, skipped }
 }
 
-// The brief is the one artifact a user reviews and the audit later checks
-// against. Its sections are tier-bound on purpose: a section outside the tier
-// is omitted, never filled with "N/A", so a quick fix cannot grow a four-page
-// plan and a deep change cannot quietly skip its rollback story.
+// The brief is the one artifact a user reviews and the audit later checks.
+// Every delivery uses this concise shape: risk changes specialist coverage,
+// never whether a plan is reviewed or challenged.
 const BRIEF_SECTIONS = [
-  ['Request', 'quick', null],
-  ['Assumptions', 'standard', 'What you are taking as true that the request did not state. Each one a user could correct.'],
-  ['Scope and non-goals', 'standard', 'What this deliberately does not do.'],
-  ['Acceptance criteria', 'quick', 'Observable behaviour, one per line, with stable IDs AC-1, AC-2. A criterion nobody can check is not a criterion.'],
-  ['Evidence read', 'standard', 'Every path:line actually opened. A step touching a file absent from this list is unverified by construction.'],
-  ['Options considered', 'deep', 'Only where more than one viable design exists. One line of tradeoff each, then the pick and why. An invented alternative is worse than none.'],
-  ['Design decisions', 'standard', 'Each decision with VERIFIED (path:line) or INFERRED (basis). ASSUMED does not exist.'],
-  ['Implementation steps', 'quick', 'Ordered, file-level. Each step: the change, why, and a runnable check.'],
-  ['Risks and residual', 'standard', 'What could still go wrong after this ships.'],
-  ['Rollback', 'deep', 'How this is reversed, or why reversal is not possible. A code revert is not data recovery.'],
-  ['Verification plan', 'quick', 'The exact commands, and which acceptance criterion each one evidences.'],
+  ['Request', null],
+  ['Assumptions', 'What you are taking as true that the request did not state. Each one a user could correct.'],
+  ['Scope and non-goals', 'What this deliberately does not do.'],
+  ['Acceptance criteria', 'Observable behaviour, one per line, with stable IDs AC-1, AC-2. A criterion nobody can check is not a criterion.'],
+  ['Evidence read', 'Every path:line actually opened. A step touching a file absent from this list is unverified by construction.'],
+  ['Options considered', 'Only real viable alternatives: one line of tradeoff each, then the pick and why. Say "none" only when evidence shows no alternative.'],
+  ['Design decisions', 'Each decision with VERIFIED (path:line) or INFERRED (basis). ASSUMED does not exist.'],
+  ['Implementation steps', 'Ordered, file-level. Each step: the change, why, and a runnable check.'],
+  ['Risks and residual', 'What could still go wrong after this ships.'],
+  ['Rollback', 'How this is reversed, or why reversal is not possible. A code revert is not data recovery.'],
+  ['Verification plan', 'The exact commands, and which acceptance criterion each one evidences.'],
 ]
 
 // Recorded at start so the audit can tell whether the repository moved under
@@ -434,10 +415,9 @@ function brief() {
   if (existsSync(path) && !args.includes('--force')) {
     die('brief already exists; edit it in place or pass --force to rescaffold', 4, { id })
   }
-  const rank = TIERS.indexOf(run.tier)
   const lines = [
     `# ${run.title}`, '',
-    `> ${run.tier} · ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
+    `> ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
     `> Team: ${run.team.join(' → ')}`,
     `> Baseline: ${run.baseline?.head ?? 'UNKNOWN'} · approval ${run.approval_required ? 'required' : 'not required'}`,
     '',
@@ -446,16 +426,14 @@ function brief() {
     'compares the delivered change against that frozen text._',
     '',
   ]
-  for (const [heading, minTier, prompt] of BRIEF_SECTIONS) {
-    if (TIERS.indexOf(minTier) > rank) continue
+  for (const [heading, prompt] of BRIEF_SECTIONS) {
     lines.push(`## ${heading}`, '')
     if (heading === 'Request') lines.push(run.title, '')
     else lines.push(`<!-- ${prompt} -->`, '', 'TODO', '')
   }
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${lines.join('\n').trimEnd()}\n`, 'utf8')
-  const included = BRIEF_SECTIONS.filter(([, t]) => TIERS.indexOf(t) <= rank).map(([h]) => h)
-  output({ ok: true, id, tier: run.tier, sections: included, brief: relative(root, path).replaceAll('\\', '/') })
+  output({ ok: true, id, sections: BRIEF_SECTIONS.map(([heading]) => heading), brief: relative(root, path).replaceAll('\\', '/') })
 }
 
 // The artifact is scaffolded once and filled section by section. It is
@@ -465,7 +443,7 @@ function artifactSkeleton(run) {
   const lines = [
     `# ${run.title}`, '',
     `> Forge · contract v${run.contract ?? TEAM.version} · run \`${run.id}\``,
-    `> ${run.tier} · ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
+    `> ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
     `> Team: ${run.team.join(' → ')}`,
     '',
     '_Every section below has one owner. Isolated stages use this file as their',
@@ -617,7 +595,7 @@ function allowedPhases(role) {
   // during verify would make it a second Verifier with none of the evidence,
   // and two roles answering "is this correct" is the seam where contradictory
   // findings appear.
-  if (role === 'plan-reviewer') return ['plan']
+  if (['plan-reviewer', 'plan-challenger'].includes(role)) return ['plan']
   // Auditor is cold by construction: it reads the repository, not a diff, so
   // it works before anything is built and never re-inspects a candidate.
   if (role === 'auditor') return ['understand']
@@ -690,8 +668,8 @@ function start() {
   if (cause === 'known' && !causeEvidence) die('--cause-evidence is required when the cause is known')
   const domains = [...new Set(String(option('--domain', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
-  const tier = chooseTier(kind, risks)
-  const routing = chooseTeam(kind, tier, signals, risks, cause)
+  if (option('--tier') !== null) die('--tier is retired: every delivery plans, reviews, and challenges before build')
+  const routing = chooseTeam(kind, signals, risks, cause)
   const now = new Date().toISOString()
   const run = {
     schema: 1,
@@ -703,13 +681,12 @@ function start() {
     cause,
     cause_evidence: causeEvidence,
     domains,
-    tier,
     team: routing.team,
     routing: {
       risk_assessed: assessed,
-      tier_reason: assessed
-        ? tierReason(kind, risks, tier)
-        : `${tierReason(kind, risks, tier)} (risk not assessed: specialists selected by keyword only)`,
+      routing_reason: assessed
+        ? 'risk selects specialist coverage; plan review and challenge are mandatory for every delivery'
+        : 'risk not assessed: specialists selected by keyword only; plan review and challenge remain mandatory',
       selected: routing.selected,
       skipped: routing.skipped,
     },
@@ -732,7 +709,7 @@ function start() {
   }
   save(path, run)
   output({
-    ok: true, id, tier, team: run.team, routing: run.routing,
+    ok: true, id, team: run.team, routing: run.routing,
     approval_required: run.approval_required,
     approval_reason: run.approval_reason,
     context: run.context,
@@ -757,7 +734,7 @@ function list() {
     if (!existsSync(path)) continue
     try {
       const run = JSON.parse(readFileSync(path, 'utf8'))
-      runs.push({ id: run.id, title: run.title, tier: run.tier, phase: run.phase, status: run.status, updated_at: run.updated_at })
+      runs.push({ id: run.id, title: run.title, phase: run.phase, status: run.status, updated_at: run.updated_at })
     } catch { /* status reports a corrupt record when addressed directly */ }
   }
   output(runs.sort((a, b) => b.updated_at.localeCompare(a.updated_at)))
@@ -821,6 +798,16 @@ function note() {
       die('Plan Reviewer must read the plan and selected specialist constraints first', 5, { missing })
     }
   }
+  if (role === 'plan-challenger' && feature.run.contract >= 4) {
+    const roles = feature.run.contributions.map((item) => item.role)
+    const reviewAt = roles.lastIndexOf('plan-reviewer')
+    const inputsAt = Math.max(...['architect', ...SPECIALIST_ROLES].map((selected) => roles.lastIndexOf(selected)))
+    if (reviewAt <= inputsAt) die('Plan Challenger must read the current Plan Reviewer result and all pre-build constraints first', 5, { id })
+    const reviewerVerdict = feature.run.contributions[reviewAt]?.verdict
+    if (!['APPROVED', 'APPROVED WITH NOTES'].includes(reviewerVerdict)) {
+      die('Plan Challenger cannot challenge a plan the Plan Reviewer returned for revision', 5, { id, verdict: reviewerVerdict ?? 'unrecorded' })
+    }
+  }
   if (role === 'verifier') {
     const reviewContext = option('--review-context')
     if (feature.run.contract >= 3 && !['isolated', 'same-session'].includes(reviewContext)) {
@@ -871,15 +858,16 @@ function note() {
   }
   let planSha
   let reviewVerdict
-  if (role === 'plan-reviewer' && feature.run.contract >= 3) {
+  if (['plan-reviewer', 'plan-challenger'].includes(role) && feature.run.contract >= (role === 'plan-challenger' ? 4 : 3)) {
     const artifactFile = artifactPath(root, id)
     const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
     const plan = sectionBody(doc, 'plan')
-    if (!plan || /^_pending\b/.test(plan)) die('Plan Reviewer requires a written Plan section', 5, { id })
+    const label = role === 'plan-reviewer' ? 'Plan Reviewer' : 'Plan Challenger'
+    if (!plan || /^_pending\b/.test(plan)) die(`${label} requires a written Plan section`, 5, { id })
     reviewVerdict = planReviewVerdict(readFileSync(resultPath, 'utf8'))
-    if (!reviewVerdict) die('Plan Reviewer result requires an explicit APPROVED, APPROVED WITH NOTES, or REVISE verdict', 5, { id })
+    if (!reviewVerdict) die(`${label} result requires an explicit APPROVED, APPROVED WITH NOTES, or REVISE verdict`, 5, { id })
     if (reviewVerdict === 'REVISE' ? !['critical', 'high'].includes(severity) : ['critical', 'high'].includes(severity)) {
-      die('Plan Reviewer severity disagrees with its verdict', 5, { verdict: reviewVerdict, severity: severity ?? 'missing' })
+      die(`${label} severity disagrees with its verdict`, 5, { verdict: reviewVerdict, severity: severity ?? 'missing' })
     }
     planSha = createHash('sha256').update(plan).digest('hex')
   }
@@ -948,27 +936,42 @@ function phase() {
   if (to === 'build') {
     const required = feature.run.team.filter((role) => !['builder', 'verifier'].includes(role))
     const missing = required.filter((role) => !contributed.has(role))
+    const latestReviewer = feature.run.contributions.filter((item) => item.role === 'plan-reviewer').at(-1)
+    if (feature.run.contract >= 4 && latestReviewer && !['APPROVED', 'APPROVED WITH NOTES'].includes(latestReviewer.verdict)) {
+      die('Plan Reviewer has not approved the latest plan', 5, { id, verdict: latestReviewer.verdict ?? 'unrecorded' })
+    }
+    if (feature.run.contract >= 4 && missing.includes('plan-reviewer')) {
+      die('Plan Reviewer must review the latest plan and specialist constraints before build', 5, { id })
+    }
+    if (feature.run.contract >= 4 && missing.includes('plan-challenger')) {
+      die('Plan Challenger must challenge the latest reviewed plan before build', 5, { id })
+    }
     if (missing.length) die('pre-build expert contributions are required before build', 5, { missing })
-    if (feature.run.contract >= 3 && feature.run.team.includes('plan-reviewer')) {
+    if (feature.run.contract >= 4 && feature.run.team.includes('plan-reviewer')) {
       const roles = feature.run.contributions.map((item) => item.role)
       const reviewAt = roles.lastIndexOf('plan-reviewer')
+      const challengeAt = roles.lastIndexOf('plan-challenger')
       const inputsAt = Math.max(...['architect', ...SPECIALIST_ROLES].map((role) => roles.lastIndexOf(role)))
       if (reviewAt <= inputsAt) {
         die('Plan Reviewer must review the latest plan and specialist constraints before build', 5, { id })
       }
-      const review = feature.run.contributions[reviewAt]
+      if (challengeAt <= reviewAt) {
+        die('Plan Challenger must challenge the latest reviewed plan before build', 5, { id })
+      }
+      const reviewer = feature.run.contributions[reviewAt]
+      const review = feature.run.contributions[challengeAt]
       const artifactFile = artifactPath(root, id)
       const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
       const verdict = review.verdict ?? (existsSync(resolve(root, review.result))
         ? planReviewVerdict(readFileSync(resolve(root, review.result), 'utf8')) : null)
-      if (!['APPROVED', 'APPROVED WITH NOTES'].includes(verdict)) {
-        die('Plan Reviewer has not approved the latest plan', 5, { id, verdict: verdict ?? 'unrecorded' })
+      if (!['APPROVED', 'APPROVED WITH NOTES'].includes(reviewer.verdict) || !['APPROVED', 'APPROVED WITH NOTES'].includes(verdict)) {
+        die('Plan Challenger has not approved the latest plan', 5, { id, verdict: verdict ?? 'unrecorded' })
       }
-      if (planReviewVerdict(sectionBody(doc, 'plan-review')) !== verdict) {
-        die('Plan review artifact does not match the latest reviewer verdict', 5, { id, verdict })
+      if (planReviewVerdict(sectionBody(doc, 'plan-challenge')) !== verdict) {
+        die('Plan challenge artifact does not match the latest challenger verdict', 5, { id, verdict })
       }
       if (review.plan_sha && createHash('sha256').update(sectionBody(doc, 'plan') ?? '').digest('hex') !== review.plan_sha) {
-        die('Plan changed after its review; return it to Plan Reviewer', 5, { id })
+        die('Plan changed after its challenge; return it to Plan Reviewer and Plan Challenger', 5, { id })
       }
     }
   }
@@ -1263,7 +1266,7 @@ function report() {
   const risk = run.routing?.risk_assessed === false
     ? '**NOT ASSESSED**'
     : (run.risks?.length ? `\`${run.risks.join(', ')}\`` : 'none declared')
-  out.push(`**Routing** · tier \`${run.tier}\` · risk ${risk} · ${run.routing?.tier_reason ?? 'no reason recorded'}`, '')
+  out.push(`**Routing** · risk ${risk} · ${run.routing?.routing_reason ?? 'no reason recorded'}`, '')
 
   out.push('| Expert | Why selected | Contribution |', '|---|---|---|')
   for (const role of run.team) {
@@ -1279,6 +1282,11 @@ function report() {
   const planReview = planReviews.at(-1)
   if (planReview) {
     out.push(`**Plan review** · ${planReview.verdict ?? 'verdict unrecorded'} · ${planReviews.length} ${planReviews.length === 1 ? 'pass' : 'passes'}`, '')
+  }
+  const planChallenges = byRole('plan-challenger')
+  const planChallenge = planChallenges.at(-1)
+  if (planChallenge) {
+    out.push(`**Plan challenge** · ${planChallenge.verdict ?? 'verdict unrecorded'} · ${planChallenges.length} ${planChallenges.length === 1 ? 'pass' : 'passes'}`, '')
   }
 
   // The routing ROI line: a specialist that is selected and never catches
@@ -1557,7 +1565,7 @@ function help() {
 Internal recovery ledger for the autonomous Forge workflow.
 
   start  --title TEXT --kind KIND --risk FLAGS [--domain a,b] [--signals a,b]
-         --tier quick|standard|deep --approval-reason none|TEXT
+         --approval-reason none|TEXT
          [--cause known|unknown --cause-evidence TEXT]
   list
   status --id ID
@@ -1599,7 +1607,7 @@ All commands accept --root DIR. Users do not need to run these commands.
 
 // The ordering rules live in four places that must agree: TRANSITIONS (which
 // phase may follow which), allowedPhases (which phase a role may work in),
-// SECTIONS[].owner (which role writes which section) and team.json's tiers
+// SECTIONS[].owner (which role writes which section) and team.json's routing
 // (who is present at all). Each was individually reasoned and nothing checked
 // them as one surface. Printing them is what makes that checkable.
 function contract() {
@@ -1609,7 +1617,6 @@ function contract() {
     analysis_schema: TEAM.analysis_schema ?? null,
     phases: PHASES,
     transitions: TRANSITIONS,
-    tiers: TEAM.tiers,
     roles: Object.fromEntries(ROLES.map((role) => [role, {
       phases: allowedPhases(role),
       section: Object.entries(SECTIONS).find(([, meta]) => meta.owner === role)?.[0] ?? null,
@@ -1627,7 +1634,7 @@ function runs() {
   const root = projectRoot()
   const base = workRoot(root)
   const stats = {
-    runs: 0, by_tier: {}, by_kind: {}, risk_unassessed: 0, lenses_unrecorded: 0,
+    runs: 0, by_kind: {}, risk_unassessed: 0, lenses_unrecorded: 0,
     approval_required: 0, repair_cycles: {}, roles: {}, lenses: {},
   }
   if (!existsSync(base)) return output(stats)
@@ -1639,7 +1646,6 @@ function runs() {
     let run
     try { run = JSON.parse(readFileSync(path, 'utf8')) } catch { continue }
     stats.runs++
-    stats.by_tier[run.tier] = (stats.by_tier[run.tier] ?? 0) + 1
     stats.by_kind[run.kind] = (stats.by_kind[run.kind] ?? 0) + 1
     if (run.routing?.risk_assessed === false) stats.risk_unassessed++
     if (!run.lenses) stats.lenses_unrecorded++

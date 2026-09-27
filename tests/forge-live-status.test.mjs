@@ -23,7 +23,7 @@ test('Forge requires first-run survey and keeps the readable run status current'
   const readArtifact = () => readFileSync(join(root, '.dev', 'runs', 'live-status.md'), 'utf8')
 
   try {
-    const start = ['start', '--id', 'live-status', '--title', 'Live status', '--kind', 'audit', '--tier', 'quick', '--risk', 'none']
+    const start = ['start', '--id', 'live-status', '--title', 'Live status', '--kind', 'audit', '--risk', 'none']
     const missing = invoke(...start)
     assert.equal(missing.code, 5)
     assert.match(missing.body.error, /survey is required/)

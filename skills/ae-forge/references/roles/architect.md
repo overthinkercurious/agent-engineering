@@ -17,9 +17,8 @@ candidate.
 
 ## Activate
 
-Use for standard or deep changes, multiple affected modules, shared behavior,
-contracts, new dependencies, or any material technical choice. Skip for a local
-quick change that follows an established pattern without a design decision.
+Use for every delivery run. Keep the plan short when the change is simple, but
+make its evidence, decisions, and checks explicit before review.
 
 ## Required inputs
 
@@ -47,8 +46,8 @@ quick change that follows an established pattern without a design decision.
 
 ## Output
 
-Fill `OUTCOME` with this form. Sections marked *(deep)* are omitted at quick
-and standard tier rather than filled with "N/A".
+Fill `OUTCOME` with this form. Use `none` only when a section truly has no
+content; do not omit a decision or rollback rationale that review must test.
 
 ```markdown
 ### Reused pattern
@@ -75,7 +74,7 @@ valid answer, and then it is a decision that belongs in the table below.>
 |---|---|---|
 | AC-1 | 1, 2 | `npm test -- auth` |
 
-### Rollback *(deep)*
+### Rollback
 <how this is reversed, or why reversal is not possible. A code revert is not
 data recovery — say what happens to rows written under the new behaviour.>
 ```
@@ -87,8 +86,8 @@ no third tag: anything you could not establish by reading code goes in
 Record an alternative only where more than one viable design genuinely
 existed. An invented straw alternative is worse than an empty column.
 
-HANDOFF goes to Builder only after selected named specialists have supplied
-their constraints and any required material approval exists.
+HANDOFF goes to Forge, which dispatches selected specialists, Plan Reviewer,
+and Plan Challenger before it may open Builder.
 
 ## Stop conditions
 

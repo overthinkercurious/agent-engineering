@@ -92,27 +92,28 @@ let both roles issue competing answers to the same question.
 1. Product only when the requested outcome is materially ambiguous.
 2. Investigator before architecture for unexplained bugs or performance issues.
 3. Architect drafts the design, then selected named specialists record their
-   pre-build constraints. For a quick change, specialists give constraints
-   against the bounded request without inventing a plan.
-4. On deep work, Plan Reviewer reads the plan and every selected specialist
-   result. If a constraint changes the design, return it to Architect for a
-   focused revision before reviewing the revised plan.
+   pre-build constraints against the written plan.
+4. On every delivery run, Plan Reviewer reads the plan and every selected
+   specialist result. Plan Challenger then challenges each material decision
+   in the reviewed plan. A REVISE from either returns the plan to Architect
+   for a focused revision, followed by a new Reviewer and Challenger pass.
 5. Builder alone performs implementation and reads all selected constraints.
 6. Selected technical specialists (Security, Data, Experience, Reliability)
    inspect the candidate in their own boundary. Product defines the outcome
    before design and does not perform a candidate review.
 7. Verifier evaluates the integrated result last and records review context.
 
-Quick changes may omit Product, Investigator, Architect, and named specialists.
+Delivery runs may omit Product, Investigator, and named specialists, but never
+Architect, Plan Reviewer, or Plan Challenger. Risk changes specialist coverage,
+not the planning and challenge sequence.
 Audit-only work omits Builder and cannot modify application code. Selected
 specialists examine their scoped boundaries, Auditor makes the cold assessment,
 and Verifier assesses the combined findings. Auditor does not read the earlier
 specialist results, preserving its independent read.
 
-## Dispatch tiers
+## Dispatch capability
 
-Three tiers. The vocabulary is stated here; **which tier applies is read from
-the project**, never assumed:
+The host's dispatch capability is read from the project, never assumed:
 
 - `native-parallel` — concurrent isolated dispatch, confirmed for this host.
 - `native-sequential` — isolation confirmed, concurrency not.
@@ -120,7 +121,7 @@ the project**, never assumed:
   session. Record `same-session` on the Verifier note and disclose that review
   context in the report.
 
-`ae-surveyor` resolves every known host's tier from its own `targets.yml` at
+`ae-surveyor` resolves every known host's dispatch capability from its own `targets.yml` at
 scaffold time and publishes the table to `.dev/context/host.json`. Read that
 file and look up the tool you are running as.
 
@@ -142,9 +143,9 @@ Assume `none` only when that file is missing or your own row is not in it, and
 say which. Use isolated dispatch when confirmed. A same-session Verifier must
 reopen claims and run checks directly; the report must state its context.
 
-## Enforcement tiers
+## Enforcement modes
 
-Two tiers, and like `dispatch` the tier is **read, never assumed**:
+Two modes, and like `dispatch` the mode is **read, never assumed**:
 
 - `native` — a host-level hook refuses configured edit-tool calls while a run
   still needs approval, and while a run is in `verify`. Available where this

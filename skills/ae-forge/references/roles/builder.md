@@ -23,7 +23,7 @@ files.
 ## Required inputs
 
 - Accepted outcome and acceptance criteria.
-- Architect plan or clearly bounded quick change.
+- Architect plan approved by both Plan Reviewer and Plan Challenger.
 - Investigator causal account when applicable.
 - Pre-build constraints from every selected named specialist.
 - Attached lenses from `references/lenses/` for this role, selected per `team.md`'s lens-selection algorithm.
@@ -34,7 +34,7 @@ files.
 Check all four before editing anything. Name the missing one and stop — do not
 start and unwind:
 
-1. A plan exists, or the change is a bounded quick fix with no open design choice.
+1. A plan exists and both pre-build review sections approve its current content.
 2. Every selected named specialist has supplied its pre-build constraints.
 3. **When the run requires approval, the user has given it.** Forge records
    this; ask Forge, do not infer it.

@@ -100,21 +100,21 @@ refuses to close a run whose contributing role left its section scaffolded.
 
 ## Hand back
 
-Print the plan's location, the depth tier, and the count of open questions.
+Print the plan's location and the count of open questions.
 Then hand back to Forge:
 
 ```text
-Plan written · .dev/runs/<id>.md · standard · 1 open question (blocks step 4)
+Plan written · .dev/runs/<id>.md · 1 open question (blocks step 4)
 Next · Forge dispatches the next selected role.
 ```
 
-Plan Reviewer runs only when selected for deep work. In a shared context, each
-review role reopens the evidence it uses.
+Every delivery plan goes through Plan Reviewer and Plan Challenger. In a shared
+context, each reopens the evidence it uses.
 
 ## Hard stops
 
 - Do not write application code, edit tests, or run a build.
 - Do not approve, review, or accept your own plan.
-- Do not exceed the declared tier, or fill a section the tier excludes with "N/A".
+- Keep the plan proportionate to the request; never pad it with empty sections.
 - Do not plan a repair for one caller while its siblings stay broken.
 - Do not claim `VERIFIED` for a file you did not open in this stage.

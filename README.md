@@ -17,7 +17,7 @@ later requests can use durable project knowledge and rules:
 | `ae-forge` | Orchestrator — routes, gates, owns the run artifact |
 | `ae-investigate` | Establish the cause of a failure before anyone plans a fix |
 | `ae-plan` | Write the implementation plan |
-| `ae-plan-review` | Read a deep plan adversarially, before any code exists |
+| `ae-plan-review` | Review and challenge every delivery plan before code exists |
 | `ae-build` | Implement the agreed brief |
 | `ae-verify` | Independently verify the candidate and issue the verdict |
 | `ae-audit` | Audit the repository cold, with no plan and no diff |
@@ -60,8 +60,9 @@ exclusive outcome:
 |---|---|
 | Product | A new idea or feature outcome is genuinely ambiguous |
 | Investigator | A bug or performance problem has no demonstrated cause |
-| Architect | A meaningful design or multi-file change needs a safe plan |
-| Plan Reviewer | Deep design risk warrants a separate plan review |
+| Architect | Every delivery needs an evidence-backed implementation plan |
+| Plan Reviewer | Every delivery plan needs an independent correctness review |
+| Plan Challenger | Every material plan decision needs an adversarial challenge |
 | Security | Trust, authorization, privacy, abuse, or payment risk is present |
 | Data | Stored-data invariants, migration, backfill, or recovery is affected |
 | Experience | A user journey, interface state, or accessibility behavior changes |
@@ -79,8 +80,8 @@ plan makes; a reference that does not resolve is an automatic blocker.
 not read the plan or the diff, because an auditor who knows what was intended
 audits the intention.
 
-Builder and Verifier are the minimum delivery team. Most changes use Architect,
-Builder, and Verifier. Other experts are selected only when their exclusive
+Every delivery uses Architect, Plan Reviewer, Plan Challenger, Builder, and
+Verifier. Other experts are selected only when their exclusive
 boundary is present, and that selection is **behavioural, not lexical**: Forge
 answers a short set of questions about what the change actually does — does it
 change who can reach anything, does it change stored shape, does it change a
@@ -112,18 +113,14 @@ rather than silently improvised, and a lens past its review date says so
 instead of quoting a threshold nobody rechecked.
 
 Audit-only requests use Auditor plus Verifier and any relevant named
-specialist. They exclude Architect, Plan Reviewer and Builder — there is no
-plan to review and nothing to implement — and they do not modify code.
+specialist. They exclude Architect, Plan Reviewer, Plan Challenger and Builder
+because there is no future implementation to plan or challenge, and they do
+not modify code.
 
-### Risk-sized operation
+### Risk-sized specialist coverage
 
-| Tier | Typical use | Default team |
-|---|---|---|
-| Quick | Local, reversible, well-understood correction | Builder, Verifier |
-| Standard | Meaningful feature, refactor, or multi-file change | Architect, Builder, Verifier |
-| Deep | Security, payments, destructive data, public contracts, difficult rollback | Architect, relevant technical specialists, Plan Reviewer, Builder, Verifier |
-
-An Investigator is added for unknown bugs and performance problems. Product is
+Planning, review, and challenge are mandatory for every delivery. An
+Investigator is added for unknown bugs and performance problems. Product is
 added for ambiguous ideas. Experience is selected for user-facing journeys;
 Security, Data, and Reliability are selected for their named risk boundaries.
 Five roles is the normal maximum; Forge explains when genuinely independent
@@ -133,7 +130,7 @@ risks require more.
 
 Forge works through implementation without interrupting for routine local
 choices. It asks when an unresolved material product/design decision or new
-authority is needed. Tier and risk select depth; neither alone requires user
+authority is needed. Risk selects specialist coverage; it does not require user
 approval. A reviewer verdict cannot grant user authority. Required approval
 is recorded with the decision basis before Builder starts.
 
@@ -313,9 +310,9 @@ Forge keeps a small ignored working directory per change at
 | `brief.md` | The reviewable plan. Frozen at approval or build, so the audit can check what was delivered against the agreed scope |
 | `results/` | One append-only file per expert contribution |
 
-The brief carries only the sections its risk tier calls for: four for a small
-fix, eleven for a deep change. A four-page plan for a one-line fix is treated
-as a defect, not thoroughness.
+The brief always exposes the decisions and evidence needed by the reviewer and
+challenger. A four-page plan for a one-line fix is treated as a defect, not
+thoroughness.
 
 Together these make an interrupted task genuinely resumable — a new session
 reads the frozen brief and the results rather than re-planning.
@@ -325,7 +322,7 @@ The bundled runner supports:
 | Command | Purpose |
 |---|---|
 | start | Create a run, assess risk, and select the team |
-| brief | Scaffold the reviewable plan, sized to the risk tier |
+| brief | Scaffold the concise plan reviewed and challenged before build |
 | lenses | Record which domain lenses attached, and why |
 | list | List current and completed runs |
 | status | Read one run |

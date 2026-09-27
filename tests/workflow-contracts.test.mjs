@@ -53,6 +53,19 @@ function surveyed(put) {
   put('.dev/rules/00-index.md', '# Rules\n')
 }
 
+function approvePlan({ root, put, call }, id) {
+  assert.equal(call('phase', '--id', id, '--to', 'plan', '--summary', 'Planning').status, 0)
+  const plan = put(`.dev/work/${id}/results/architect.md`, '# Architect\n\n## OUTCOME\nPlan.\n')
+  assert.equal(call('section', '--id', id, '--name', 'plan', '--from', plan).status, 0)
+  assert.equal(call('note', '--id', id, '--role', 'architect', '--summary', 'Plan', '--severity', 'none', '--result', plan).status, 0)
+  const review = put(`.dev/work/${id}/results/plan-reviewer.md`, '# Plan Reviewer\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+  assert.equal(call('section', '--id', id, '--name', 'plan-review', '--from', review).status, 0)
+  assert.equal(call('note', '--id', id, '--role', 'plan-reviewer', '--summary', 'Approved', '--severity', 'none', '--result', review).status, 0)
+  const challenge = put(`.dev/work/${id}/results/plan-challenger.md`, '# Plan Challenger\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+  assert.equal(call('section', '--id', id, '--name', 'plan-challenge', '--from', challenge).status, 0)
+  assert.equal(call('note', '--id', id, '--role', 'plan-challenger', '--summary', 'Challenge approved', '--severity', 'none', '--result', challenge).status, 0)
+}
+
 test('Surveyor generators reject incompatible analysis before writing knowledge or rules', () => {
   withProject('ae-analysis-schema-', ({ root, put, invoke }) => {
     put('.dev/context/analysis.json', JSON.stringify({ schema: 1, generated_at: '2026-01-01T00:00:00Z' }))
@@ -110,7 +123,7 @@ test('native enforcement is reported only for the current host session', () => {
 test('guard resolves relative bookkeeping paths against the project in hook input', () => {
   withProject('ae-guard-path-', ({ root, put }) => {
     put('.dev/work/guard-path/run.json', JSON.stringify({
-      id: 'guard-path', status: 'active', tier: 'quick', phase: 'understand',
+      id: 'guard-path', status: 'active', phase: 'understand',
       approval_required: true, approval: null, updated_at: '2026-09-27T00:00:00Z',
     }))
     const check = (filePath) => spawnSync(process.execPath, [guard, 'pre-tool-use'], {
@@ -126,7 +139,7 @@ test('Forge cannot finish with a verdict that disagrees with Verifier evidence',
   withProject('ae-verdict-', ({ root, put, invoke }) => {
     surveyed(put)
     const call = (...args) => invoke(forge, [...args, '--root', root])
-    const start = call('start', '--id', 'verdict', '--title', 'Check verdict', '--kind', 'audit', '--tier', 'quick', '--risk', 'none')
+    const start = call('start', '--id', 'verdict', '--title', 'Check verdict', '--kind', 'audit', '--risk', 'none')
     assert.equal(start.status, 0, start.stdout)
     assert.equal(call('artifact', '--id', 'verdict').status, 0)
     assert.equal(call('lenses', '--id', 'verdict', '--json', JSON.stringify({ attached: {}, assessed: true })).status, 0)
@@ -148,14 +161,14 @@ test('Forge cannot finish with a verdict that disagrees with Verifier evidence',
   })
 })
 
-test('deep delivery requires an approved review of the current plan before build', () => {
+test('delivery requires an approved review and challenge of the current plan before build', () => {
   withProject('ae-plan-gate-', ({ root, put, invoke }) => {
     surveyed(put)
     const call = (...args) => invoke(forge, [...args, '--root', root])
     const start = call('start', '--id', 'plan-gate', '--title', 'Change a shared contract',
-      '--kind', 'feature', '--tier', 'deep', '--risk', 'none', '--approval-reason', 'none')
+      '--kind', 'feature', '--risk', 'none', '--approval-reason', 'none')
     assert.equal(start.status, 0, start.stdout)
-    assert.deepEqual(JSON.parse(start.stdout).team, ['architect', 'plan-reviewer', 'builder', 'verifier'])
+    assert.deepEqual(JSON.parse(start.stdout).team, ['architect', 'plan-reviewer', 'plan-challenger', 'builder', 'verifier'])
     assert.equal(call('artifact', '--id', 'plan-gate').status, 0)
     assert.equal(call('brief', '--id', 'plan-gate').status, 0)
     const briefPath = join(root, '.dev/work/plan-gate/brief.md')
@@ -171,7 +184,7 @@ test('deep delivery requires an approved review of the current plan before build
       '--severity', 'high', '--result', revise).status, 0)
     const blocked = call('phase', '--id', 'plan-gate', '--to', 'build', '--summary', 'Building')
     assert.equal(blocked.status, 5)
-    assert.match(JSON.parse(blocked.stdout).error, /has not approved/)
+    assert.match(JSON.parse(blocked.stdout).error, /Plan Reviewer has not approved/)
 
     const secondPlan = put('.dev/work/plan-gate/results/architect-revision.md',
       '# Architect\n\n## OUTCOME\nRevised plan.\n')
@@ -180,7 +193,7 @@ test('deep delivery requires an approved review of the current plan before build
       '--severity', 'none', '--result', secondPlan).status, 0)
     const stale = call('phase', '--id', 'plan-gate', '--to', 'build', '--summary', 'Building')
     assert.equal(stale.status, 5)
-    assert.match(JSON.parse(stale.stdout).error, /must review the latest plan/)
+    assert.match(JSON.parse(stale.stdout).error, /Plan Reviewer has not approved/)
 
     const approved = put('.dev/work/plan-gate/results/plan-reviewer-approved.md',
       '# Plan Reviewer\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
@@ -191,13 +204,26 @@ test('deep delivery requires an approved review of the current plan before build
     assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan-review', '--from', approved).status, 0)
     assert.equal(call('note', '--id', 'plan-gate', '--role', 'plan-reviewer', '--summary', 'Approved',
       '--severity', 'none', '--result', approved).status, 0)
+    const noChallenge = call('phase', '--id', 'plan-gate', '--to', 'build', '--summary', 'Building')
+    assert.equal(noChallenge.status, 5)
+    assert.match(JSON.parse(noChallenge.stdout).error, /Plan Challenger/)
+    const challenged = put('.dev/work/plan-gate/results/plan-challenger.md',
+      '# Plan Challenger\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+    assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan-challenge', '--from', challenged).status, 0)
+    assert.equal(call('note', '--id', 'plan-gate', '--role', 'plan-challenger', '--summary', 'Challenge approved',
+      '--severity', 'none', '--result', challenged).status, 0)
     const changedPlan = put('.dev/work/plan-gate/results/architect-unreviewed.md',
       '# Architect\n\n## OUTCOME\nUnreviewed plan edit.\n')
     assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan', '--from', changedPlan).status, 0)
     const changed = call('phase', '--id', 'plan-gate', '--to', 'build', '--summary', 'Building')
     assert.equal(changed.status, 5)
-    assert.match(JSON.parse(changed.stdout).error, /Plan changed after its review/)
+    assert.match(JSON.parse(changed.stdout).error, /Plan changed after its challenge/)
     assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan', '--from', secondPlan).status, 0)
+    const challengeAgain = put('.dev/work/plan-gate/results/plan-challenger-2.md',
+      '# Plan Challenger\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+    assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan-challenge', '--from', challengeAgain).status, 0)
+    assert.equal(call('note', '--id', 'plan-gate', '--role', 'plan-challenger', '--summary', 'Challenge approved again',
+      '--severity', 'none', '--result', challengeAgain).status, 0)
     assert.equal(call('phase', '--id', 'plan-gate', '--to', 'build', '--summary', 'Building').status, 0)
     assert.match(call('report', '--id', 'plan-gate').stdout, /\*\*Plan review\*\* · APPROVED · 2 passes/)
   })
@@ -208,10 +234,12 @@ test('repair must contribute a new Builder result before the next verification',
     surveyed(put)
     const call = (...args) => invoke(forge, [...args, '--root', root])
     assert.equal(call('start', '--id', 'repair-gate', '--title', 'Fix a bounded issue',
-      '--kind', 'feature', '--tier', 'quick', '--risk', 'none', '--approval-reason', 'none').status, 0)
+      '--kind', 'feature', '--risk', 'none', '--approval-reason', 'none').status, 0)
     assert.equal(call('brief', '--id', 'repair-gate').status, 0)
+    assert.equal(call('artifact', '--id', 'repair-gate').status, 0)
     const briefPath = join(root, '.dev/work/repair-gate/brief.md')
     writeFileSync(briefPath, readFileSync(briefPath, 'utf8').replaceAll('TODO', 'Specified for test.'))
+    approvePlan({ root, put, call }, 'repair-gate')
     assert.equal(call('phase', '--id', 'repair-gate', '--to', 'build', '--summary', 'Building').status, 0)
     const built = put('.dev/work/repair-gate/results/builder.md', '# Builder\n\n## OUTCOME\nBuilt first candidate.\n')
     assert.equal(call('note', '--id', 'repair-gate', '--role', 'builder', '--summary', 'First candidate',
@@ -247,7 +275,7 @@ test('approval requires a complete brief and build refuses a changed approved br
     surveyed(put)
     const call = (...args) => invoke(forge, [...args, '--root', root])
     assert.equal(call('start', '--id', 'approval-gate', '--title', 'Make an approved change',
-      '--kind', 'feature', '--tier', 'quick', '--risk', 'none',
+      '--kind', 'feature', '--risk', 'none',
       '--approval-reason', 'Choose the public behavior').status, 0)
     const approve = () => call('approve', '--id', 'approval-gate', '--by', 'user', '--basis', 'Approved in chat')
     assert.equal(approve().status, 5, 'a missing brief cannot be approved')
@@ -256,6 +284,8 @@ test('approval requires a complete brief and build refuses a changed approved br
     const briefPath = join(root, '.dev/work/approval-gate/brief.md')
     writeFileSync(briefPath, readFileSync(briefPath, 'utf8').replaceAll('TODO', 'Specified for test.'))
     assert.equal(approve().status, 0)
+    assert.equal(call('artifact', '--id', 'approval-gate').status, 0)
+    approvePlan({ root, put, call }, 'approval-gate')
     writeFileSync(briefPath, `${readFileSync(briefPath, 'utf8')}\nChanged after approval.\n`)
     const changed = call('phase', '--id', 'approval-gate', '--to', 'build', '--summary', 'Building')
     assert.equal(changed.status, 5)
@@ -273,13 +303,14 @@ test('finish rejects files changed after Verifier inspected the candidate', () =
       'commit', '-qm', 'baseline').status, 0)
     const call = (...args) => invoke(forge, [...args, '--root', root])
     assert.equal(call('start', '--id', 'candidate-gate', '--title', 'Change behavior',
-      '--kind', 'feature', '--tier', 'quick', '--risk', 'none', '--approval-reason', 'none').status, 0)
+      '--kind', 'feature', '--risk', 'none', '--approval-reason', 'none').status, 0)
     assert.equal(call('artifact', '--id', 'candidate-gate').status, 0)
     assert.equal(call('brief', '--id', 'candidate-gate').status, 0)
     const briefPath = join(root, '.dev/work/candidate-gate/brief.md')
     writeFileSync(briefPath, readFileSync(briefPath, 'utf8').replaceAll('TODO', 'src/behavior.js'))
     assert.equal(call('lenses', '--id', 'candidate-gate', '--json',
       JSON.stringify({ attached: {}, assessed: true })).status, 0)
+    approvePlan({ root, put, call }, 'candidate-gate')
     assert.equal(call('phase', '--id', 'candidate-gate', '--to', 'build', '--summary', 'Building').status, 0)
     put('src/behavior.js', 'export const value = 1\n')
     const built = put('.dev/work/candidate-gate/results/builder.md', '# Builder\n\n## OUTCOME\nBuilt.\n')
@@ -304,11 +335,12 @@ test('delivery without a Git baseline reports the unpinned candidate as a gap', 
     surveyed(put)
     const call = (...args) => invoke(forge, [...args, '--root', root])
     assert.equal(call('start', '--id', 'no-baseline', '--title', 'Change behavior',
-      '--kind', 'feature', '--tier', 'quick', '--risk', 'none', '--approval-reason', 'none').status, 0)
+      '--kind', 'feature', '--risk', 'none', '--approval-reason', 'none').status, 0)
     assert.equal(call('artifact', '--id', 'no-baseline').status, 0)
     assert.equal(call('brief', '--id', 'no-baseline').status, 0)
     const briefPath = join(root, '.dev/work/no-baseline/brief.md')
     writeFileSync(briefPath, readFileSync(briefPath, 'utf8').replaceAll('TODO', 'Specified for test.'))
+    approvePlan({ root, put, call }, 'no-baseline')
     assert.equal(call('lenses', '--id', 'no-baseline', '--json',
       JSON.stringify({ attached: {}, assessed: true })).status, 0)
     assert.equal(call('phase', '--id', 'no-baseline', '--to', 'build', '--summary', 'Building').status, 0)
@@ -337,15 +369,15 @@ test('delivery without a Git baseline reports the unpinned candidate as a gap', 
   })
 })
 
-test('standard delivery records why Plan Reviewer was not selected', () => {
+test('every delivery selects plan reviewer and challenger without a tier', () => {
   withProject('ae-standard-route-', ({ root, put, invoke }) => {
     surveyed(put)
     const start = invoke(forge, ['start', '--id', 'standard-route', '--title', 'Moderate change',
-      '--kind', 'feature', '--tier', 'standard', '--risk', 'none', '--approval-reason', 'none', '--root', root])
+      '--kind', 'feature', '--risk', 'none', '--approval-reason', 'none', '--root', root])
     assert.equal(start.status, 0, start.stdout)
     const routed = JSON.parse(start.stdout)
-    assert.deepEqual(routed.team, ['architect', 'builder', 'verifier'])
-    assert.match(routed.routing.skipped['plan-reviewer'], /standard tier/)
+    assert.deepEqual(routed.team, ['architect', 'plan-reviewer', 'plan-challenger', 'builder', 'verifier'])
+    assert.ok(!('plan-reviewer' in routed.routing.skipped))
   })
 })
 
@@ -353,7 +385,7 @@ test('audit routing keeps delivery-only roles out even when request signals matc
   withProject('ae-audit-route-', ({ root, put, invoke }) => {
     surveyed(put)
     const start = invoke(forge, ['start', '--id', 'audit-route', '--title', 'Audit uncertain behavior',
-      '--kind', 'audit', '--tier', 'quick', '--risk', 'none', '--signals', 'unknown,ambiguous', '--root', root])
+      '--kind', 'audit', '--risk', 'none', '--signals', 'unknown,ambiguous', '--root', root])
     assert.equal(start.status, 0, start.stdout)
     const routed = JSON.parse(start.stdout)
     assert.deepEqual(routed.team, ['auditor', 'verifier'])
@@ -362,24 +394,23 @@ test('audit routing keeps delivery-only roles out even when request signals matc
   })
 })
 
-test('risk flags add their specialists and enforce deep floors', () => {
+test('risk flags add their specialists without changing the mandatory review flow', () => {
   const cases = [
-    ['access', 'security', 'deep'],
-    ['stored-shape', 'data', 'deep'],
-    ['rendered', 'experience', 'quick'],
-    ['runtime', 'reliability', 'quick'],
-    ['irreversible', null, 'deep'],
+    ['access', 'security'],
+    ['stored-shape', 'data'],
+    ['rendered', 'experience'],
+    ['runtime', 'reliability'],
+    ['irreversible', null],
   ]
-  for (const [risk, specialist, tier] of cases) {
+  for (const [risk, specialist] of cases) {
     withProject(`ae-risk-${risk}-`, ({ root, put, invoke }) => {
       surveyed(put)
       const start = invoke(forge, ['start', '--id', 'risk-route', '--title', 'Risk route',
-        '--kind', 'feature', '--tier', 'quick', '--risk', risk, '--approval-reason', 'none', '--root', root])
+        '--kind', 'feature', '--risk', risk, '--approval-reason', 'none', '--root', root])
       assert.equal(start.status, 0, `${risk}: ${start.stdout}`)
       const routed = JSON.parse(start.stdout)
-      assert.equal(routed.tier, tier, risk)
       if (specialist) assert.ok(routed.team.includes(specialist), risk)
-      assert.ok(routed.team.includes('builder') && routed.team.includes('verifier'), risk)
+      assert.ok(routed.team.includes('plan-reviewer') && routed.team.includes('plan-challenger'), risk)
     })
   }
 })

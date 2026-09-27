@@ -17,9 +17,8 @@ verdict on that plan.
 
 ## Activate
 
-Use when Forge selects Plan Reviewer for a deep run. Skip for quick work,
-which has no plan, standard work, which does not select this separate review,
-and audit-only work, which has nothing to implement.
+Use for every Forge delivery run. Audit-only work has no plan or future build,
+so it does not select this role.
 
 This role is the difference between finding a design defect now and finding it
 in a diff. Both are findable; only one is cheap.
@@ -80,7 +79,7 @@ Check these in order. Stop at the first that fails and make it a blocker.
    non-negotiable.
 5. **Verifiable.** Every step has a runnable check, and each command comes from
    the project's own records or is marked as unverified.
-6. **Right-sized.** The plan matches its declared tier and introduces no
+6. **Right-sized.** The plan matches the request and introduces no
    abstraction, layer, or configuration surface the request did not require.
 
 Criterion 6 cuts both ways. Under-engineering that leaves the root cause intact

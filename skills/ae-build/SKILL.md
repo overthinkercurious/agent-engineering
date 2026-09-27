@@ -35,8 +35,8 @@ scope rule, no approval check and no record. Print the restore command and end
 the turn.
 
 Then read `$FORGE/references/team.md`, `$FORGE/references/roles/builder.md`,
-attached lenses, and the artifact's `Request`, `Plan`, `Plan review`,
-`Approval` and `Open questions` sections.
+attached lenses, and the artifact's `Request`, `Plan`, `Plan review`, `Plan
+challenge`, `Approval` and `Open questions` sections.
 
 ## State your boundary
 
@@ -49,9 +49,8 @@ your own result.
 node "$FORGE/scripts/forge.mjs" status --id <id>
 ```
 
-1. A plan exists in the artifact, or the change is a bounded quick fix with no
-   open design choice.
-2. If Plan Reviewer was selected, its review is APPROVED or APPROVED WITH NOTES.
+1. A plan exists in the artifact.
+2. Plan Reviewer and Plan Challenger both returned APPROVED or APPROVED WITH NOTES for the current plan.
 3. **`approval_required` is false, or `approval` is recorded.**
 4. No unresolved blocking open question sits under a step you will execute.
 

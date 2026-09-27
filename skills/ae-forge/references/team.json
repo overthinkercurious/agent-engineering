@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "analysis_schema": 2,
   "roles": {
     "product": {
@@ -34,6 +34,10 @@
       "owns": "independent judgment that a plan is safe, correct and implementable as written, before any code exists",
       "file": "roles/plan-reviewer.md"
     },
+    "plan-challenger": {
+      "owns": "adversarial testing of every material plan decision and its rejected alternatives before any code exists",
+      "file": "roles/plan-challenger.md"
+    },
     "builder": {
       "owns": "application and test changes implementing the accepted plan",
       "file": "roles/builder.md"
@@ -46,23 +50,6 @@
       "owns": "integrated evidence and the final delivery verdict",
       "file": "roles/verifier.md"
     }
-  },
-  "tiers": {
-    "quick": [
-      "builder",
-      "verifier"
-    ],
-    "standard": [
-      "architect",
-      "builder",
-      "verifier"
-    ],
-    "deep": [
-      "architect",
-      "plan-reviewer",
-      "builder",
-      "verifier"
-    ]
   },
   "risk": {
     "access": {
