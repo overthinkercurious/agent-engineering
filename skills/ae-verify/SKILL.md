@@ -1,13 +1,11 @@
 ---
 name: ae-verify
 description: >
-  Only reachable from an active Agent Engineering run: Forge routes here for the Verifier stage.
-  Start with ae-forge instead if no run exists.
-  Independently verify the delivered candidate of an Agent Engineering run and
-  issue PASS, PASS WITH RESIDUAL RISK, or FAIL. Re-runs the project's own
-  gates, re-reads every upstream claim, and compares the actual diff against
-  what was approved. Use when Forge routes to the Verifier, after a build, or
-  to close an audit. Does not edit code or perform the repair it recommends.
+  Dispatch target only for the Verifier stage of an active ae-forge run.
+  Forge invokes it last to inspect the exact candidate or scoped audit, rerun
+  relevant checks, and issue PASS, PASS WITH RESIDUAL RISK, or FAIL. For a
+  standalone review request, start with ae-forge. This stage does not edit
+  code or perform the repair it recommends.
 metadata:
   owns: "the integrated evidence assessment and final verdict for one Agent Engineering run"
 ---
@@ -105,6 +103,9 @@ node "$FORGE/scripts/forge.mjs" note --id <id> --role verifier \
   --review-context <isolated|same-session> \
   --result .dev/work/<id>/results/verifier.md
 ```
+
+After a repair, use a new result filename in both commands, such as
+`verifier-2.md`. Preserve the earlier verdict and its evidence.
 
 A bounded limitation you are deliberately accepting is recorded with
 `--residual "<why>"` alongside its severity. Accepting is allowed; accepting

@@ -5,7 +5,8 @@ team from team.json, load only each selected role's workflow file under roles/.
 
 ## Shared result
 
-Every expert writes this file to `.dev/work/<id>/results/<role>.md`. It is a
+Every expert writes its first pass to `.dev/work/<id>/results/<role>.md` and
+each later pass to a new file. A recorded result is never overwritten. It is a
 form, not a description of one: copy the skeleton and fill it. Filling a form
 and composing a document from a list of required topics are different tasks,
 and only the first produces the same shape twice.

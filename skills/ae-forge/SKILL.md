@@ -232,6 +232,13 @@ then Verifier assesses the combined findings:
 node "$AE/scripts/forge.mjs" artifact --id <id>
 ```
 
+For a selected Plan Reviewer, record the explicit verdict in its result and
+`Plan review` section. `REVISE` sends the plan back to Architect; after the
+revision, run Plan Reviewer again. The build phase opens only when the latest
+review says `APPROVED` or `APPROVED WITH NOTES` and the reviewed Plan section
+has not changed. Standard runs omit this separate stage by design; Verifier
+still reviews the delivered change.
+
 | Stage | Skill | Writes section |
 |---|---|---|
 | Investigator | `ae-investigate` | `Investigation` |
@@ -246,6 +253,11 @@ are not separate skills. They use `references/roles/` and write their own
 result files and ledger notes. Forge supplies these results to downstream
 stages; a named specialist does not need another public skill or artifact
 section.
+
+After Builder records its result, move the run to `verify` before dispatching
+selected technical specialists for candidate review. Record their new result
+files and notes, then dispatch Verifier last. After a repair, Builder records a
+new result in the `repair` phase before Forge moves back to `verify`.
 
 ### How a stage is invoked
 
@@ -345,13 +357,17 @@ node "$AE/scripts/forge.mjs" brief --id <id>
 The brief carries only the sections its tier calls for — a section outside the
 tier is omitted, never filled with "N/A". A quick brief is four sections; a
 four-page plan for a one-line fix is a defect, not thoroughness.
+Fill its `TODO` sections before approval or build. The ledger rejects a missing
+or unfinished brief, and rejects edits to an approved brief before build.
 
 When approval is required, record the user's decision with `approve --by
 <user> --basis <decision-evidence>`. The brief freezes at approval; otherwise
 it freezes at the start of build. Do not rewrite a frozen brief.
 
-Write each expert's full result to `.dev/work/<id>/results/<role>.md` and pass
-the path to `note`. Downstream experts receive **paths and findings, never
+Write each expert's first full result to `.dev/work/<id>/results/<role>.md` and
+give every later pass a new filename, such as `<role>-2.md`. Pass that path to
+`note`. Recorded results are immutable; a correction is another pass, not an
+overwrite. Downstream experts receive **paths and findings, never
 transcripts** — that is what keeps coordination context bounded as the team
 grows. Record a severity when an expert finds something:
 
@@ -373,6 +389,7 @@ design choice:
 3. **Build:** edit the code and tests in small coherent steps.
 4. **Verify:** inspect the exact diff and run the project's relevant checks.
 5. **Repair:** fix valid findings and verify again, for at most two cycles.
+   Record a new Builder contribution for each repair before returning to Verify.
    Keep the second cycle focused on the repair: confirm named blockers are
    closed and check for regressions. Any newly discovered critical/high defect
    within the accepted scope still blocks completion, even if it predates the
@@ -395,6 +412,9 @@ node "$AE/scripts/forge.mjs" phase --id <id> --to <understand|plan|build|verify|
 - Builder cannot be the only reviewer of its own work.
 - Verification covers the requested behavior, the changed boundaries, and the
   actual diff—not a summary of it.
+- Once Verifier records a candidate, a later file change requires another
+  verification pass. Finish compares the current candidate with what Verifier
+  inspected.
 - Run narrow checks during implementation. Verifier independently re-runs the
   repository's required gates before completion.
 - User-interface work requires inspecting the rendered result when the host can

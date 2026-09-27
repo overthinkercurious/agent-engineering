@@ -1,13 +1,11 @@
 ---
 name: ae-audit
 description: >
-  Only reachable from an active Agent Engineering run: Forge routes here for the Auditor stage.
-  Start with ae-forge instead if no run exists.
-  Audit a repository as it stands today — cold, with no plan and no diff — and
-  report the hazards a future change would expose. Use for codebase health
-  reviews, release-readiness assessments, or when someone asks what is wrong
-  with a project rather than whether a change is correct. Declares its scope
-  and finding cap before reading. Does not implement or plan fixes.
+  Dispatch target only for the Auditor stage of an active audit-only ae-forge
+  run. Forge invokes it for a cold repository assessment with no plan or diff.
+  For a standalone codebase health or release readiness request, start with
+  ae-forge. This stage declares scope and a finding cap, and does not plan or
+  implement fixes.
 metadata:
   owns: "the cold assessment of a repository as it stands, read without a plan or a diff"
 ---

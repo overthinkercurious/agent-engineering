@@ -52,15 +52,18 @@ printf 'kit:     %s\n' "$AE_KIT_ROOT"
 # holds only regenerable analysis, so a missing one is a note.
 
 ae_head "directories"
-missing_durable=""
-for d in knowledge rules; do
-  [ -d "$ROOT/.dev/$d" ] || missing_durable="$missing_durable .dev/$d"
-done
-
-if [ -n "$missing_durable" ]; then
-  fail "missing committed directories:$missing_durable - re-run ae-surveyor"
+if ae_self_hosted "$ROOT"; then
+  ae_info "self-hosted: generated .dev/ artifacts are not part of the kit distribution"
 else
-  ae_ok ".dev/knowledge and .dev/rules present (the committed record)"
+  missing_durable=""
+  for d in knowledge rules; do
+    [ -d "$ROOT/.dev/$d" ] || missing_durable="$missing_durable .dev/$d"
+  done
+  if [ -n "$missing_durable" ]; then
+    fail "missing committed directories:$missing_durable - re-run ae-surveyor"
+  else
+    ae_ok ".dev/knowledge and .dev/rules present (the committed record)"
+  fi
 fi
 if [ -d "$ROOT/.dev/context" ]; then
   ae_ok ".dev/context present"
@@ -156,16 +159,28 @@ else
       ae_ok ".gitignore excludes the installed suite"
     fi
   fi
-  if grep -qF ".dev/context/" "$GI"; then
+  if (cd "$ROOT" && git rev-parse --git-dir >/dev/null 2>&1); then
+    context_ignored="$(cd "$ROOT" && git check-ignore --no-index .dev/context/analysis.json 2>/dev/null || true)"
+  else
+    context_ignored="$(grep -F '.dev/context/' "$GI" || true)"
+  fi
+  if [ -n "$context_ignored" ]; then
     ae_ok ".gitignore excludes the regenerable analysis"
   else
     fail ".gitignore does not exclude .dev/context/ - analysis.json would be committed"
   fi
   # knowledge/ and rules/ are the deliverable. If a future edit ever ignores
   # them the suite silently stops being useful to anyone but this machine.
-  for e in ".dev/knowledge" ".dev/rules"; do
-    grep -qE "^${e}" "$GI" && fail "$e is gitignored, but it is the committed record this tool exists to produce"
-  done
+  if ! ae_self_hosted "$ROOT"; then
+    for e in ".dev/knowledge" ".dev/rules"; do
+      if (cd "$ROOT" && git rev-parse --git-dir >/dev/null 2>&1); then
+        ignored="$(cd "$ROOT" && git check-ignore --no-index "$e/00-index.md" 2>/dev/null || true)"
+      else
+        ignored="$(grep -E "^${e}" "$GI" || true)"
+      fi
+      [ -z "$ignored" ] || fail "$e is gitignored, but it is the committed record this tool exists to produce"
+    done
+  fi
 fi
 
 # The suite is a dependency. If a project committed it under an earlier install

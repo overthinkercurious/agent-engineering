@@ -1,14 +1,11 @@
 ---
 name: ae-plan-review
 description: >
-  Only reachable from an active Agent Engineering run: Forge routes here for the Plan Reviewer stage.
-  Start with ae-forge instead if no run exists.
-  Independently review an Agent Engineering plan before any code exists, and
-  return APPROVED, APPROVED WITH NOTES, or REVISE. Re-opens every citation the
-  plan makes; a reference that does not resolve is an automatic blocker. Use
-  after ae-plan, when Forge routes to the Plan Reviewer, or when a plan needs
-  validation before implementation. Does not rewrite the plan, propose a
-  different design, or add requirements.
+  Dispatch target only for the Plan Reviewer stage of an active deep ae-forge
+  run. Forge invokes it after the Architect and selected specialists, before
+  build, to return APPROVED, APPROVED WITH NOTES, or REVISE. For a standalone
+  plan review request, start with ae-forge. This stage reopens citations and
+  does not rewrite the plan or add requirements.
 metadata:
   owns: "the independent verdict on whether a plan is safe to implement as written"
 ---
@@ -104,6 +101,9 @@ node "$FORGE/scripts/forge.mjs" note --id <id> --role plan-reviewer \
   --severity <none|low|medium|high|critical> \
   --result .dev/work/<id>/results/plan-reviewer.md
 ```
+
+On a second review, use a new result filename in both commands, such as
+`plan-reviewer-2.md`. Preserve the first verdict and its evidence.
 
 Severity must match the verdict. REVISE with no critical or high finding is a
 contradiction, and the verdict is the thing that is wrong.

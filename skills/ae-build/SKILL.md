@@ -1,13 +1,11 @@
 ---
 name: ae-build
 description: >
-  Only reachable from an active Agent Engineering run: Forge routes here for the Builder stage.
-  Start with ae-forge instead if no run exists.
-  Implement the Agent Engineering brief as the smallest coherent diff,
-  running each step's check before starting the next. Use when Forge routes to
-  the Builder, after any selected plan review and required user approval.
-  Refuses to start while required approval is missing. Does not change scope,
-  redesign the solution, or verify its own work.
+  Dispatch target only for the Builder stage of an active ae-forge run.
+  Forge invokes it after required plan review and approval to implement the
+  brief as a checked, coherent diff. For a standalone implementation request,
+  start with ae-forge. This stage does not change scope, redesign, or verify
+  its own work.
 metadata:
   owns: "the implementation diff for one Agent Engineering run"
 ---
@@ -99,6 +97,9 @@ node "$FORGE/scripts/forge.mjs" note --id <id> --role builder \
   --summary "<what changed>" --severity <none|low|medium|high|critical> \
   --result .dev/work/<id>/results/builder.md
 ```
+
+For a repair pass, use a new result filename in both commands, such as
+`builder-2.md`. Preserve the initial build result.
 
 Paste raw invocations and exit codes. Never paraphrase command output, and
 never state that a check passed unless it ran in this stage.

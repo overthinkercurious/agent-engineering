@@ -1,14 +1,11 @@
 ---
 name: ae-plan
 description: >
-  Only reachable from an active Agent Engineering run: Forge routes here for the Architect stage.
-  Start with ae-forge instead if no run exists.
-  Produce the implementation plan for an Agent Engineering run: the technical
-  design, affected boundaries, impact map, and ordered file-level steps,
-  grounded in code actually read. Use when Forge routes to the Architect, when
-  resuming a run whose plan is not yet written, or when a change needs a safe
-  plan before anyone edits code. Does not write application code and does not
-  approve its own plan.
+  Dispatch target only for the Architect stage of an active ae-forge run.
+  Forge invokes it to produce or revise the implementation plan, affected
+  boundaries, impact map, and ordered file-level steps grounded in inspected
+  code. For a standalone planning request, start with ae-forge. This stage
+  does not write application code or approve its own plan.
 metadata:
   owns: "the technical design and implementation plan for one Agent Engineering run"
 ---
@@ -92,6 +89,9 @@ node "$FORGE/scripts/forge.mjs" note --id <id> --role architect \
   --summary "<one line>" --severity <none|low|medium|high|critical> \
   --result .dev/work/<id>/results/architect.md
 ```
+
+On a revised plan, use a new result filename in both commands, such as
+`architect-2.md`. Do not overwrite the first plan's evidence.
 
 The section write is not optional and not a copy of the note. The note is the
 ledger entry; the section is what the next stage actually reads, whether its

@@ -1,13 +1,11 @@
 ---
 name: ae-investigate
 description: >
-  Only reachable from an active Agent Engineering run: Forge routes here for the Investigator stage.
-  Start with ae-forge instead if no run exists.
-  Establish the root cause of one specific failure with reproduction and
-  evidence, before anyone plans a fix. Use when Forge routes to the
-  Investigator, when a bug or performance problem has no demonstrated cause, or
-  when behaviour is wrong and nobody can yet say why. Returns INCONCLUSIVE with
-  a clean elimination list rather than guessing. Does not implement the fix.
+  Dispatch target only for the Investigator stage of an active ae-forge run.
+  Forge invokes it for an undiagnosed bug or performance failure after creating
+  the run. It establishes a reproduced, evidence-supported cause or returns
+  INCONCLUSIVE. For a standalone diagnosis request, start with ae-forge.
+  Never implements the fix.
 metadata:
   owns: "the reproduced symptom and evidence-supported causal account for one failure"
 ---

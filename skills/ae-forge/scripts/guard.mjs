@@ -27,7 +27,7 @@
 // error path here exits 0.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 
 const ALLOW = 0
 const DENY = 2
@@ -59,8 +59,8 @@ function activeRun(root) {
 // blocking those would stop the very records the gates read.
 function isBookkeeping(root, filePath) {
   if (!filePath) return false
-  const rel = resolve(String(filePath)).slice(resolve(root).length)
-  return rel.startsWith(`${sep}.dev${sep}`) || rel.startsWith('/.dev/')
+  const rel = relative(resolve(root), resolve(root, String(filePath)))
+  return rel.startsWith(`.dev${sep}`)
 }
 
 function sessionStart(input) {

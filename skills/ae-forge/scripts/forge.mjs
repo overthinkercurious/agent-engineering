@@ -212,12 +212,12 @@ function chooseTeam(kind, tier, signals, risks, cause) {
     // is comparing against one are not merely unused here - they would have
     // nothing to read. Auditor replaces them: it reads the repository as it
     // stands, which is a different question from "is this change correct".
-    for (const role of ['builder', 'architect', 'plan-reviewer']) delete selected[role]
+    for (const role of ['builder', 'architect', 'plan-reviewer', 'investigator', 'product']) delete selected[role]
     skipped.builder = 'audit-only: cannot modify code'
     skipped.architect = 'audit-only: nothing is being designed'
     skipped['plan-reviewer'] = 'audit-only: there is no plan to review'
-    delete skipped.investigator
-    delete skipped.product
+    skipped.investigator = 'audit-only: assesses existing hazards rather than diagnosing one defect'
+    skipped.product = 'audit-only: assesses the declared scope rather than defining a new outcome'
     take('auditor', 'owns the cold assessment of the repository as it stands')
     take('verifier', 'owns the audit verdict')
   } else {
@@ -399,6 +399,12 @@ function taskDiff(root, baseline) {
   return { names, added, untracked, uncertain, preexistingUnchanged }
 }
 
+function candidateDigest(root, baseline) {
+  if (!baseline?.head) return null
+  const files = taskDiff(root, baseline).names.sort().map((name) => [name, fileDigest(resolve(root, name))])
+  return createHash('sha256').update(JSON.stringify(files)).digest('hex')
+}
+
 function briefPath(root, id) {
   const path = join(workRoot(root), safeId(id), 'brief.md')
   if (!inside(root, path)) die('brief path escapes project root')
@@ -409,6 +415,15 @@ function briefDigest(root, id) {
   const path = briefPath(root, id)
   if (!existsSync(path)) return null
   return createHash('sha256').update(readFileSync(path, 'utf8')).digest('hex').slice(0, 16)
+}
+
+function readyBriefDigest(root, id) {
+  const path = briefPath(root, id)
+  if (!existsSync(path)) die('implementation brief is missing; run brief --id before build or approval', 5, { id })
+  if (/^TODO\s*$/m.test(readFileSync(path, 'utf8'))) {
+    die('implementation brief still has unfilled sections', 5, { id, brief: relative(root, path).replaceAll('\\', '/') })
+  }
+  return briefDigest(root, id)
 }
 
 function brief() {
@@ -524,6 +539,10 @@ function sectionBody(doc, name) {
     .trim()
 }
 
+function planReviewVerdict(body) {
+  return body?.match(/^### Verdict\s*\r?\n\s*(APPROVED WITH NOTES|APPROVED|REVISE)\s*$/m)?.[1] ?? null
+}
+
 // A section still carrying its scaffolded placeholder was never written. The
 // role recorded a ledger note and skipped the document, which is the failure
 // mode this kit refuses to accept anywhere else: a step that can be silently
@@ -633,6 +652,16 @@ function save(path, run) {
 
 function ensureActive(run) {
   if (run.status !== 'active') die('run is not active', 4, { id: run.id, status: run.status })
+}
+
+function ensureRecordedResults(root, run) {
+  const changed = run.contributions.filter((item) => item.result_sha
+    && (!inside(root, resolve(root, item.result))
+      || fileDigest(resolve(root, item.result)) !== item.result_sha))
+  if (changed.length) {
+    die('a recorded expert result changed after its contribution; restore it and record a new pass', 5,
+      { results: changed.map((item) => item.result) })
+  }
 }
 
 function start() {
@@ -766,6 +795,7 @@ function note() {
   if (!summary) die('--summary is required')
   const feature = load(root, id)
   ensureActive(feature.run)
+  ensureRecordedResults(root, feature.run)
   if (!feature.run.team.includes(role)) die('role is not selected for this run', 4, { role, team: feature.run.team })
   const permitted = allowedPhases(role)
   if (!permitted.includes(feature.run.phase)) {
@@ -835,6 +865,24 @@ function note() {
   const resultPath = resolve(root, result)
   if (!inside(root, resultPath)) die('--result path escapes the project root', 2, { result })
   if (!existsSync(resultPath)) die('--result file does not exist', 2, { result: resultPath })
+  const recordedPath = relative(root, resultPath).split('\\').join('/')
+  if (feature.run.contributions.some((item) => item.result === recordedPath)) {
+    die('expert result path was already recorded; use a new file for each pass', 5, { result: recordedPath })
+  }
+  let planSha
+  let reviewVerdict
+  if (role === 'plan-reviewer' && feature.run.contract >= 3) {
+    const artifactFile = artifactPath(root, id)
+    const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
+    const plan = sectionBody(doc, 'plan')
+    if (!plan || /^_pending\b/.test(plan)) die('Plan Reviewer requires a written Plan section', 5, { id })
+    reviewVerdict = planReviewVerdict(readFileSync(resultPath, 'utf8'))
+    if (!reviewVerdict) die('Plan Reviewer result requires an explicit APPROVED, APPROVED WITH NOTES, or REVISE verdict', 5, { id })
+    if (reviewVerdict === 'REVISE' ? !['critical', 'high'].includes(severity) : ['critical', 'high'].includes(severity)) {
+      die('Plan Reviewer severity disagrees with its verdict', 5, { verdict: reviewVerdict, severity: severity ?? 'missing' })
+    }
+    planSha = createHash('sha256').update(plan).digest('hex')
+  }
   feature.run.contributions.push({
     role,
     phase: feature.run.phase,
@@ -842,7 +890,10 @@ function note() {
     summary,
     severity: severity ?? null,
     residual: residual ?? undefined,
-    result: relative(root, resultPath).split('\\').join('/'),
+    result: recordedPath,
+    result_sha: fileDigest(resultPath),
+    ...(reviewVerdict ? { verdict: reviewVerdict, plan_sha: planSha } : {}),
+    ...(role === 'verifier' ? { candidate_sha: candidateDigest(root, feature.run.baseline) } : {}),
     ...(role === 'verifier' && option('--review-context') ? { review_context: option('--review-context') } : {}),
     at: new Date().toISOString(),
   })
@@ -885,6 +936,7 @@ function phase() {
   if (!summary) die('--summary is required')
   const feature = load(root, id)
   ensureActive(feature.run)
+  if (['build', 'verify', 'repair'].includes(to)) ensureRecordedResults(root, feature.run)
   const from = feature.run.phase
   if (from !== to && !(TRANSITIONS[from] || []).includes(to)) {
     die('invalid phase transition', 4, { from, to })
@@ -904,13 +956,35 @@ function phase() {
       if (reviewAt <= inputsAt) {
         die('Plan Reviewer must review the latest plan and specialist constraints before build', 5, { id })
       }
+      const review = feature.run.contributions[reviewAt]
+      const artifactFile = artifactPath(root, id)
+      const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
+      const verdict = review.verdict ?? (existsSync(resolve(root, review.result))
+        ? planReviewVerdict(readFileSync(resolve(root, review.result), 'utf8')) : null)
+      if (!['APPROVED', 'APPROVED WITH NOTES'].includes(verdict)) {
+        die('Plan Reviewer has not approved the latest plan', 5, { id, verdict: verdict ?? 'unrecorded' })
+      }
+      if (planReviewVerdict(sectionBody(doc, 'plan-review')) !== verdict) {
+        die('Plan review artifact does not match the latest reviewer verdict', 5, { id, verdict })
+      }
+      if (review.plan_sha && createHash('sha256').update(sectionBody(doc, 'plan') ?? '').digest('hex') !== review.plan_sha) {
+        die('Plan changed after its review; return it to Plan Reviewer', 5, { id })
+      }
     }
   }
   if (to === 'build' && feature.run.approval_required && !feature.run.approval) {
     die('material approval is required before build', 5, { id })
   }
-  if (to === 'verify' && feature.run.kind !== 'audit' && !contributed.has('builder')) {
-    die('Builder contribution is required before verification', 5, { id })
+  if (to === 'build' && feature.run.contract >= 3) {
+    const digest = readyBriefDigest(root, id)
+    if (feature.run.approval?.brief_sha !== undefined && feature.run.approval.brief_sha !== digest) {
+      die('implementation brief changed after approval', 5, { id })
+    }
+  }
+  if (to === 'verify' && feature.run.kind !== 'audit') {
+    const built = feature.run.contributions.some((item) => item.role === 'builder'
+      && item.revision === feature.run.revision && ['build', 'repair'].includes(item.phase))
+    if (!built) die('Builder contribution for the current revision is required before verification', 5, { id, revision: feature.run.revision })
   }
   if (to === 'build' || to === 'repair') {
     feature.run.revision = (feature.run.revision || 0) + 1
@@ -974,6 +1048,7 @@ function approve() {
       resolve: 'record the person who approved. An expert PASS clears that expert\'s findings; it does not authorise the change.',
     })
   }
+  const digest = feature.run.contract >= 3 ? readyBriefDigest(root, id) : briefDigest(root, id)
   feature.run.approval = {
     by,
     at: new Date().toISOString(),
@@ -981,7 +1056,7 @@ function approve() {
     // The brief is the contract from here on. Recording its digest is what
     // lets the audit answer "did we build what was approved?" rather than
     // "did we build what the brief now says?".
-    brief_sha: briefDigest(root, id),
+    brief_sha: digest,
   }
   save(feature.path, feature.run)
   output({ ok: true, id, approval: feature.run.approval })
@@ -1008,6 +1083,7 @@ function finish() {
   if (unknownGap.length) die(`unknown gap(s): ${unknownGap.join(', ')}`, 2, { allowed: GAPS })
 
   ensureActive(feature.run)
+  ensureRecordedResults(root, feature.run)
   if (feature.run.phase !== 'verify') die('run must be in verify phase before finish', 5, { phase: feature.run.phase })
   if (feature.run.approval_required && !feature.run.approval) die('material approval is missing', 5, { id })
 
@@ -1023,7 +1099,9 @@ function finish() {
   if (!feature.run.lenses) {
     gaps.push({ gap: 'lenses', why: 'lens selection was never recorded, so no domain depth is evidenced' })
   }
-  if (feature.run.kind !== 'audit' && feature.run.audit?.revision !== feature.run.revision) {
+  if (feature.run.kind !== 'audit' && !feature.run.baseline?.head) {
+    gaps.push({ gap: 'audit', why: 'no Git baseline was recorded, so the candidate could not be pinned to an exact diff' })
+  } else if (feature.run.kind !== 'audit' && feature.run.audit?.revision !== feature.run.revision) {
     gaps.push({
       gap: 'audit',
       why: feature.run.audit
@@ -1037,6 +1115,9 @@ function finish() {
       gap: 'audit',
       why: 'the deterministic audit read an empty diff, so it proves nothing about the work; it inspected, and found, nothing',
     })
+  } else if (feature.run.kind !== 'audit' && feature.run.audit?.candidate_sha
+    && feature.run.audit.candidate_sha !== candidateDigest(root, feature.run.baseline)) {
+    gaps.push({ gap: 'audit', why: 'the candidate changed after the deterministic audit' })
   }
   // The ledger records that a role contributed; the artifact is what the next
   // reader actually gets. A run that closes with a role's section still
@@ -1075,6 +1156,10 @@ function finish() {
     item.role === 'verifier' && item.phase === 'verify' && item.revision === feature.run.revision).at(-1)
   if (!verifierReview) {
     die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
+  }
+  if (feature.run.kind !== 'audit' && verifierReview.candidate_sha
+    && verifierReview.candidate_sha !== candidateDigest(root, feature.run.baseline)) {
+    die('candidate changed after Verifier inspected it; verify the current files again', 5, { id })
   }
   if (feature.run.contract >= 3 && !verifierReview.review_context) {
     die('Verifier review context was not recorded', 5, { id })
@@ -1119,6 +1204,10 @@ function finish() {
     else if (item.severity) unresolved.delete(item.role)
   }
   feature.run.accepted_residuals = acceptedResiduals.length ? acceptedResiduals : undefined
+  if (acceptedResiduals.length && result !== 'PASS WITH RESIDUAL RISK') {
+    die('accepted blocking findings require PASS WITH RESIDUAL RISK', 5,
+      { residuals: acceptedResiduals })
+  }
   const auditJustification = option('--audit-justification')?.trim()
   const auditJustified = feature.run.audit?.blocking > 0 && auditJustification &&
     ['none', 'low', 'medium'].includes(verifierReview.severity) &&
@@ -1185,6 +1274,12 @@ function report() {
     out.push(`| **${role}** | ${why} | ${last ? last.summary + passes : '_no contribution recorded_'} |`)
   }
   out.push('')
+
+  const planReviews = byRole('plan-reviewer')
+  const planReview = planReviews.at(-1)
+  if (planReview) {
+    out.push(`**Plan review** · ${planReview.verdict ?? 'verdict unrecorded'} · ${planReviews.length} ${planReviews.length === 1 ? 'pass' : 'passes'}`, '')
+  }
 
   // The routing ROI line: a specialist that is selected and never catches
   // anything is over-triggered; a defect in a skipped role's boundary is
@@ -1379,7 +1474,8 @@ function audit() {
   // 5. Acceptance criteria declared in the brief, versus evidenced in results.
   if (existsSync(briefFile)) {
     const brief = readFileSync(briefFile, 'utf8')
-    const ids = [...new Set([...brief.matchAll(/\bAC-\d+\b/g)].map((m) => m[0]))]
+    const declared = brief.replace(/<!--[\s\S]*?-->/g, '')
+    const ids = [...new Set([...declared.matchAll(/\bAC-\d+\b/g)].map((m) => m[0]))]
     if (ids.length) {
       const dir = join(workRoot(root), id, 'results')
       const evidence = existsSync(dir)
@@ -1417,6 +1513,7 @@ function audit() {
       verdict: blocking.length ? 'BLOCKING FINDINGS' : inspectedNothing ? 'INSPECTED NOTHING' : 'CLEAR',
       blocking: blocking.length,
       inspected_nothing: inspectedNothing || undefined,
+      candidate_sha: candidateDigest(root, run.baseline),
       checks: checks.map((c) => ({ check: c.check, status: c.status })),
     }
     save(feature.path, feature.run)
@@ -1480,7 +1577,7 @@ Internal recovery ledger for the autonomous Forge workflow.
          [--audit-justification TEXT] (counter-evidence for audit false positives;
           requires explicit nonblocking Verifier severity after the current audit)
          [--tests-changed-justified]   (refactor only; explain in the report)
-         [--accept-gaps risk,lenses,audit]  (close without a required step;
+         [--accept-gaps risk,lenses,audit,sections]  (close without a required step;
           each accepted gap is named in the delivery report)
   cancel --id ID [--reason TEXT]
   contract                      (the ordering tables, as JSON; what validate checks)
