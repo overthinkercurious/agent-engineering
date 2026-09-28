@@ -42,7 +42,9 @@ Read `references/targets.yml` for this host's paths **and its dispatch
 tier**. A host is `native-parallel` (concurrent isolated dispatch confirmed
 by name and citation in targets.yml), `native-sequential` (isolation
 confirmed, concurrency not), or `none` (default — assume this unless a row
-says otherwise). Never assume a tier a targets.yml row has not verified.
+says otherwise). Never assume a tier a targets.yml row has not verified. The
+documented tier is not runtime permission: dispatch only when isolated-agent
+tools are available in this session and the user or host permits their use.
 
 ## Stages
 
@@ -89,6 +91,11 @@ not for speed, and a single pass is simpler when nothing forces the split.
 
 Read `references/stages/knowledge.md` for the full method and the required
 content of each of the five files. In outline:
+
+Run `node "$SV/scripts/knowledge.mjs"` after the analysis to create the
+deterministic knowledge scaffold. Fill its judgment slots from repository
+evidence, then run the citation check. Generated structure alone is not a
+completed survey.
 
 - **Fan-out shape** (`native-parallel` or `native-sequential`, multi-stack
   or large): dispatch four isolated passes — stack, architecture, schema,
@@ -160,11 +167,11 @@ instead of the repository.
 
 ## Refresh
 
-Hash each knowledge file's cited sources. On rerun, reprocess only the
-files whose sources changed; leave the rest untouched. A changed sensor
-dump invalidates the synthesis that read it — compare retained judgments
-against fresh evidence before keeping them, never renew trust through a
-timestamp alone.
+The current generator uses one repository-wide sensor fingerprint. On rerun,
+it preserves authored judgment outside generated blocks, but a changed
+fingerprint marks the knowledge base stale as a whole. Recheck retained
+judgments against fresh evidence before keeping them. Do not claim
+per-document source invalidation until the generator implements it.
 
 ## Boundaries
 

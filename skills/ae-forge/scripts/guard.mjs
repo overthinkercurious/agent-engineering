@@ -22,25 +22,27 @@
 // session's hooks at all. This is defence in depth, not a sandbox, and the
 // kit must never report it as one.
 //
-// FAIL OPEN, ALWAYS. A guard that blocks work because it could not parse its
-// own input is worse than no guard: it teaches people to remove it. Every
-// error path here exits 0.
+// Malformed or unsupported host events fail open and cannot establish a
+// native-enforcement claim. A recognized edit with unreadable run state,
+// ambiguous ownership, or unverifiable authorization is refused.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 const ALLOW = 0
 const DENY = 2
-const EDIT_TOOLS = /^(Edit|Write|MultiEdit|NotebookEdit)$/
+const EDIT_TOOLS = /^(Edit|Write|MultiEdit|NotebookEdit|apply_patch|write_to_file|replace_file_content|multi_replace_file_content)$/
 
 function readStdin() {
   try { return readFileSync(0, 'utf8') } catch { return '' }
 }
 
-function activeRun(root) {
+function activeRun(root, session) {
   const base = join(root, '.dev', 'work')
   if (!existsSync(base)) return null
-  let best = null
+  const runs = []
   for (const entry of readdirSync(base, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
     const path = join(base, entry.name, 'run.json')
@@ -48,10 +50,15 @@ function activeRun(root) {
     try {
       const run = JSON.parse(readFileSync(path, 'utf8'))
       if (run.status !== 'active') continue
-      if (!best || String(run.updated_at) > String(best.updated_at)) best = run
-    } catch { /* a corrupt record is not a reason to block an edit */ }
+      runs.push(run)
+    } catch { return { error: 'run record is unreadable; recover it before editing source' } }
   }
-  return best
+  if (!runs.length) return null
+  const matching = session ? runs.filter((run) => run.session_ids?.includes(session)) : []
+  if (matching.length === 1) return matching[0]
+  if (matching.length > 1 || runs.length > 1) return { error: 'multiple active runs; use Forge focus to bind this session to exactly one run, or use separate checkouts' }
+  if (session && runs[0].session_ids?.length && !matching.length) return { error: 'active run belongs to another session; resume it explicitly with Forge focus' }
+  return runs[0]
 }
 
 // The kit's own bookkeeping is never the thing being gated. A Verifier writes
@@ -60,7 +67,7 @@ function activeRun(root) {
 function isBookkeeping(root, filePath) {
   if (!filePath) return false
   const rel = relative(resolve(root), resolve(root, String(filePath)))
-  return rel.startsWith(`.dev${sep}`)
+  return rel.startsWith(`.dev${sep}work${sep}`) || rel.startsWith(`.dev${sep}runs${sep}`)
 }
 
 function sessionStart(input) {
@@ -74,7 +81,8 @@ function sessionStart(input) {
       enforce: 'native',
       session_id: input.session_id ?? null,
       by: 'agent-engineering guard.mjs',
-      enforces: ['approval-before-edit', 'verifier-does-not-repair'],
+      host: input.host ?? 'plugin',
+      enforces: ['reviewed-plan-before-edit', 'implementation-phase-only', 'approval-before-edit', 'read-only-assessments', 'verifier-does-not-repair', 'session-run-routing'],
       limits: [
         'hooks load in this host only; every other host is enforce: none',
         'a subagent\'s tool calls may not reach this hook',
@@ -91,10 +99,22 @@ function preToolUse(input) {
   const tool = input.tool_name || ''
   if (!EDIT_TOOLS.test(tool)) return ALLOW
   const root = input.cwd || process.cwd()
-  if (isBookkeeping(root, input.tool_input?.file_path ?? input.tool_input?.notebook_path)) return ALLOW
+  const patch = String(input.tool_input?.command ?? input.tool_input?.patch ?? '')
+  const patchPaths = tool === 'apply_patch'
+    ? [...patch.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File:|Move to:) (.+)$/gm)].map((m) => m[1].trim())
+    : []
+  const directPath = input.tool_input?.file_path ?? input.tool_input?.notebook_path ?? input.tool_input?.TargetFile
+  if (tool === 'apply_patch' ? (patchPaths.length > 0 && patchPaths.every((p) => isBookkeeping(root, p)))
+    : isBookkeeping(root, directPath)) return ALLOW
 
-  const run = activeRun(root)
+  const run = activeRun(root, input.session_id ?? process.env.CODEX_SESSION_ID ?? process.env.CLAUDE_CODE_SESSION_ID)
   if (!run) return ALLOW // no run, no claim to enforce
+  if (run.error) { process.stderr.write(`Agent Engineering: ${run.error}.\n`); return DENY }
+
+  if (run.read_only || ['audit', 'plan', 'diagnose', 'review'].includes(run.kind)) {
+    process.stderr.write(`Agent Engineering: run ${run.id} is read-only; start a delivery run before editing project files.\n`)
+    return DENY
+  }
 
   if (run.approval_required && !run.approval) {
     process.stderr.write(
@@ -111,6 +131,14 @@ function preToolUse(input) {
       `  forge.mjs phase --id ${run.id} --to repair --summary "<what is being repaired>"\n`)
     return DENY
   }
+  const checked = spawnSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'forge.mjs'),
+    'edit-check', '--root', root, '--id', run.id], { cwd: root, encoding: 'utf8' })
+  if (checked.error || checked.status !== 0) {
+    let reason = 'implementation authorization could not be verified'
+    try { reason = JSON.parse(checked.stdout).error ?? reason } catch { /* refuse unverifiable edits */ }
+    process.stderr.write(`Agent Engineering: ${reason}. Return to Forge before editing source.\n`)
+    return DENY
+  }
   return ALLOW
 }
 
@@ -118,6 +146,30 @@ function main() {
   const mode = process.argv[2]
   let input = {}
   try { input = JSON.parse(readStdin() || '{}') } catch { return ALLOW }
+  if (mode === 'antigravity-pre-invocation') {
+    if (!input.conversationId || !Array.isArray(input.workspacePaths)) {
+      process.stdout.write('{}\n'); return ALLOW
+    }
+    for (const cwd of input.workspacePaths) sessionStart({ cwd, session_id: input.conversationId, host: 'antigravity' })
+    process.stdout.write(`${JSON.stringify({ injectSteps: [{ ephemeralMessage:
+      `Agent Engineering hook observed this conversation: ${input.conversationId}. For Forge start/focus and contract checks, pass --session ${input.conversationId} to bind the run and report current enforcement. Only Build/Repair may edit source after current plan review; shell writes remain outside this hook.` }] })}\n`)
+    return ALLOW
+  }
+  if (mode === 'antigravity-pre-tool-use') {
+    const args = input.toolCall?.args ?? {}
+    const target = args.TargetFile
+    const roots = (input.workspacePaths ?? []).filter((root) => typeof root === 'string')
+    const matches = target ? roots.filter((root) => {
+      const rel = relative(resolve(root), resolve(target))
+      return rel === '' || (!rel.startsWith('..') && !resolve(target).startsWith('..') && !/^[A-Za-z]:/.test(rel))
+    }).sort((a, b) => b.length - a.length) : roots
+    const root = matches[0]
+    const code = root ? preToolUse({ cwd: root, session_id: input.conversationId,
+      tool_name: input.toolCall?.name, tool_input: args }) : (EDIT_TOOLS.test(input.toolCall?.name ?? '') ? DENY : ALLOW)
+    process.stdout.write(`${JSON.stringify({ decision: code === DENY ? 'deny' : 'allow',
+      ...(code === DENY ? { reason: 'Agent Engineering could not authorize this source edit. Bind the correct run and obtain current plan review in Build/Repair; inspect hook diagnostics for the specific gate.' } : {}) })}\n`)
+    return ALLOW // Antigravity uses the JSON decision, not Claude's exit-2 protocol.
+  }
   if (mode === 'session-start') return sessionStart(input)
   if (mode === 'pre-tool-use') return preToolUse(input)
   return ALLOW

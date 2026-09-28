@@ -170,14 +170,15 @@ esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
     disp="$(ae_target_field "$TSV" "$id" display)"
     dsp="$(ae_target_field "$TSV" "$id" dispatch)"
     dver="$(ae_target_field "$TSV" "$id" dispatch_verified)"
+    aliases="$(ae_target_field "$TSV" "$id" installer_ids)"
     ifile="$(ae_target_field "$TSV" "$id" instruction_file)"
     detect="$(ae_target_field "$TSV" "$id" detect)"
     [ -n "$dsp" ] || dsp="none"
     if ae_target_detected "$ROOT" "$detect"; then det="true"; else det="false"; fi
     [ "$first" = "1" ] || printf ',\n'
     first=0
-    printf '    "%s": { "display": "%s", "dispatch": "%s", "dispatch_verified": "%s", "instruction_file": "%s", "detected_in_project": %s }' \
-      "$(esc "$id")" "$(esc "$disp")" "$(esc "$dsp")" "$(esc "$dver")" "$(esc "$ifile")" "$det"
+    printf '    "%s": { "display": "%s", "installer_ids": "%s", "dispatch": "%s", "dispatch_verified": "%s", "instruction_file": "%s", "detected_in_project": %s }' \
+      "$(esc "$id")" "$(esc "$disp")" "$(esc "$aliases")" "$(esc "$dsp")" "$(esc "$dver")" "$(esc "$ifile")" "$det"
   done
   printf '\n  }\n}\n'
 } > "$BODY"

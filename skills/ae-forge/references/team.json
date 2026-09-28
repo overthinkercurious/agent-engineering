@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 9,
   "analysis_schema": 2,
   "roles": {
     "product": {
@@ -114,7 +114,10 @@
       "attaches_to": [
         "architect",
         "builder",
-        "verifier"
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "android",
@@ -131,7 +134,11 @@
       "attaches_to": [
         "experience",
         "architect",
-        "builder"
+        "builder",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "design-system",
@@ -153,7 +160,10 @@
       "attaches_to": [
         "experience",
         "verifier",
-        "builder"
+        "builder",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "accessibility",
@@ -166,7 +176,8 @@
         "focus",
         "rendered"
       ],
-      "verified": "2026-09-20"
+      "verified": "2026-09-20",
+      "review_after": "2027-09-20"
     },
     "secrets-hygiene": {
       "owns": "Credential lifecycle and exposure: origin, transport, accidental persistence in logs or history, rotation, and fail-closed behaviour on a missing secret",
@@ -174,7 +185,12 @@
       "attaches_to": [
         "security",
         "builder",
-        "verifier"
+        "verifier",
+        "architect",
+        "reliability",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "secret",
@@ -194,7 +210,10 @@
       "attaches_to": [
         "reliability",
         "experience",
-        "builder"
+        "builder",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "web-performance",
@@ -207,7 +226,8 @@
         "page-load",
         "hydration"
       ],
-      "verified": "2026-09-20"
+      "verified": "2026-09-20",
+      "review_after": "2027-09-20"
     },
     "database-performance": {
       "owns": "Access paths, lock behaviour and volume: what the planner actually does, what a migration locks and for how long, and how both behave at real row counts",
@@ -215,7 +235,10 @@
       "attaches_to": [
         "data",
         "architect",
-        "reliability"
+        "reliability",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "database-performance",
@@ -236,7 +259,10 @@
       "attaches_to": [
         "architect",
         "builder",
-        "verifier"
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "api",
@@ -256,7 +282,11 @@
       "file": "lenses/test-automation.md",
       "attaches_to": [
         "builder",
-        "verifier"
+        "verifier",
+        "reliability",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "test-automation",
@@ -267,7 +297,8 @@
         "mock",
         "e2e",
         "integration",
-        "regression"
+        "regression",
+        "refactor"
       ]
     },
     "ai-llm": {
@@ -277,7 +308,12 @@
         "security",
         "architect",
         "reliability",
-        "builder"
+        "builder",
+        "experience",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "ai-llm",
@@ -300,7 +336,10 @@
         "security",
         "data",
         "reliability",
-        "builder"
+        "builder",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "payments",
@@ -319,7 +358,10 @@
       "attaches_to": [
         "reliability",
         "architect",
-        "builder"
+        "builder",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "observability",
@@ -339,7 +381,12 @@
       "attaches_to": [
         "architect",
         "builder",
-        "verifier"
+        "verifier",
+        "security",
+        "experience",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "ios",
@@ -357,7 +404,11 @@
       "attaches_to": [
         "architect",
         "reliability",
-        "builder"
+        "builder",
+        "security",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "infrastructure",
@@ -376,7 +427,11 @@
       "attaches_to": [
         "security",
         "data",
-        "product"
+        "product",
+        "experience",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "privacy",
@@ -396,7 +451,11 @@
         "security",
         "architect",
         "builder",
-        "experience"
+        "experience",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "auth",
@@ -424,7 +483,11 @@
         "reliability",
         "data",
         "architect",
-        "builder"
+        "builder",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "queue",
@@ -439,7 +502,8 @@
         "producer",
         "event-bus",
         "worker",
-        "dead-letter"
+        "dead-letter",
+        "job"
       ]
     },
     "caching": {
@@ -449,7 +513,11 @@
         "reliability",
         "data",
         "architect",
-        "builder"
+        "builder",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "cache",
@@ -471,7 +539,11 @@
       "attaches_to": [
         "reliability",
         "architect",
-        "builder"
+        "builder",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "release",
@@ -485,7 +557,8 @@
         "canary",
         "staged-rollout",
         "hotfix",
-        "rollback"
+        "rollback",
+        "tag"
       ]
     },
     "i18n": {
@@ -494,7 +567,11 @@
       "attaches_to": [
         "experience",
         "builder",
-        "architect"
+        "architect",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "i18n",
@@ -516,7 +593,12 @@
       "attaches_to": [
         "security",
         "data",
-        "architect"
+        "architect",
+        "builder",
+        "verifier",
+        "plan-reviewer",
+        "plan-challenger",
+        "auditor"
       ],
       "signals": [
         "compliance",
@@ -581,6 +663,24 @@
     "audit": {
       "means": "findings are evidenced and no code changed",
       "requires": []
+    },
+    "plan": {
+      "means": "a checkable, evidence-backed plan was delivered without implementation",
+      "requires": [
+        "verify the plan against the request and repository evidence"
+      ]
+    },
+    "diagnose": {
+      "means": "a supported causal account or explicit inconclusive result was delivered without a fix",
+      "requires": [
+        "record reproduction attempts and remaining uncertainty"
+      ]
+    },
+    "review": {
+      "means": "an existing candidate or diff received an evidenced verdict without edits",
+      "requires": [
+        "inspect the exact candidate and report blocking findings"
+      ]
     }
   },
   "domain_detectors": [
@@ -812,8 +912,42 @@
       ],
       "emit": [
         "auth",
-        "auth",
         "secret"
+      ]
+    },
+    {
+      "when_imports": [
+        "socket.io",
+        "socket.io-client",
+        "ws",
+        "yjs",
+        "automerge"
+      ],
+      "emit": [
+        "realtime",
+        "collaborative-editing"
+      ]
+    },
+    {
+      "when_imports": [
+        "algoliasearch",
+        "@elastic/elasticsearch",
+        "meilisearch",
+        "typesense"
+      ],
+      "emit": [
+        "search-relevance"
+      ]
+    },
+    {
+      "when_paths": [
+        "tokens\\.json$",
+        "tailwind\\.config",
+        "style-dictionary",
+        "(^|/)\\.storybook/"
+      ],
+      "emit": [
+        "ui-finish"
       ]
     }
   ]

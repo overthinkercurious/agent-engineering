@@ -42,8 +42,9 @@ Skip when the value is derived fresh on every read. A constant is not a cache.
 6. Include every authorisation-relevant dimension in the key. A per-user
    response cached under a per-path key is a cross-user disclosure, and it
    will look like a performance win right up until it is reported as a breach.
-7. Set an explicit TTL on every entry. An unbounded entry is a memory leak
-   that also serves wrong answers.
+7. Define an explicit lifetime or invalidation policy for every entry. A
+   permanent entry is safe only when its source is immutable or invalidation
+   is reliable; otherwise it can retain memory and serve stale answers.
 8. Protect against the stampede: when a hot key expires, every in-flight
    request recomputes it at once. Single-flight, jittered expiry, or
    serve-stale-while-revalidate — pick one and say which.

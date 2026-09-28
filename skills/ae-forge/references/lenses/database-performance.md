@@ -27,8 +27,10 @@ rather than producing an unmeasured verdict.
 2. Check for sequential scans on filtered or joined columns, and for an index
    that exists but cannot be used — a leading-column mismatch, a function or
    cast applied to the column, or a type coercion.
-3. Check selectivity before adding an index. An index on a low-cardinality
-   column is write cost with no read benefit.
+3. Check selectivity and the actual query plan before adding an index. A
+   low-cardinality column may still benefit from a selective partial index or
+   a composite index for the queried predicate; measure its read benefit and
+   write cost.
 4. Check whether an added index duplicates an existing one by prefix. Two
    indexes covering the same leading columns cost writes twice for one benefit.
 

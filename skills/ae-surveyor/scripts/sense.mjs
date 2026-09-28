@@ -147,6 +147,20 @@ export function sense(paths, read) {
     component.manifests.push(file)
     let pm = managers[kind]
     const record = { file, component: id, kind, deps: {}, devDeps: {} }
+    if (kind === 'python') {
+      const base = posix.basename(file)
+      if (base === 'requirements.txt') {
+        for (const line of text.split(/\r?\n/)) {
+          const match = line.trim().match(/^([A-Za-z][A-Za-z0-9_.-]*)(?:\[[^\]]+\])?(?:\s*(?:[<>=!~]|;|$))/)
+          if (match) record.deps[match[1].toLowerCase().replaceAll('_', '-')] = 'declared'
+        }
+      } else if (base === 'pyproject.toml') {
+        const arrays = [...text.matchAll(/(?:^|\n)\s*dependencies\s*=\s*\[([\s\S]*?)\]/g)]
+        for (const [, body] of arrays) for (const match of body.matchAll(/["']([A-Za-z][A-Za-z0-9_.-]*)(?:\[[^\]]+\])?(?:[<>=!~; ][^"']*)?["']/g)) {
+          record.deps[match[1].toLowerCase().replaceAll('_', '-')] = 'declared'
+        }
+      }
+    }
     if (kind === 'node' || kind === 'deno') {
       const json = parse(text, file)
       if (json) {

@@ -2,7 +2,7 @@
 name: ae-build
 description: >
   Dispatch target only for the Builder stage of an active ae-forge run.
-  Forge invokes it after required plan review and approval to implement the
+  Forge invokes it after the selected plan and any required review and approval to implement the
   brief as a checked, coherent diff. For a standalone implementation request,
   start with ae-forge. This stage does not change scope, redesign, or verify
   its own work.
@@ -50,8 +50,8 @@ node "$FORGE/scripts/forge.mjs" status --id <id>
 ```
 
 1. A plan exists in the artifact.
-2. Plan Reviewer and Plan Challenger both returned APPROVED or APPROVED WITH NOTES for the current plan.
-3. **`approval` is recorded after the current Reviewer and Challenger passes.**
+2. Plan Reviewer approved the current plan; on deep runs, Challenger also approved it.
+3. On deep runs, **user approval** is recorded after both passes.
 4. No unresolved blocking open question sits under a step you will execute.
 
 Name the missing one and stop. Do not start and unwind — a half-applied plan is
@@ -62,8 +62,8 @@ transition. That duplication is deliberate: a gate enforced at one point is a
 gate one mistake opens, and this is the moment worth spending a second check
 on, because after it, code changes.
 
-**A reviewer verdict is not user approval.** Only the user's decision on the
-current reviewed and challenged plan clears the gate.
+**A reviewer verdict is not user approval.** Deep runs require the user's
+decision on the current reviewed and challenged plan.
 
 ## Work
 

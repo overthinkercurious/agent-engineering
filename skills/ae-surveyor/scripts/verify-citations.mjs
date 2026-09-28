@@ -32,15 +32,15 @@ if (!existsSync(DIR)) {
   process.stderr.write(`no knowledge base at ${DIR}\nRun ae-surveyor stages 1-3 first.\n`); process.exit(2)
 }
 
-// A citation is a path with an extension followed by a line or line range.
-// Requiring the extension is what keeps "npm run test:coverage" and
-// "http://host:8080" out of the results - a false positive here would train
-// people to ignore real ones.
+// Recognize ordinary source paths, route groups such as (auth), and the
+// common extensionless control files. Keep the latter allowlisted so command
+// names and URL ports are not mistaken for citations.
 // The leading dot is optional so a citation into .github/, .claude-plugin/
 // or .dev/ resolves as written. Without it the match started one character
 // late and every such citation was reported as a missing file - a false
 // failure, which trains people to ignore the real ones.
-const CITATION = /(?<![A-Za-z0-9_])(\.?[A-Za-z0-9_][A-Za-z0-9_./\\-]*\.[A-Za-z0-9]{1,12}):(\d+)(?:-(\d+))?\b/g
+const CITATION = /(?<![A-Za-z0-9_/(])((?:\.?[A-Za-z0-9_()[\]@+.-]+[/\\])*[A-Za-z0-9_()[\]@+.-]+\.[A-Za-z0-9]{1,12}|(?:\.?[A-Za-z0-9_()[\]@+.-]+[/\\])*(?:Dockerfile|Makefile|Procfile|LICENSE|NOTICE|AGENTS|README)):(\d+)(?:-(\d+))?\b/g
+const QUOTED_CITATION = /`([^`\n]+):(\d+)(?:-(\d+))?`/g
 const SKIP_PREFIX = /^(https?|ftp|mailto):/i
 
 const lineCount = new Map()
@@ -62,7 +62,11 @@ for (const name of readdirSync(DIR).filter((f) => f.endsWith('.md')).sort()) {
   lines.forEach((line, index) => {
     // A fenced snapshot comment cites the analysis, not the repository.
     if (line.includes('agent-engineering:snapshot') || SKIP_PREFIX.test(line.trim())) return
-    for (const match of line.matchAll(CITATION)) {
+    const quoted = [...line.matchAll(QUOTED_CITATION)].filter((match) =>
+      /[/\\.]|^(?:Dockerfile|Makefile|Procfile|LICENSE|NOTICE|AGENTS|README)$/.test(match[1]))
+    const bare = [...line.matchAll(CITATION)].filter((match) =>
+      !quoted.some((item) => match.index >= item.index && match.index < item.index + item[0].length))
+    for (const match of [...quoted, ...bare]) {
       const [, cited, startRaw, endRaw] = match
       if (SKIP_PREFIX.test(cited)) continue
       const target = join(ROOT, cited.replaceAll('\\', '/'))

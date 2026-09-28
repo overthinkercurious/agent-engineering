@@ -31,8 +31,8 @@ what exists versus what's still backlog.
 
 1. Understand the request and the repository.
 2. Select the smallest team that covers the risk.
-3. Produce an evidence-backed plan, then independently review and challenge every material decision before implementation.
-4. Implement requested changes; planning alone is not delivery.
+3. Produce an evidence-backed plan and review it independently. Add Challenger for deeper risk.
+4. Implement requested changes; for read-only requests, deliver the assessment without editing code.
 5. Have a verifier inspect the result separately and run relevant checks.
 6. Repair valid findings, then report what changed and what remains uncertain.
 
@@ -123,12 +123,12 @@ node "$AE/scripts/forge.mjs" list
 node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
   --risk <comma-list|none> \
   [--cause known --cause-evidence <repro-or-code-evidence>] \
-  [--signals <comma-list>] [--domain <comma-list>]
+  [--signals <comma-list>] [--domain <comma-list>] [--depth standard|deep]
 ```
 
 `--signals` passes vocabulary the user actually used. Signals may add a
-specialist but never remove a risk-selected role. Every delivery run has the
-same pre-build sequence: Architect, Plan Reviewer, and Plan Challenger. For
+specialist but never remove a risk-selected role. Every delivery uses Architect
+and Plan Reviewer; deep delivery adds Challenger. For
 bugs and performance work, skip Investigator only when the cause is
 demonstrated with `--cause-evidence`.
 
@@ -163,46 +163,26 @@ review.
 Use `status --id <id>` to resume. Never make the user manage this record. It
 is an internal recovery aid, not an approval bureaucracy.
 
-Kinds are `idea`, `feature`, `bug`, `refactor`, `performance`, `security`, and
-`audit`.
+Kinds are `idea`, `feature`, `bug`, `refactor`, `performance`, `security`,
+`audit`, `plan`, `diagnose`, and `review`. The last four are read-only outcomes.
 
 ## Route the team
 
 Classify by behavior and risk, not filenames:
 
-Every delivery starts with Architect, Plan Reviewer, Plan Challenger, Builder,
-and Verifier. Add only the relevant Security, Data, Reliability, Experience,
-Product, or Investigator expert. Do not add experts merely because they exist.
+Standard delivery uses Architect, Plan Reviewer, Builder, and Verifier. Deep
+review adds Plan Challenger. It is required for access, stored-data shape,
+irreversible work, security and idea requests, unknown causes, unassessed
+risk, and listed high-impact domains. `--depth deep` can also be selected for
+material design uncertainty. Add only relevant specialists.
 
 ### Print the routing decision
 
-Before any expert works, print the routing block from `start`'s output — seven
-lines, once, then stay quiet:
-
-```text
-Forge   · contract v4 · run 3f9c1a
-Routing · Architect → Security → Experience → Plan Reviewer → Plan Challenger → Builder → Verifier
-Why     · risk=access (changes who may authenticate), risk=rendered (new login journey)
-Skipped · data (no stored-shape risk declared) · reliability (no runtime risk declared)
-        · investigator (no undiagnosed defect) · product (outcome already specified)
-Lenses  · ui-finish → experience, builder
-Approval· required after Reviewer and Challenger approval; waiting for the user
-Enforce · native (approval gate gated in the host) | none (gates are advisory)
-```
-
-Copy the `Forge` line from `start`'s `contract` field. Do not type it from
-memory and never guess the number: it is read from `team.json`, which only
-exists when the skill directory resolved, so a routing block carrying it is
-evidence the machinery ran. A block without it is a block the model composed,
-which is the one kind of routing decision this file cannot trust.
-
-The `Skipped` line is required. A review the team decided not to run is the
-one thing the user cannot infer from the result, and it is how a wrong routing
-decision gets caught on the first run instead of the tenth.
-
-The `Enforce` line is `start`'s `enforce` field verbatim. It is read, never
-assumed, and `none` is the honest default. See `team.md`'s "Enforcement
-modes" for what each mode does and, more importantly, what it does not.
+Before any expert works, print a compact routing decision from `start`:
+its `contract` field, selected and skipped roles with reasons, attached
+lenses, whether approval is required, and the reported enforcement mode.
+Use those recorded values verbatim; never infer native enforcement or hide
+an omitted review. See `team.md` for enforcement limits.
 
 An audit-only request is different: select Auditor, Verifier and only the
 relevant Security, Data, Experience, or Reliability expert. Do not add
@@ -212,6 +192,10 @@ is no separate release role; scope it to the relevant specialists (Reliability
 for rollout/observability, Security for exposure, Data for migration safety)
 plus Verifier.
 
+For `plan`, `diagnose`, or `review`, select the relevant expert and Verifier.
+These runs cannot enter Build or Repair. A review judges an existing candidate;
+an audit assesses the repository cold. Start a new delivery run if fixes are requested.
+
 ## Drive the stages, one at a time
 
 Stages run **sequentially**. Never two at once, whatever this host can
@@ -220,11 +204,10 @@ review, build and its verification — and running a pair concurrently means the
 reviewer judges a moving target.
 
 Six stage skills are separately installed. Scaffold the artifact first, then
-drive the selected roles in the order recorded by `start`. On every delivery,
-selected named specialists give pre-build constraints after Architect and
-before Plan Reviewer. Plan Challenger reads the review and challenges every
-material decision. A REVISE from either returns the plan to Architect for a
-focused revision, followed by both passes again. On audit-only work, selected
+drive the selected roles in the order recorded by `start`. Selected specialists
+give constraints after Architect. Plan Reviewer inspects every delivery plan;
+deep runs then use Challenger. A REVISE returns it to Architect for a focused
+revision and new selected review passes. On audit-only work, selected
 specialists contribute before Auditor; Auditor performs its own cold read,
 then Verifier assesses the combined findings:
 
@@ -232,9 +215,9 @@ then Verifier assesses the combined findings:
 node "$AE/scripts/forge.mjs" artifact --id <id>
 ```
 
-Record explicit verdicts for both Plan Reviewer and Plan Challenger. The build
-phase opens only when both latest verdicts say `APPROVED` or `APPROVED WITH
-NOTES` and the challenged Plan section has not changed.
+Record Plan Reviewer's verdict and Challenger's when selected. Build requires
+`APPROVED` or `APPROVED WITH NOTES` for every selected review pass on the
+unchanged current plan.
 
 | Stage | Skill | Writes section |
 |---|---|---|
@@ -282,8 +265,8 @@ it was.
 ### Session boundaries
 
 At each review boundary, reopen every cited source and re-run the relevant
-checks. A shared session does not provide context independence; record that
-limit with the Verifier contribution.
+checks. A shared session does not provide context independence; record it on
+Reviewer, Challenger, and Verifier notes. See `references/evaluation.md` for validation.
 
 Forge is the sole coordinator. Planning and review stages are read-only.
 Builder is the only stage that edits application code. Stages return to Forge
@@ -316,15 +299,16 @@ Record material contributions with:
 node "$AE/scripts/forge.mjs" note --id <id> --role <role> --summary "<result>"
 ```
 
-For Verifier, add `--review-context isolated` only when the host actually
+For Reviewer, Challenger, and Verifier, add `--review-context isolated` only when the host actually
 provided an isolated context; otherwise add `--review-context same-session`.
 
 ## Work autonomously
 
-Work through investigation, planning, specialist review, and challenge
-autonomously. Before implementation, always show the reviewed plan and wait
-for the user's explicit approval. Risk flags select specialist expertise; they
-never remove this approval gate.
+Work through investigation and planning autonomously. Standard runs proceed
+from Plan to Build after a complete brief, constraints, and Plan Reviewer approval.
+Deep runs show the reviewed plan and record explicit user approval before
+Build. If the user already approved that exact plan in the active conversation,
+record that decision without asking again.
 
 **A reviewer verdict is not user approval.** An expert clearing its findings
 says the change is sound; only the user says it is wanted. `approve` refuses a
@@ -357,13 +341,12 @@ node "$AE/scripts/forge.mjs" brief --id <id>
 The brief always carries the decision and verification sections used by the
 reviewer and challenger. Keep each concise: a four-page plan for a one-line
 fix is a defect, not thoroughness.
-Fill its `TODO` sections before user approval. Move the run to `approval` only
-after both review passes approve the current plan. The ledger rejects a missing
-or unfinished brief, a changed reviewed plan, and edits to an approved brief
-before build.
+Fill its `TODO` sections before Build. On deep runs, move to `approval` only
+after both review passes approve the current plan. The ledger rejects an
+unfinished brief and changes to an approved brief.
 
 Record the user's decision with `approve --by <user> --basis
-<decision-evidence>`. Approval is required for every delivery run. It freezes
+<decision-evidence>`. Approval is required for deep delivery runs. It freezes
 both the brief and the exact Plan section; any change returns the work to Plan
 Reviewer, Plan Challenger, and the user. Do not rewrite a frozen brief.
 
@@ -388,13 +371,14 @@ Use these phases internally:
 
 1. **Understand:** inspect instructions, reproduce bugs, and identify unknowns.
 2. **Plan:** state acceptance behavior and the smallest implementation path.
-3. **Approval:** render `approval-packet --id <id>`, show the reviewed and
-   challenged plan, and wait for explicit user approval.
+3. **Approval, deep runs:** render `approval-packet --id <id>`, show the
+   reviewed and challenged plan, and record explicit user approval.
 4. **Build:** edit the code and tests in small coherent steps.
 5. **Verify:** inspect the exact diff and run the project's relevant checks.
-6. **Repair:** after a verifier finding, return to Approval, show the repair
-   packet, and obtain explicit user approval before each in-scope repair; return
-   to Plan when the repair changes the approved approach, then verify again.
+6. **Repair:** after a verifier finding in a deep run, return to Approval,
+   show the repair packet, and record approval for the bounded repair. Standard
+   runs may enter Repair directly. Return to Plan when the approach changes,
+   then verify again.
    Record a new Builder contribution for each repair before returning to Verify.
    Keep the second cycle focused on the repair: confirm named blockers are
    closed and check for regressions. Any newly discovered critical/high defect
@@ -436,81 +420,37 @@ node "$AE/scripts/forge.mjs" phase --id <id> --to <understand|plan|approval|buil
 
 ## What "done" means for this kind
 
-`references/team.json`'s `acceptance` block defines the bar per kind. Most of
-it is judgment the Verifier owns, but two are not negotiable:
+`references/team.json` defines acceptance per kind. For a bug, re-run the
+original reproduction and sweep sibling callers. A refactor preserves behavior
+and passes existing tests unmodified; justify any genuine test-defect edit with
+`--tests-changed-justified` on both `audit` and `finish`. A performance change
+needs a comparable before/after measurement.
 
-| Kind | Done means | Non-negotiable |
-|---|---|---|
-| `bug` | the original reproduction now passes | capture the failure before repair when reproducible; re-run the **same** repro; sweep callers |
-| `refactor` | **behaviour is unchanged** | existing tests pass **unmodified** — `finish` refuses otherwise |
-| `performance` | measured improvement under identical conditions | a before **and** after measurement; a percentile, not a mean |
+`finish` checks risk assessment, lens routing, current diff audit, and written
+artifact sections. Perform missing work. Use `--accept-gaps` only for a truly
+inapplicable check; the report names every accepted gap. Critical and high
+findings still block completion.
 
-A refactor that rewrote its own tests has not demonstrated behaviour
-preservation, whatever the suite reports. If a test edit genuinely fixes a
-test defect rather than accommodating a behaviour change, say so in the report
-and pass `--tests-changed-justified` to both `audit` and `finish`.
-
-`finish` refuses to close a run whose required steps did not happen:
-
-| Gap | Fires when |
-|---|---|
-| `risk` | the behavioural questions were never answered, so specialists were selected by keyword alone |
-| `lenses` | lens selection was never recorded, so no domain depth is evidenced |
-| `audit` | on delivery work, the deterministic diff audit never ran, inspected an earlier revision, or read an empty diff |
-| `sections` | a role contributed to the ledger but left its artifact section scaffolded |
-
-`sections` is the one that keeps the artifact honest: a ledger note says an
-expert worked, the section is what the next stage actually reads, and a run
-closing with a `_pending_` section holds a complete record of work nobody can
-read.
-
-Do the step. When one is genuinely not applicable, close with
-`--accept-gaps <names>` — each accepted gap is named in the delivery report
-rather than disappearing.
-
-Finish a delivery record only after implementation and verification both
-contributed. An audit-only record requires the Verifier and no code change:
+Finish delivery only after implementation and verification. Read-only records
+require Verifier and no code change; without Git, name the baseline gap:
+Use `--accept-gaps baseline` only after disclosing that limitation.
 
 ```bash
 node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" \
   --verification "<checks and verifier verdict>" --result "<PASS|PASS WITH RESIDUAL RISK>"
 ```
 
-## Stay quiet while working
+## Keep the user informed
 
-The user reads the routing block, then the result. Between them, keep output
-to a hard minimum:
-
-| Moment | Allowed | Cap |
-|---|---|---|
-| After routing | the routing block | 6 lines |
-| Phase transition | `plan → build` plus a half-line of current truth | 1 line |
-| An expert finishes | **nothing** — it goes to `results/<role>.md` | 0 lines |
-| A blocking finding | severity and the affected behavior | 1 line |
-| Approval needed | the brief's path and the decision being asked | the brief |
-| Completion | the delivery report | ~20 lines |
-
-A five-role delivery run should produce about ten lines of chat before the final
-report, however much work happened underneath. Never narrate file-by-file
-progress, expert reasoning, ledger commands, or phase vocabulary.
+Share concise progress at meaningful milestones and explain blockers promptly.
+Keep expert transcripts and ledger details in the run files. Present the
+approval packet only when a deep run needs a decision.
 
 ## Leave the project smarter than you found it
 
-When a run accepts a material design decision — one a future Architect would
-otherwise rediscover — append one entry to `.dev/knowledge/decisions.md`,
-below its managed block, before finishing:
-
-```markdown
-- **2026-09-20 · Session storage for OAuth.** Reused the existing session
-  store rather than adding a token table.
-  **Evidence:** VERIFIED `src/session/store.ts:41`
-  **Rejected:** a dedicated token table — a second source of session truth.
-```
-
-That file is already committed and already names Architect as its reader. One
-line per genuine decision is the difference between a workflow and an
-organization: without it every run re-derives what the last run already
-settled. Do not log routine choices, and never rewrite an existing entry.
+For a material accepted design decision, append a short entry below the managed
+block in `.dev/knowledge/decisions.md`: decision, evidence, and rejected
+alternative. Skip routine choices and preserve existing entries.
 
 ## Final response
 

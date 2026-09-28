@@ -5,7 +5,7 @@
 ```yaml
 metrics: Core Web Vitals - LCP, INP, CLS
 note: INP replaced FID as the responsiveness metric in March 2024
-verified: "2026-09-20 corewebvitals.io/core-web-vitals"
+verified: "2026-09-27 web.dev/articles/inp and web.dev/articles/vitals"
 review_after: "2027-09-20"
 ```
 
@@ -43,9 +43,10 @@ the **75th percentile of real users**, not on a developer machine.
 | INP — interaction to next paint | ≤ 200ms | 200–500ms | > 500ms |
 | CLS — cumulative layout shift | ≤ 0.1 | 0.1–0.25 | > 0.25 |
 
-INP observes **every** interaction and reports the worst, through to the next
-paint — so a single slow handler on a rarely-used control can fail it while an
-average looks healthy.
+INP considers interactions through to the next paint. For pages with many
+interactions, the metric excludes one highest interaction for every 50
+interactions. A slow control still deserves investigation even when this
+sampling prevents it from setting the reported INP.
 
 ## Checklist
 

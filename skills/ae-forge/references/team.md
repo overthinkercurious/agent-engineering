@@ -42,29 +42,30 @@ COMPLETE | NEEDS INPUT | BLOCKED | INCONCLUSIVE
 
 Rules that make the form mean something:
 
-- **Every column is required.** A finding missing any cell is dropped rather
-  than reported — an unfillable column is the evidence that the finding was
-  not actually established. In particular `Consequence` is the concrete
-  failure produced; "could be cleaner" is not a consequence.
-- **At most five findings**, ranked by severity then blast radius. More than
-  five means the pass drifted from safety into style.
+- **Preserve established defects.** Location, issue, and concrete consequence
+  require evidence. Use `unknown: <what would resolve it>` for an unresolved
+  repair or proof check; missing remediation detail never removes a blocker.
+  Unsupported suspicions belong in `UNKNOWNS`, with `Blocks?` set to yes or no.
+- **Lead with at most five findings**, ranked by severity then blast radius.
+  Keep any additional evidenced blockers in the result file; a presentation
+  limit never suppresses a safety finding.
 - **`EVIDENCE` rows are things you opened or ran in this pass**, not things
   you already believed. `How checked` is `read`, `ran, exit <n>`, or
   `grep <pattern> → <n> hits`.
-- **External research precedes every final approach or verdict.** Every role
-  finalizing a design, specialist constraint, review, challenge, or repair
-  scope uses the host's available web/search tool for a focused check. Use
-  authoritative primary sources for time-sensitive platform, dependency,
-  standards, security, policy, or API claims; local code remains the evidence
-  for repository behaviour. Record the source URL/title, access date, and
-  conclusion in `EVIDENCE`. If search is unavailable, write `RESEARCH
-  UNAVAILABLE` in `UNKNOWNS` and do not label the external claim `VERIFIED`.
+- **Research material external claims.** Use a focused search and primary
+  source when the decision depends on a time-sensitive platform, dependency,
+  standard, policy, security, or API fact. Local code is the evidence for
+  repository behaviour. Record the source and conclusion in `EVIDENCE`.
+  If research is unavailable, mark that external claim unverified in
+  `UNKNOWNS`. Repository-local judgments need no ceremonial web search.
 - **An empty section is written as `none`**, never deleted. A missing section
   and a section with nothing in it say different things, and only one of them
   is a result.
 - **`UNKNOWNS` is the escalation valve.** An unresolved fact belongs here, not
   inline in `OUTCOME` as a hedge. A role that records a blocking unknown has
   done its job correctly.
+  A `Blocks? yes` prevents approval and PASS until resolved; naming an unknown
+  does not make implementation safe. Nonblocking questions do not force REVISE.
 
 Critical and high findings block delivery. Medium and low findings are visible
 but do not expand the approved scope automatically. Experts do not edit another
@@ -101,11 +102,12 @@ let both roles issue competing answers to the same question.
 2. Investigator before architecture for unexplained bugs or performance issues.
 3. Architect drafts the design, then selected named specialists record their
    pre-build constraints against the written plan.
-4. On every delivery run, Plan Reviewer reads the plan and every selected
-   specialist result. Plan Challenger then challenges each material decision
+4. On every delivery, Plan Reviewer reads the plan and selected specialist
+   results. On deep runs, Plan Challenger then challenges each material decision
    in the reviewed plan. A REVISE from either returns the plan to Architect
-   for a focused revision, followed by a new Reviewer and Challenger pass.
-5. Forge presents the current reviewed and challenged plan to the user and
+   for a focused revision, followed by a new Reviewer pass and, when selected,
+   a Challenger pass. Blocking unknowns also force REVISE or NEEDS INPUT.
+5. On deep runs, Forge presents the current reviewed and challenged plan to the user and
    waits for explicit approval. A reviewer or challenger verdict is never user
    authorization. Any plan change repeats review, challenge, and user approval.
 6. Builder alone performs implementation and reads all selected constraints.
@@ -114,9 +116,9 @@ let both roles issue competing answers to the same question.
    before design and does not perform a candidate review.
 8. Verifier evaluates the integrated result last and records review context.
 
-Delivery runs may omit Product, Investigator, and named specialists, but never
-Architect, Plan Reviewer, or Plan Challenger. Risk changes specialist coverage,
-not the planning and challenge sequence.
+Delivery runs may omit Product, Investigator, and named specialists. Every
+delivery retains Architect, Plan Reviewer, Builder, and Verifier. Deep runs add
+Challenger and user plan approval.
 Audit-only work omits Builder and cannot modify application code. Selected
 specialists examine their scoped boundaries, Auditor makes the cold assessment,
 and Verifier assesses the combined findings. Auditor does not read the earlier
@@ -129,12 +131,16 @@ The host's dispatch capability is read from the project, never assumed:
 - `native-parallel` — concurrent isolated dispatch, confirmed for this host.
 - `native-sequential` — isolation confirmed, concurrency not.
 - `none` — no confirmed isolation. Run explicit sequential role passes in this
-  session. Record `same-session` on the Verifier note and disclose that review
-  context in the report.
+  session. Record `same-session` on all review notes and disclose the context
+  in the report.
 
 `ae-surveyor` resolves every known host's dispatch capability from its own `targets.yml` at
 scaffold time and publishes the table to `.dev/context/host.json`. Read that
-file and look up the tool you are running as.
+file and look up the tool you are running as, matching either the host key or
+an entry in its comma-separated `installer_ids`. A documented dispatch tier
+is only a capability: use isolated agents when the active session actually
+exposes them and delegation is permitted. Otherwise use the same-session path
+and disclose that limitation.
 
 **Two coupling styles, and the difference is deliberate.** Across a *product*
 boundary — `ae-forge` and `ae-surveyor` — this kit never reads another
@@ -150,22 +156,36 @@ together and versioned together by `contract`. A stage skill that cannot
 resolve that sibling stops rather than improvising, which is what keeps the
 coupling honest.
 
-Assume `none` only when that file is missing or your own row is not in it, and
-say which. Use isolated dispatch when confirmed. A same-session Verifier must
+Assume `none` when the file is missing or your host has no matching key or
+alias, and say which. A same-session Verifier must
 reopen claims and run checks directly; the report must state its context.
 
 ## Enforcement modes
 
 Two modes, and like `dispatch` the mode is **read, never assumed**:
 
-- `native` — a host-level hook refuses configured edit-tool calls while a run
-  still needs approval, and while a run is in `verify`. Available where this
-  kit is installed as a plugin whose hooks the host loads.
-- `none` — the default everywhere else. The same two rules still hold; they
+- `native` — a host-level hook refuses configured source edits outside Build
+  or Repair, on stale plan/brief authorization, during read-only work, and when
+  active run ownership is ambiguous. Available only where the host loads it.
+- `none` — the default everywhere else. The same authorization rules hold; they
   are enforced by `forge.mjs` when it is called, and by nothing when it is not.
+
+The guard uses session-bound runs instead of whichever run was updated last.
+`start` and `focus` bind the current host session to that run. If the host does
+not export its session ID, Forge may use `focus --session <id>` from the hook
+event. Multiple unbound active runs block source edits; use separate checkouts
+or bind explicitly. Bookkeeping under `.dev/work` and `.dev/runs` remains writable.
+
+Reviewer, Challenger, and Verifier records require complete shared sections
+and checked evidence. Plan Reviewer covers all six criteria (reasoned N/A is
+allowed); Challenger records tested decisions. Approval/PASS requires COMPLETE
+status and no blocking unknown. This validates the record, not its factual truth.
+See `evaluation.md` for behavioral checks and host validation.
 
 `start` reports `native` only when the `SessionStart` marker matches this host's
 current session ID. A marker left by an earlier session reports `none`.
+Antigravity uses the supplied conversation ID as `--session`; its adapter and
+workspace hook entry are described in `evaluation.md`.
 
 Never describe `native` as a sandbox. Hooks load from a file this model can
 edit, a subagent's tool calls may not reach them, and the configured hook

@@ -5,10 +5,12 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { validateReviewResult } from './review-result.mjs'
 
 const args = process.argv.slice(2)
 const command = args[0] || 'help'
-const KINDS = ['idea', 'feature', 'bug', 'refactor', 'performance', 'security', 'audit']
+const KINDS = ['idea', 'feature', 'bug', 'refactor', 'performance', 'security', 'audit', 'plan', 'diagnose', 'review']
+const READ_ONLY_KINDS = new Set(['audit', 'plan', 'diagnose', 'review'])
 const PHASES = ['understand', 'plan', 'approval', 'build', 'verify', 'repair', 'blocked']
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const TEAM = JSON.parse(readFileSync(resolve(SCRIPT_DIR, '..', 'references', 'team.json'), 'utf8'))
@@ -21,7 +23,7 @@ const ROLE_SKILLS = {
 }
 const TRANSITIONS = {
   understand: ['plan', 'verify', 'blocked'],
-  plan: ['approval', 'verify', 'blocked'],
+  plan: ['approval', 'build', 'verify', 'blocked'],
   approval: ['plan', 'build', 'repair', 'blocked'],
   build: ['verify', 'blocked'],
   // A failed verification either needs a user-approved, in-scope repair or a
@@ -161,7 +163,7 @@ function splitSignals() {
 // Returns both the team and why each role was selected or skipped, so the
 // delivery report can show the routing decision instead of the model
 // recalling it. A skipped role with no recorded reason is a routing bug.
-function chooseTeam(kind, signals, risks, cause) {
+function chooseTeam(kind, signals, risks, cause, depth) {
   const selected = {}
   const skipped = {}
   const take = (role, reason) => {
@@ -192,13 +194,17 @@ function chooseTeam(kind, signals, risks, cause) {
     }
   }
 
-  if (kind !== 'audit') {
+  if (!READ_ONLY_KINDS.has(kind)) {
     take('architect', 'every delivery starts with an evidence-backed plan')
-    take('plan-reviewer', 'every plan receives an independent correctness review')
-    take('plan-challenger', 'every material plan decision is challenged before build')
+    take('plan-reviewer', 'every delivery plan receives a correctness review')
+    if (depth === 'deep') {
+      take('plan-challenger', 'deep review challenges material decisions')
+    } else {
+      skipped['plan-challenger'] = 'routine scope: no material design boundary declared'
+    }
   }
 
-  if (((kind === 'bug' || kind === 'performance') && cause !== 'known') || signals.includes('unknown')) {
+  if (kind === 'diagnose' || ((kind === 'bug' || kind === 'performance') && cause !== 'known') || signals.includes('unknown')) {
     take('investigator', 'cause not demonstrated')
   } else skipped.investigator = 'cause already demonstrated or no defect to diagnose'
 
@@ -220,19 +226,34 @@ function chooseTeam(kind, signals, risks, cause) {
     skipped.product = 'audit-only: assesses the declared scope rather than defining a new outcome'
     take('auditor', 'owns the cold assessment of the repository as it stands')
     take('verifier', 'owns the audit verdict')
+  } else if (kind === 'plan') {
+    for (const role of ['plan-reviewer', 'plan-challenger', 'builder', 'auditor']) delete selected[role]
+    take('architect', 'planning-only outcome')
+    take('verifier', 'checks the plan and its evidence')
+    skipped.builder = 'planning-only: no implementation requested'
+  } else if (kind === 'diagnose') {
+    for (const role of ['product', 'architect', 'plan-reviewer', 'plan-challenger', 'builder', 'auditor']) delete selected[role]
+    take('investigator', 'diagnosis-only outcome')
+    take('verifier', 'checks the causal account')
+    skipped.builder = 'diagnosis-only: no fix requested'
+  } else if (kind === 'review') {
+    for (const role of ['product', 'investigator', 'architect', 'plan-reviewer', 'plan-challenger', 'builder', 'auditor']) delete selected[role]
+    take('verifier', 'judges the existing candidate or diff')
+    skipped.builder = 'review-only: no implementation requested'
   } else {
     skipped.auditor = 'not a cold audit: this run has a change to judge'
     take('builder', 'code must change')
     take('verifier', 'independent verification of every delivery')
   }
 
+  for (const role of ROLES) if (!selected[role] && !skipped[role]) skipped[role] = `outside ${kind} outcome`
   const order = [...ROLES.filter((role) => selected[role])]
   return { team: order, selected, skipped }
 }
 
 // The brief is the one artifact a user reviews and the audit later checks.
-// Every delivery uses this concise shape: risk changes specialist coverage,
-// never whether a plan is reviewed or challenged.
+// Every delivery uses this concise shape and receives plan review; depth
+// controls the additional challenge and user approval before implementation.
 const BRIEF_SECTIONS = [
   ['Request', null],
   ['Assumptions', 'What you are taking as true that the request did not state. Each one a user could correct.'],
@@ -256,8 +277,8 @@ function enforceTier(root) {
     const path = join(root, '.dev', 'context', 'enforce.json')
     if (!existsSync(path)) return 'none'
     const marker = JSON.parse(readFileSync(path, 'utf8'))
-    const session = process.env.CLAUDE_CODE_SESSION_ID
-    return session && marker.enforce === 'native' && marker.session_id === session ? 'native' : 'none'
+    const sessions = [process.env.CODEX_SESSION_ID, process.env.CLAUDE_CODE_SESSION_ID, option('--session')].filter(Boolean)
+    return marker.enforce === 'native' && sessions.includes(marker.session_id) ? 'native' : 'none'
   } catch { return 'none' }
 }
 
@@ -539,6 +560,74 @@ function planReviewVerdict(body) {
   return body?.match(/^### Verdict\s*\r?\n\s*(APPROVED WITH NOTES|APPROVED|REVISE)\s*$/m)?.[1] ?? null
 }
 
+function ensurePlanReviewed(root, run) {
+  if (!run.team.includes('plan-reviewer')) {
+    die('delivery is missing mandatory Plan Reviewer; start a current-contract run and review its plan', 5, { id: run.id })
+  }
+  const reviewer = run.contributions.filter((item) => item.role === 'plan-reviewer').at(-1)
+  if (!reviewer || !['APPROVED', 'APPROVED WITH NOTES'].includes(reviewer.verdict)) {
+    die('Plan Reviewer has not approved the latest plan', 5, { id: run.id, verdict: reviewer?.verdict ?? 'missing' })
+  }
+  const path = artifactPath(root, run.id)
+  const doc = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  const planSha = createHash('sha256').update(sectionBody(doc, 'plan') ?? '').digest('hex')
+  if (reviewer.plan_sha !== planSha) {
+    die(run.team.includes('plan-challenger')
+      ? 'plan changed after challenge and user approval; return it to Plan Reviewer, Plan Challenger, and the user'
+      : 'plan changed after Plan Reviewer; rerun plan review before build', 5, { id: run.id })
+  }
+  if (planReviewVerdict(sectionBody(doc, 'plan-review')) !== reviewer.verdict) {
+    die('Plan review artifact does not match the latest reviewer verdict', 5, { id: run.id })
+  }
+  for (const role of ['plan-reviewer', 'plan-challenger'].filter((role) => run.team.includes(role))) {
+    const contribution = run.contributions.filter((item) => item.role === role).at(-1)
+    if (!contribution) die(`${role} approval is missing`, 5)
+    const result = validateReviewResult(role, readFileSync(resolve(root, contribution.result), 'utf8'), contribution.severity)
+    if (!result.ok || !['APPROVED', 'APPROVED WITH NOTES'].includes(result.verdict)) {
+      die('plan review result is incomplete or blocking', 5, { role, errors: result.errors })
+    }
+    if (contribution.plan_sha !== planSha || planReviewVerdict(sectionBody(doc, role === 'plan-reviewer' ? 'plan-review' : 'plan-challenge')) !== contribution.verdict) {
+      die('plan review approval or artifact is stale', 5, { role })
+    }
+  }
+}
+
+// Used by the hook as well as directly in host integration smoke checks.
+function editCheck() {
+  const root = projectRoot()
+  const { run } = load(root, safeId(option('--id')))
+  ensureActive(run)
+  if (READ_ONLY_KINDS.has(run.kind) || run.read_only) die('read-only run cannot edit source', 5)
+  if (!['build', 'repair'].includes(run.phase)) die('source edits require build or repair phase', 5, { phase: run.phase })
+  ensureRecordedResults(root, run)
+  ensurePlanReviewed(root, run)
+  const roles = run.contributions.map((item) => item.role)
+  const reviewerAt = roles.lastIndexOf('plan-reviewer')
+  const inputsAt = Math.max(-1, ...run.contributions.map((item, index) =>
+    ['understand', 'plan'].includes(item.phase) && ['architect', ...SPECIALIST_ROLES].includes(item.role) ? index : -1))
+  if (reviewerAt <= inputsAt) die('latest plan constraints require a new Reviewer pass', 5)
+  if (run.team.includes('plan-challenger')) {
+    const challenger = run.contributions.filter((item) => item.role === 'plan-challenger').at(-1)
+    if (roles.lastIndexOf('plan-challenger') <= reviewerAt || challenger.plan_sha !== run.contributions[reviewerAt].plan_sha) {
+      die('latest reviewed plan requires a new Challenger pass', 5)
+    }
+  }
+  const digest = readyBriefDigest(root, run.id)
+  const frozen = run.approval?.brief_sha ?? run.brief_sha_at_build
+  if (!frozen || digest !== frozen) die('brief changed since implementation authorization', 5)
+  if (run.approval_required) {
+    const planSha = run.contributions[reviewerAt].plan_sha
+    if (!run.approval || run.approval.plan_sha !== planSha) die('current user plan approval is required', 5)
+    if (run.phase === 'repair') {
+      const verifier = run.contributions.filter((item) => item.role === 'verifier').at(-1)
+      if (!verifier || !['critical', 'high', 'medium', 'low'].includes(verifier.severity)
+        || !Number.isFinite(Date.parse(run.approval.at)) || !Number.isFinite(Date.parse(verifier.at))
+        || Date.parse(run.approval.at) < Date.parse(verifier.at)) die('current repair scope approval is required', 5)
+    }
+  }
+  output({ ok: true, id: run.id, phase: run.phase })
+}
+
 // A section still carrying its scaffolded placeholder was never written. The
 // role recorded a ledger note and skipped the document, which is the failure
 // mode this kit refuses to accept anywhere else: a step that can be silently
@@ -660,6 +749,21 @@ function ensureRecordedResults(root, run) {
   }
 }
 
+function bindSession(root, run) {
+  const sessions = [process.env.CODEX_SESSION_ID, process.env.CLAUDE_CODE_SESSION_ID, option('--session')].filter(Boolean)
+  if (!sessions.length) return
+  for (const entry of readdirSync(workRoot(root), { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === run.id) continue
+    const path = join(workRoot(root), entry.name, 'run.json')
+    if (!existsSync(path)) continue
+    const other = JSON.parse(readFileSync(path, 'utf8'))
+    if (!other.session_ids?.some((id) => sessions.includes(id))) continue
+    other.session_ids = other.session_ids.filter((id) => !sessions.includes(id))
+    save(path, other)
+  }
+  run.session_ids = [...new Set([...(run.session_ids ?? []), ...sessions])]
+}
+
 function start() {
   const root = projectRoot()
   if (!surveyReady(root)) {
@@ -678,7 +782,7 @@ function start() {
   const signals = splitSignals()
   const { risks, assessed } = splitRisks()
   if (option('--approval-required') !== null || option('--approval-reason') !== null) {
-    die('approval is mandatory after Plan Reviewer and Plan Challenger; do not pass an approval override')
+    die('approval is derived from standard/deep routing; do not pass an approval override')
   }
   const cause = option('--cause') ?? ((kind === 'bug' || kind === 'performance') ? 'unknown' : null)
   if (cause && !['known', 'unknown'].includes(cause)) die('--cause must be known or unknown')
@@ -686,14 +790,29 @@ function start() {
   if (cause === 'known' && !causeEvidence) die('--cause-evidence is required when the cause is known')
   const domains = [...new Set(String(option('--domain', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
-  if (option('--tier') !== null) die('--tier is retired: every delivery plans, reviews, and challenges before build')
-  const routing = chooseTeam(kind, [...signals, ...domains], risks, cause)
+  if (option('--tier') !== null) die('--tier is retired; use --depth standard|deep')
+  const readOnly = READ_ONLY_KINDS.has(kind)
+  const requiredDeep = !readOnly && (!assessed || ['security', 'idea'].includes(kind)
+    || risks.some((risk) => ['access', 'stored-shape', 'irreversible'].includes(risk))
+    || [...signals, ...domains].some((signal) => ['payments', 'auth', 'privacy', 'identity-auth', 'migration', 'schema', 'compliance'].includes(signal))
+    || cause === 'unknown')
+  const explicitDepth = option('--depth')
+  const requestedDepth = explicitDepth ?? (process.env.AE_WORKFLOW_DEPTH || null)
+  if (requestedDepth && !['standard', 'deep'].includes(requestedDepth)) die('--depth must be standard or deep')
+  if (requestedDepth === 'standard' && requiredDeep) die('declared risk or unresolved cause requires deep review')
+  if (readOnly && explicitDepth) die('--depth applies only to delivery runs')
+  const depth = readOnly ? 'assessment' : (requestedDepth ?? (requiredDeep ? 'deep' : 'standard'))
+  const routing = chooseTeam(kind, [...signals, ...domains], risks, cause, depth)
   const now = new Date().toISOString()
+  const initialBaseline = baseline(root, id)
   const run = {
     schema: 1,
     id,
     title,
     kind,
+    read_only: readOnly,
+    session_ids: [process.env.CODEX_SESSION_ID, process.env.CLAUDE_CODE_SESSION_ID].filter(Boolean),
+    depth,
     signals,
     risks,
     cause,
@@ -703,16 +822,17 @@ function start() {
     routing: {
       risk_assessed: assessed,
       routing_reason: assessed
-        ? 'risk selects specialist coverage; plan review and challenge are mandatory for every delivery'
-        : 'risk not assessed: specialists selected by keyword only; plan review and challenge remain mandatory',
+        ? `risk selects specialist coverage; ${depth} review selected by risk and task kind`
+        : 'risk not assessed: deep review required; specialists selected by keyword only',
       selected: routing.selected,
       skipped: routing.skipped,
     },
     contract: TEAM.version,
-    approval_reason: kind === 'audit' ? 'none' : 'mandatory user approval of the reviewed and challenged plan',
-    approval_required: kind !== 'audit',
+    approval_reason: depth === 'deep' ? 'user approval of a deeply reviewed plan' : 'none',
+    approval_required: depth === 'deep',
     approval: null,
-    baseline: baseline(root, id),
+    baseline: initialBaseline,
+    source_sha_at_start: readOnly ? candidateDigest(root, initialBaseline) : undefined,
     context: contextStatus(root),
     status: 'active',
     phase: 'understand',
@@ -725,9 +845,11 @@ function start() {
     created_at: now,
     updated_at: now,
   }
+  mkdirSync(dirname(path), { recursive: true })
+  bindSession(root, run)
   save(path, run)
   output({
-    ok: true, id, team: run.team, routing: run.routing,
+    ok: true, id, team: run.team, depth, read_only: readOnly, routing: run.routing,
     approval_required: run.approval_required,
     approval_reason: run.approval_reason,
     context: run.context,
@@ -777,6 +899,7 @@ function focus() {
   }
   if (!summary) die('--summary is required')
   feature.run.active_role = { role, summary, at: new Date().toISOString() }
+  bindSession(root, feature.run)
   save(feature.path, feature.run)
   output({ ok: true, id, role, skill: ROLE_SKILLS[role] ?? 'ae-forge', lenses: feature.run.lenses?.attached?.[role] ?? [] })
 }
@@ -826,17 +949,19 @@ function note() {
       die('Plan Challenger cannot challenge a plan the Plan Reviewer returned for revision', 5, { id, verdict: reviewerVerdict ?? 'unrecorded' })
     }
   }
-  if (role === 'verifier') {
+  if (['plan-reviewer', 'plan-challenger', 'verifier'].includes(role)) {
     const reviewContext = option('--review-context')
     if (feature.run.contract >= 3 && !['isolated', 'same-session'].includes(reviewContext)) {
-      die('Verifier must record --review-context isolated|same-session', 2)
+      die('review roles must record --review-context isolated|same-session', 2)
     }
+  }
+  if (role === 'verifier') {
     const prior = new Set(feature.run.contributions.map((item) => item.role))
     const missingPrior = feature.run.team.filter((selected) => selected !== 'verifier' && !prior.has(selected))
     const reviewedCandidate = new Set(feature.run.contributions
       .filter((item) => item.phase === 'verify' && item.revision === feature.run.revision)
       .map((item) => item.role))
-    const missingCandidateReviews = feature.run.kind === 'audit' ? [] : feature.run.team
+    const missingCandidateReviews = READ_ONLY_KINDS.has(feature.run.kind) ? [] : feature.run.team
       .filter((selected) => SPECIALIST_ROLES.includes(selected) && !reviewedCandidate.has(selected))
     const missing = [...new Set([...missingPrior, ...missingCandidateReviews])]
     if (missing.length) die('Verifier must run after all selected expert work', 5, { missing })
@@ -876,6 +1001,10 @@ function note() {
   }
   let planSha
   let reviewVerdict
+  if (['plan-reviewer', 'plan-challenger', 'verifier'].includes(role) && feature.run.contract >= 9) {
+    const checked = validateReviewResult(role, readFileSync(resultPath, 'utf8'), severity)
+    if (!checked.ok) die('review result is incomplete or inconsistent', 5, { role, errors: checked.errors })
+  }
   if (['plan-reviewer', 'plan-challenger'].includes(role) && feature.run.contract >= (role === 'plan-challenger' ? 4 : 3)) {
     const artifactFile = artifactPath(root, id)
     const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
@@ -900,7 +1029,7 @@ function note() {
     result_sha: fileDigest(resultPath),
     ...(reviewVerdict ? { verdict: reviewVerdict, plan_sha: planSha } : {}),
     ...(role === 'verifier' ? { candidate_sha: candidateDigest(root, feature.run.baseline) } : {}),
-    ...(role === 'verifier' && option('--review-context') ? { review_context: option('--review-context') } : {}),
+    ...(['plan-reviewer', 'plan-challenger', 'verifier'].includes(role) && option('--review-context') ? { review_context: option('--review-context') } : {}),
     at: new Date().toISOString(),
   })
   if (feature.run.active_role?.role === role) feature.run.active_role = null
@@ -944,6 +1073,9 @@ function phase() {
   ensureActive(feature.run)
   if (['build', 'verify', 'repair'].includes(to)) ensureRecordedResults(root, feature.run)
   const from = feature.run.phase
+  if (READ_ONLY_KINDS.has(feature.run.kind) && ['approval', 'build', 'repair'].includes(to)) {
+    die('read-only runs cannot enter approval, build, or repair; start a delivery run for changes', 5, { id, kind: feature.run.kind })
+  }
   if (from !== to && !(TRANSITIONS[from] || []).includes(to)) {
     die('invalid phase transition', 4, { from, to })
   }
@@ -957,7 +1089,9 @@ function phase() {
   if (to === 'repair' && feature.run.kind !== 'audit' && feature.run.contract < 6) {
     die('this run predates mandatory repair-scope approval; return to plan and create a new v6 run before repairing', 5, { id, contract: feature.run.contract ?? 'unrecorded' })
   }
-  if (['approval', 'build'].includes(to) && feature.run.kind !== 'audit') {
+  // Returning from verification for an in-scope repair reuses the accepted
+  // plan. Post-build specialist findings must not invalidate its review order.
+  if (['approval', 'build'].includes(to) && feature.run.kind !== 'audit' && !(to === 'approval' && from === 'verify')) {
     const required = feature.run.team.filter((role) => !['builder', 'verifier'].includes(role))
     const missing = required.filter((role) => !contributed.has(role))
     const latestReviewer = feature.run.contributions.filter((item) => item.role === 'plan-reviewer').at(-1)
@@ -970,31 +1104,32 @@ function phase() {
     if (feature.run.contract >= 4 && missing.includes('plan-challenger')) {
       die('Plan Challenger must challenge the latest reviewed plan before build', 5, { id })
     }
-    if (missing.length) die('pre-build expert contributions are required before user approval', 5, { missing })
+    if (missing.length) die('pre-build expert contributions are required before build', 5, { missing })
+    ensurePlanReviewed(root, feature.run)
     if (feature.run.contract >= 4 && feature.run.team.includes('plan-reviewer')) {
       const roles = feature.run.contributions.map((item) => item.role)
       const reviewAt = roles.lastIndexOf('plan-reviewer')
       const challengeAt = roles.lastIndexOf('plan-challenger')
-      const inputsAt = Math.max(...['architect', ...SPECIALIST_ROLES].map((role) => roles.lastIndexOf(role)))
+      const inputsAt = Math.max(-1, ...feature.run.contributions.map((item, index) =>
+        ['understand', 'plan'].includes(item.phase) && ['architect', ...SPECIALIST_ROLES].includes(item.role) ? index : -1))
       if (reviewAt <= inputsAt) {
         die('Plan Reviewer must review the latest plan and specialist constraints before build', 5, { id })
       }
-      if (challengeAt <= reviewAt) {
+      if (feature.run.team.includes('plan-challenger') && challengeAt <= reviewAt) {
         die('Plan Challenger must challenge the latest reviewed plan before build', 5, { id })
       }
-      const reviewer = feature.run.contributions[reviewAt]
-      const review = feature.run.contributions[challengeAt]
+      const review = feature.run.team.includes('plan-challenger') ? feature.run.contributions[challengeAt] : null
       const artifactFile = artifactPath(root, id)
       const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
-      const verdict = review.verdict ?? (existsSync(resolve(root, review.result))
+      const verdict = review?.verdict ?? (review && existsSync(resolve(root, review.result))
         ? planReviewVerdict(readFileSync(resolve(root, review.result), 'utf8')) : null)
-      if (!['APPROVED', 'APPROVED WITH NOTES'].includes(reviewer.verdict) || !['APPROVED', 'APPROVED WITH NOTES'].includes(verdict)) {
+      if (review && !['APPROVED', 'APPROVED WITH NOTES'].includes(verdict)) {
         die('Plan Challenger has not approved the latest plan', 5, { id, verdict: verdict ?? 'unrecorded' })
       }
-      if (planReviewVerdict(sectionBody(doc, 'plan-challenge')) !== verdict) {
+      if (review && planReviewVerdict(sectionBody(doc, 'plan-challenge')) !== verdict) {
         die('Plan challenge artifact does not match the latest challenger verdict', 5, { id, verdict })
       }
-      if (review.plan_sha && createHash('sha256').update(sectionBody(doc, 'plan') ?? '').digest('hex') !== review.plan_sha) {
+      if (review?.plan_sha && createHash('sha256').update(sectionBody(doc, 'plan') ?? '').digest('hex') !== review.plan_sha) {
         die('plan changed after challenge and user approval; return it to Plan Reviewer, Plan Challenger, and the user', 5, { id })
       }
     }
@@ -1002,15 +1137,17 @@ function phase() {
   if (to === 'build' && feature.run.approval_required && !feature.run.approval) {
     die('user approval of the reviewed and challenged plan is required before build', 5, { id })
   }
-  if (to === 'repair' && feature.run.approval_required) {
+  if (to === 'repair') {
     const verifier = feature.run.contributions.filter((item) => item.role === 'verifier').at(-1)
+    if (!verifier || !verifier.severity || verifier.severity === 'none' || verifier.revision !== feature.run.revision) {
+      die('repair requires a current verifier finding; return to Plan for a discretionary change', 5, { id })
+    }
+    if (feature.run.approval_required) {
     const approvedAt = feature.run.approval?.at ? Date.parse(feature.run.approval.at) : NaN
     const verifiedAt = verifier?.at ? Date.parse(verifier.at) : NaN
     if (!feature.run.approval || !verifier || !Number.isFinite(approvedAt) || !Number.isFinite(verifiedAt) || approvedAt < verifiedAt) {
       die('user must approve the repair scope after the verifier finding; move to approval, present the approval packet, and record approval before repair', 5, { id })
     }
-    if (!verifier.severity || verifier.severity === 'none' || verifier.revision !== feature.run.revision) {
-      die('repair requires a current verifier finding; return to Plan for a discretionary change', 5, { id })
     }
   }
   if (to === 'build' && feature.run.contract >= 3) {
@@ -1018,7 +1155,7 @@ function phase() {
     if (feature.run.approval?.brief_sha !== undefined && feature.run.approval.brief_sha !== digest) {
       die('implementation brief changed after approval', 5, { id })
     }
-    if (feature.run.contract >= 5) {
+    if (feature.run.contract >= 5 && feature.run.approval_required) {
       const artifactFile = artifactPath(root, id)
       const plan = existsSync(artifactFile) ? sectionBody(readFileSync(artifactFile, 'utf8'), 'plan') : null
       const planSha = plan ? createHash('sha256').update(plan).digest('hex') : null
@@ -1027,7 +1164,7 @@ function phase() {
       }
     }
   }
-  if (to === 'verify' && feature.run.kind !== 'audit') {
+  if (to === 'verify' && !READ_ONLY_KINDS.has(feature.run.kind)) {
     const built = feature.run.contributions.some((item) => item.role === 'builder'
       && item.revision === feature.run.revision && ['build', 'repair'].includes(item.phase))
     if (!built) die('Builder contribution for the current revision is required before verification', 5, { id, revision: feature.run.revision })
@@ -1076,7 +1213,7 @@ function approve() {
   const id = safeId(option('--id'))
   const feature = load(root, id)
   ensureActive(feature.run)
-  if (feature.run.kind === 'audit') die('audit-only runs have no implementation plan to approve', 5, { id })
+  if (READ_ONLY_KINDS.has(feature.run.kind)) die('read-only runs have no implementation plan to approve', 5, { id })
   if (feature.run.contract >= 5 && feature.run.phase !== 'approval') {
     die('user approval is requested only after plan review and challenge; move to approval when both passes are current', 5, { id, phase: feature.run.phase })
   }
@@ -1143,7 +1280,7 @@ function approvalPacket() {
   const id = safeId(option('--id'))
   const feature = load(root, id)
   ensureActive(feature.run)
-  if (feature.run.kind === 'audit') die('audit-only runs have no implementation plan to approve', 5, { id })
+  if (READ_ONLY_KINDS.has(feature.run.kind)) die('read-only runs have no implementation plan to approve', 5, { id })
   const path = artifactPath(root, id)
   if (!existsSync(path)) die('run artifact is missing; create it before presenting an approval packet', 5, { id })
   const doc = readFileSync(path, 'utf8')
@@ -1189,13 +1326,14 @@ function finish() {
   }
   const accepted = new Set(String(option('--accept-gaps', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))
-  const GAPS = ['risk', 'lenses', 'audit', 'sections']
+  const GAPS = ['risk', 'lenses', 'audit', 'sections', 'baseline']
   const unknownGap = [...accepted].filter((value) => !GAPS.includes(value))
   if (unknownGap.length) die(`unknown gap(s): ${unknownGap.join(', ')}`, 2, { allowed: GAPS })
 
   ensureActive(feature.run)
   ensureRecordedResults(root, feature.run)
   if (feature.run.phase !== 'verify') die('run must be in verify phase before finish', 5, { phase: feature.run.phase })
+  if (!READ_ONLY_KINDS.has(feature.run.kind)) ensurePlanReviewed(root, feature.run)
   if (feature.run.approval_required && !feature.run.approval) die('user approval is missing', 5, { id })
 
   // The kit's own principle, applied to its newest surface: a workflow step
@@ -1210,23 +1348,26 @@ function finish() {
   if (!feature.run.lenses) {
     gaps.push({ gap: 'lenses', why: 'lens selection was never recorded, so no domain depth is evidenced' })
   }
-  if (feature.run.kind !== 'audit' && !feature.run.baseline?.head) {
+  if (['plan', 'diagnose', 'review'].includes(feature.run.kind) && !feature.run.baseline?.head) {
+    gaps.push({ gap: 'baseline', why: 'no Git baseline was recorded, so read-only source integrity cannot be proved mechanically' })
+  }
+  if (!READ_ONLY_KINDS.has(feature.run.kind) && !feature.run.baseline?.head) {
     gaps.push({ gap: 'audit', why: 'no Git baseline was recorded, so the candidate could not be pinned to an exact diff' })
-  } else if (feature.run.kind !== 'audit' && feature.run.audit?.revision !== feature.run.revision) {
+  } else if (!READ_ONLY_KINDS.has(feature.run.kind) && feature.run.audit?.revision !== feature.run.revision) {
     gaps.push({
       gap: 'audit',
       why: feature.run.audit
         ? `the deterministic audit inspected revision ${feature.run.audit.revision}, not the current ${feature.run.revision}`
         : 'the deterministic audit never ran',
     })
-  } else if (feature.run.kind !== 'audit' && feature.run.audit?.inspected_nothing) {
+  } else if (!READ_ONLY_KINDS.has(feature.run.kind) && feature.run.audit?.inspected_nothing) {
     // The audit ran and read an empty diff. Ran-but-read-nothing must not
     // close a run as quietly as ran-and-found-nothing.
     gaps.push({
       gap: 'audit',
       why: 'the deterministic audit read an empty diff, so it proves nothing about the work; it inspected, and found, nothing',
     })
-  } else if (feature.run.kind !== 'audit' && feature.run.audit?.candidate_sha
+  } else if (!READ_ONLY_KINDS.has(feature.run.kind) && feature.run.audit?.candidate_sha
     && feature.run.audit.candidate_sha !== candidateDigest(root, feature.run.baseline)) {
     gaps.push({ gap: 'audit', why: 'the candidate changed after the deterministic audit' })
   }
@@ -1253,7 +1394,7 @@ function finish() {
   const roles = new Set(feature.run.contributions.map((item) => item.role))
   const missing = feature.run.team.filter((role) => !roles.has(role))
   if (missing.length) die('every selected expert must contribute before completion', 5, { missing })
-  if (feature.run.kind !== 'audit') {
+  if (!READ_ONLY_KINDS.has(feature.run.kind)) {
     const candidateReviews = new Set(feature.run.contributions
       .filter((item) => item.phase === 'verify' && item.revision === feature.run.revision)
       .map((item) => item.role))
@@ -1268,12 +1409,16 @@ function finish() {
   if (!verifierReview) {
     die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
   }
-  if (feature.run.kind !== 'audit' && verifierReview.candidate_sha
+  if (!READ_ONLY_KINDS.has(feature.run.kind) && verifierReview.candidate_sha
     && verifierReview.candidate_sha !== candidateDigest(root, feature.run.baseline)) {
     die('candidate changed after Verifier inspected it; verify the current files again', 5, { id })
   }
   if (feature.run.contract >= 3 && !verifierReview.review_context) {
     die('Verifier review context was not recorded', 5, { id })
+  }
+  if (READ_ONLY_KINDS.has(feature.run.kind) && feature.run.source_sha_at_start
+    && feature.run.source_sha_at_start !== candidateDigest(root, feature.run.baseline)) {
+    die('source changed during a read-only run; start a delivery run for implementation', 5, { id })
   }
   if (feature.run.contract >= 3) {
     const recordedVerdict = (body) => body.match(/^### Verdict\s*\r?\n\s*(PASS WITH RESIDUAL RISK|PASS|FAIL)\s*$/m)?.[1] ?? null
@@ -1308,7 +1453,14 @@ function finish() {
   const acceptedResiduals = []
   for (const item of feature.run.contributions) {
     if (item.phase !== 'verify') continue
-    if (item.residual && item.severity) {
+    if (READ_ONLY_KINDS.has(feature.run.kind)) {
+      // Audit severity describes the repository findings, not a failed fix.
+      // A sound audit can and should report critical defects.
+      continue
+    }
+    if (item.residual && ['critical', 'high'].includes(item.severity)) {
+      unresolved.set(item.role, item)
+    } else if (item.residual && item.severity) {
       unresolved.delete(item.role)
       acceptedResiduals.push({ role: item.role, severity: item.severity, why: item.residual })
     } else if (['critical', 'high'].includes(item.severity)) unresolved.set(item.role, item)
@@ -1375,6 +1527,7 @@ function report() {
     ? '**NOT ASSESSED**'
     : (run.risks?.length ? `\`${run.risks.join(', ')}\`` : 'none declared')
   out.push(`**Routing** · risk ${risk} · ${run.routing?.routing_reason ?? 'no reason recorded'}`, '')
+  out.push(`**Mode** · ${run.kind} · ${run.depth ?? 'legacy'}${READ_ONLY_KINDS.has(run.kind) ? ' · read-only' : ''}`, '')
 
   out.push('| Expert | Why selected | Contribution |', '|---|---|---|')
   for (const role of run.team) {
@@ -1446,6 +1599,11 @@ function report() {
   const reviewContext = run.review_context ?? run.contributions
     .filter((item) => item.role === 'verifier').at(-1)?.review_context ?? 'unrecorded'
   out.push(`**Review context** · ${reviewContext === 'isolated' ? 'isolated' : reviewContext === 'same-session' ? 'same session; not context independent' : 'unrecorded'}`)
+  out.push('**Review validation** · required structure checked; evidence truth and host behavior require independent validation')
+  for (const role of ['plan-reviewer', 'plan-challenger']) {
+    const review = run.contributions.filter((item) => item.role === role).at(-1)
+    if (review) out.push(`**${role} context** · ${review.review_context ?? 'unrecorded'}${review.review_context === 'same-session' ? '; not context independent' : ''}`)
+  }
   const cycles = Math.max(0, (run.revision ?? 1) - 1)
   out.push(`**Loop** · ${run.revision} revision(s) · repair cycle ${cycles} of 2`)
   // Never fall back to the CURRENT team.json version here. A run started
@@ -1673,15 +1831,17 @@ function help() {
 Internal recovery ledger for the autonomous Forge workflow.
 
   start  --title TEXT --kind KIND --risk FLAGS [--domain a,b] [--signals a,b]
+         [--depth standard|deep] (delivery only)
+         kinds: idea, feature, bug, refactor, performance, security,
+                audit, plan, diagnose, review
          [--cause known|unknown --cause-evidence TEXT]
   list
   status --id ID
   focus  --id ID --role ROLE|forge --summary TEXT
   note   --id ID --role ROLE --summary TEXT --result PATH [--severity S]
          [--review-context isolated|same-session] (Verifier)
-         [--residual TEXT]  (accept a blocking-severity finding this run will
-          not repair - an inherited defect, or one whose fix is a product
-          decision; requires --severity and is named in the delivery report)
+         [--residual TEXT]  (record a nonblocking residual risk; critical and
+          high delivery findings still block completion)
   phase  --id ID --to PHASE --summary TEXT
   brief  --id ID [--force]
   lenses --id ID --json '<lens-select.mjs output>'
@@ -1784,6 +1944,6 @@ function runs() {
   output(stats)
 }
 
-const handlers = { help, start, brief, artifact, section, lenses, list, status, focus, note, phase, approve, approvalPacket, 'approval-packet': approvalPacket, audit, report, finish, cancel, contract, runs }
+const handlers = { help, start, brief, artifact, section, lenses, list, status, focus, note, phase, approve, approvalPacket, 'approval-packet': approvalPacket, 'edit-check': editCheck, audit, report, finish, cancel, contract, runs }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()

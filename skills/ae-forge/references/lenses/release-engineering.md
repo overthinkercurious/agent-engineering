@@ -57,7 +57,8 @@ release. Editing code is not releasing it.
 **Verification (Verifier)**
 
 10. Confirm the released artifact reports the version that was intended.
-11. Confirm the flag's off-state is the current behaviour, by exercising it.
+11. If this release uses a flag, exercise its off-state and confirm it retains
+    the current behaviour.
 12. Confirm the stated rollback actually restores the observable behaviour,
     and name explicitly what it does not restore.
 

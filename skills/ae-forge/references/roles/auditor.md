@@ -52,7 +52,8 @@ materially change the requested decision.
 
 ## Workflow
 
-1. Record the scope, the exclusions, and the cap.
+1. Persist the scope, exclusions, and summary cap in the run artifact before
+   opening scoped source. Do not reconstruct this declaration after reading.
 2. Read the project's declared invariants and gates first — an audit that
    rediscovers a rule the project already enforces wastes its cap.
 3. Read the scoped code. Trace real paths rather than sampling files.
@@ -62,7 +63,8 @@ materially change the requested decision.
 5. Check whether an existing gate would already catch it. If one would, the
    finding is that the gate is not run, not that the code is wrong.
 6. Rank by consequence, then by how reachable the path is.
-7. Stop at the cap or at the end of the scope, whichever comes first.
+7. Stop at the end of the declared scope. Lead with the capped summary, but
+   preserve every established critical/high hazard in the full result.
 
 ## Severity
 

@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { reviewResult } from './helpers/review-fixtures.mjs'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,6 +15,8 @@ const guard = script('skills/ae-forge/scripts/guard.mjs')
 const analyze = script('skills/ae-surveyor/scripts/analyze.mjs')
 const knowledge = script('skills/ae-surveyor/scripts/knowledge.mjs')
 const rules = script('skills/ae-surveyor/scripts/rules.mjs')
+const citations = script('skills/ae-surveyor/scripts/verify-citations.mjs')
+const validateKit = script('skills/ae-forge/scripts/validate-kit.mjs')
 
 test('only Forge and Surveyor are standalone routing surfaces', () => {
   const stages = ['ae-investigate', 'ae-plan', 'ae-plan-review', 'ae-build', 'ae-verify', 'ae-audit']
@@ -40,9 +43,12 @@ function withProject(name, run) {
     writeFileSync(target, content)
     return target
   }
-  const invoke = (file, args, env = {}) => spawnSync(process.execPath, [file, ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, ...env },
+  const invoke = (file, args, env = {}) => {
+    if (args[0] === 'note' && ['plan-reviewer', 'plan-challenger'].includes(args[args.indexOf('--role') + 1]) && !args.includes('--review-context')) args = [...args, '--review-context', 'same-session']
+    return spawnSync(process.execPath, [file, ...args], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, AE_WORKFLOW_DEPTH: 'deep', ...env },
   })
+  }
   try { run({ root, put, invoke }) } finally { rmSync(root, { recursive: true, force: true }) }
 }
 
@@ -58,10 +64,15 @@ function approvePlan({ root, put, call }, id) {
   const plan = put(`.dev/work/${id}/results/architect.md`, '# Architect\n\n## OUTCOME\nPlan.\n')
   assert.equal(call('section', '--id', id, '--name', 'plan', '--from', plan).status, 0)
   assert.equal(call('note', '--id', id, '--role', 'architect', '--summary', 'Plan', '--severity', 'none', '--result', plan).status, 0)
-  const review = put(`.dev/work/${id}/results/plan-reviewer.md`, '# Plan Reviewer\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+  const team = JSON.parse(readFileSync(join(root, `.dev/work/${id}/run.json`), 'utf8')).team
+  if (team.includes('security')) {
+    const constraints = put(`.dev/work/${id}/results/security.md`, '# Security\n\n## OUTCOME\nAccess constraints.\n')
+    assert.equal(call('note', '--id', id, '--role', 'security', '--summary', 'Constraints', '--severity', 'none', '--result', constraints).status, 0)
+  }
+  const review = put(`.dev/work/${id}/results/plan-reviewer.md`, reviewResult('plan-reviewer', 'APPROVED'))
   assert.equal(call('section', '--id', id, '--name', 'plan-review', '--from', review).status, 0)
   assert.equal(call('note', '--id', id, '--role', 'plan-reviewer', '--summary', 'Approved', '--severity', 'none', '--result', review).status, 0)
-  const challenge = put(`.dev/work/${id}/results/plan-challenger.md`, '# Plan Challenger\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+  const challenge = put(`.dev/work/${id}/results/plan-challenger.md`, reviewResult('plan-challenger', 'APPROVED'))
   assert.equal(call('section', '--id', id, '--name', 'plan-challenge', '--from', challenge).status, 0)
   assert.equal(call('note', '--id', id, '--role', 'plan-challenger', '--summary', 'Challenge approved', '--severity', 'none', '--result', challenge).status, 0)
   assert.equal(call('phase', '--id', id, '--to', 'approval', '--summary', 'Awaiting user approval').status, 0)
@@ -106,6 +117,7 @@ test('lens selection reads the run request, ahead of project-only domain signals
     const selected = JSON.parse(result.stdout)
     assert.ok(selected.attached.builder.includes('payments'))
     assert.ok(selected.derived_from_project.includes('web-performance'))
+    assert.ok(!selected.attached.builder.includes('web-performance'), 'unrelated project domain should not attach')
   })
 })
 
@@ -170,14 +182,14 @@ test('Forge cannot finish with a verdict that disagrees with Verifier evidence',
     const audit = put('.dev/work/verdict/results/auditor.md', '# Auditor\n\n## OUTCOME\nAudit complete.\n')
     assert.equal(call('note', '--id', 'verdict', '--role', 'auditor', '--summary', 'Audit complete', '--result', audit).status, 0)
     assert.equal(call('phase', '--id', 'verdict', '--to', 'verify', '--summary', 'Reviewing audit').status, 0)
-    const fail = put('.dev/work/verdict/results/verifier.md', '# Verifier\n\n## OUTCOME\n\n### Verdict\nFAIL\n')
+    const fail = put('.dev/work/verdict/results/verifier.md', reviewResult('verifier', 'FAIL'))
     assert.equal(call('note', '--id', 'verdict', '--role', 'verifier', '--summary', 'Failed', '--severity', 'none', '--review-context', 'same-session', '--result', fail).status, 0)
     const finish = (...extra) => call('finish', '--id', 'verdict', '--summary', 'Audit reviewed', '--verification', 'Review recorded', ...extra)
     assert.notEqual(finish().status, 0, 'the verdict must be explicit')
     const mismatch = finish('--result', 'PASS')
     assert.equal(mismatch.status, 5)
     assert.match(JSON.parse(mismatch.stdout).error, /verdict disagrees/)
-    const pass = put('.dev/work/verdict/results/verifier-pass.md', '# Verifier\n\n## OUTCOME\n\n### Verdict\nPASS\n')
+    const pass = put('.dev/work/verdict/results/verifier-pass.md', reviewResult('verifier', 'PASS'))
     assert.equal(call('section', '--id', 'verdict', '--name', 'verification', '--from', pass).status, 0)
     assert.equal(call('note', '--id', 'verdict', '--role', 'verifier', '--summary', 'Passed', '--severity', 'none', '--review-context', 'same-session', '--result', pass).status, 0)
     assert.equal(finish('--result', 'PASS').status, 0)
@@ -203,7 +215,7 @@ test('delivery requires an approved review and challenge of the current plan bef
     assert.equal(call('note', '--id', 'plan-gate', '--role', 'architect', '--summary', 'First plan',
       '--severity', 'none', '--result', firstPlan).status, 0)
     const revise = put('.dev/work/plan-gate/results/plan-reviewer.md',
-      '# Plan Reviewer\n\n## OUTCOME\n\n### Verdict\nREVISE\n')
+      reviewResult('plan-reviewer', 'REVISE'))
     assert.equal(call('note', '--id', 'plan-gate', '--role', 'plan-reviewer', '--summary', 'Revise plan',
       '--severity', 'high', '--result', revise).status, 0)
     const blocked = call('phase', '--id', 'plan-gate', '--to', 'approval', '--summary', 'Awaiting approval')
@@ -220,7 +232,7 @@ test('delivery requires an approved review and challenge of the current plan bef
     assert.match(JSON.parse(stale.stdout).error, /Plan Reviewer has not approved/)
 
     const approved = put('.dev/work/plan-gate/results/plan-reviewer-approved.md',
-      '# Plan Reviewer\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+      reviewResult('plan-reviewer', 'APPROVED'))
     const inconsistent = call('note', '--id', 'plan-gate', '--role', 'plan-reviewer',
       '--summary', 'Approved', '--severity', 'high', '--result', approved)
     assert.equal(inconsistent.status, 5)
@@ -232,7 +244,7 @@ test('delivery requires an approved review and challenge of the current plan bef
     assert.equal(noChallenge.status, 5)
     assert.match(JSON.parse(noChallenge.stdout).error, /Plan Challenger/)
     const challenged = put('.dev/work/plan-gate/results/plan-challenger.md',
-      '# Plan Challenger\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+      reviewResult('plan-challenger', 'APPROVED'))
     assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan-challenge', '--from', challenged).status, 0)
     assert.equal(call('note', '--id', 'plan-gate', '--role', 'plan-challenger', '--summary', 'Challenge approved',
       '--severity', 'none', '--result', challenged).status, 0)
@@ -244,7 +256,7 @@ test('delivery requires an approved review and challenge of the current plan bef
     assert.match(JSON.parse(changed.stdout).error, /plan changed after challenge and user approval/)
     assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan', '--from', secondPlan).status, 0)
     const challengeAgain = put('.dev/work/plan-gate/results/plan-challenger-2.md',
-      '# Plan Challenger\n\n## OUTCOME\n\n### Verdict\nAPPROVED\n')
+      reviewResult('plan-challenger', 'APPROVED'))
     assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan-challenge', '--from', challengeAgain).status, 0)
     assert.equal(call('note', '--id', 'plan-gate', '--role', 'plan-challenger', '--summary', 'Challenge approved again',
       '--severity', 'none', '--result', challengeAgain).status, 0)
@@ -265,7 +277,7 @@ test('repair must contribute a new Builder result before the next verification',
     surveyed(put)
     const call = (...args) => invoke(forge, [...args, '--root', root])
     assert.equal(call('start', '--id', 'repair-gate', '--title', 'Fix a bounded issue',
-      '--kind', 'feature', '--risk', 'none').status, 0)
+      '--kind', 'feature', '--risk', 'access').status, 0)
     assert.equal(call('brief', '--id', 'repair-gate').status, 0)
     assert.equal(call('artifact', '--id', 'repair-gate').status, 0)
     const briefPath = join(root, '.dev/work/repair-gate/brief.md')
@@ -285,8 +297,11 @@ test('repair must contribute a new Builder result before the next verification',
     assert.match(JSON.parse(overwritten.stdout).error, /result changed/)
     writeFileSync(built, '# Builder\n\n## OUTCOME\nBuilt first candidate.\n')
     assert.equal(call('phase', '--id', 'repair-gate', '--to', 'verify', '--summary', 'Reviewing').status, 0)
+    const candidateReview = put('.dev/work/repair-gate/results/security-candidate.md', '# Security\n\n## OUTCOME\nCandidate checked.\n')
+    assert.equal(call('note', '--id', 'repair-gate', '--role', 'security', '--summary', 'Candidate finding',
+      '--severity', 'high', '--result', candidateReview).status, 0)
     const failed = put('.dev/work/repair-gate/results/verifier.md',
-      '# Verifier\n\n## OUTCOME\n\n### Verdict\nFAIL\n')
+      reviewResult('verifier', 'FAIL'))
     assert.equal(call('note', '--id', 'repair-gate', '--role', 'verifier', '--summary', 'Failed',
       '--severity', 'high', '--review-context', 'same-session', '--result', failed).status, 0)
     const repairWithoutApproval = call('phase', '--id', 'repair-gate', '--to', 'repair', '--summary', 'Repairing')
@@ -358,7 +373,7 @@ test('finish rejects files changed after Verifier inspected the candidate', () =
     assert.equal(call('phase', '--id', 'candidate-gate', '--to', 'verify', '--summary', 'Reviewing').status, 0)
     assert.equal(call('audit', '--id', 'candidate-gate').status, 0)
     const verified = put('.dev/work/candidate-gate/results/verifier.md',
-      '# Verifier\n\n## OUTCOME\n\n### Verdict\nPASS\n')
+      reviewResult('verifier', 'PASS'))
     assert.equal(call('note', '--id', 'candidate-gate', '--role', 'verifier', '--summary', 'Passed',
       '--severity', 'none', '--review-context', 'same-session', '--result', verified).status, 0)
     put('src/behavior.js', 'export const value = 2\n')
@@ -388,7 +403,7 @@ test('delivery without a Git baseline reports the unpinned candidate as a gap', 
       '--severity', 'none', '--result', built).status, 0)
     assert.equal(call('phase', '--id', 'no-baseline', '--to', 'verify', '--summary', 'Reviewing').status, 0)
     const verified = put('.dev/work/no-baseline/results/verifier.md',
-      '# Verifier\n\n## OUTCOME\n\n### Verdict\nPASS\n')
+      reviewResult('verifier', 'PASS'))
     assert.equal(call('note', '--id', 'no-baseline', '--role', 'verifier', '--summary', 'Passed',
       '--severity', 'none', '--review-context', 'same-session', '--result', verified).status, 0)
     const finish = call('finish', '--id', 'no-baseline', '--summary', 'Done',
@@ -396,7 +411,7 @@ test('delivery without a Git baseline reports the unpinned candidate as a gap', 
     assert.equal(finish.status, 5)
     assert.match(JSON.parse(finish.stdout).gaps[0].why, /no Git baseline/)
     const residual = put('.dev/work/no-baseline/results/verifier-residual.md',
-      '# Verifier\n\n## OUTCOME\n\n### Verdict\nPASS\n')
+      reviewResult('verifier', 'PASS'))
     assert.equal(call('section', '--id', 'no-baseline', '--name', 'verification', '--from', residual).status, 0)
     assert.equal(call('note', '--id', 'no-baseline', '--role', 'verifier', '--summary', 'Accepted issue',
       '--severity', 'high', '--residual', 'Inherited defect outside this change',
@@ -404,11 +419,11 @@ test('delivery without a Git baseline reports the unpinned candidate as a gap', 
     const contradictory = call('finish', '--id', 'no-baseline', '--summary', 'Done',
       '--verification', 'Checked', '--result', 'PASS', '--accept-gaps', 'audit')
     assert.equal(contradictory.status, 5)
-    assert.match(JSON.parse(contradictory.stdout).error, /PASS WITH RESIDUAL RISK/)
+    assert.match(JSON.parse(contradictory.stdout).error, /unresolved blocking findings/)
   })
 })
 
-test('every delivery selects plan reviewer and challenger without a tier', () => {
+test('explicit deep delivery selects plan reviewer and challenger', () => {
   withProject('ae-standard-route-', ({ root, put, invoke }) => {
     surveyed(put)
     const start = invoke(forge, ['start', '--id', 'standard-route', '--title', 'Moderate change',
@@ -450,7 +465,7 @@ test('audit routing keeps delivery-only roles out even when request signals matc
   })
 })
 
-test('risk flags add their specialists without changing the mandatory review flow', () => {
+test('risk flags add their specialists within a deep review flow', () => {
   const cases = [
     ['access', 'security'],
     ['stored-shape', 'data'],
@@ -469,4 +484,240 @@ test('risk flags add their specialists without changing the mandatory review flo
       assert.ok(routed.team.includes('plan-reviewer') && routed.team.includes('plan-challenger'), risk)
     })
   }
+})
+
+test('kit routing metadata agrees with role and lens documents', () => {
+  const checked = spawnSync(process.execPath, [validateKit], { encoding: 'utf8' })
+  assert.equal(checked.status, 0, checked.stdout || checked.stderr)
+})
+
+test('risk and kind are change signals for lens selection', () => {
+  withProject('ae-lens-risk-', ({ invoke }) => {
+    const rendered = JSON.parse(invoke(lensSelect, ['--team', 'experience,verifier', '--kind', 'feature', '--risk', 'rendered']).stdout)
+    assert.ok(rendered.attached.experience.includes('accessibility'))
+    assert.ok(rendered.attached.verifier.includes('ui-finish'))
+    const refactor = JSON.parse(invoke(lensSelect, ['--team', 'builder', '--kind', 'refactor', '--risk', 'none']).stdout)
+    assert.ok(refactor.attached.builder.includes('test-automation'))
+  })
+})
+
+test('Python manifest dependencies derive AI and payments domains', () => {
+  withProject('ae-python-domains-', ({ root, put, invoke }) => {
+    put('requirements.txt', 'openai>=1.0\nstripe==10.0\n')
+    put('app.py', 'import openai\nimport stripe\n')
+    const scanned = invoke(analyze, ['--root', root])
+    assert.equal(scanned.status, 0, scanned.stderr)
+    const selected = invoke(lensSelect, ['--team', 'builder', '--analysis', join(root, '.dev/context/analysis.json')])
+    assert.equal(selected.status, 0, selected.stderr)
+    const lenses = JSON.parse(selected.stdout)
+    assert.ok(lenses.derived_from_project.includes('ai-llm'))
+    assert.ok(lenses.derived_from_project.includes('payments'))
+  })
+})
+
+test('citation check resolves route-group paths and rejects extensionless out-of-range references', () => {
+  withProject('ae-citations-', ({ root, put, invoke }) => {
+    put('src/app/(auth)/page.tsx', 'export default 1\n')
+    put('docs/My Guide.md', '# Guide\n')
+    put('Dockerfile', 'FROM scratch\n')
+    put('.dev/knowledge/stack.md', '`src/app/(auth)/page.tsx:1`, `docs/My Guide.md:1`, and `Dockerfile:900`\n')
+    const checked = invoke(citations, ['--root', root])
+    assert.equal(checked.status, 1, checked.stdout)
+    assert.match(checked.stdout, /Dockerfile:900/)
+    assert.doesNotMatch(checked.stdout, /NO FILE.*page\.tsx/)
+    assert.doesNotMatch(checked.stdout, /NO FILE.*Guide\.md/)
+  })
+})
+
+test('guard covers apply_patch for source edits and allows ledger-only patches', () => {
+  withProject('ae-guard-patch-', ({ root, put }) => {
+    put('.dev/work/guard-patch/run.json', JSON.stringify({
+      id: 'guard-patch', status: 'active', phase: 'understand',
+      approval_required: true, approval: null, updated_at: '2026-09-27T00:00:00Z',
+    }))
+    const check = (command) => spawnSync(process.execPath, [guard, 'pre-tool-use'], {
+      cwd: repo, encoding: 'utf8', input: JSON.stringify({ cwd: root, tool_name: 'apply_patch', tool_input: { command } }),
+    })
+    assert.equal(check('*** Begin Patch\n*** Update File: src/behavior.js\n*** End Patch').status, 2)
+    assert.equal(check('*** Begin Patch\n*** Update File: .dev/work/guard-patch/result.md\n*** End Patch').status, 0)
+  })
+})
+
+test('critical or high delivery findings cannot be accepted as residual risk', () => {
+  withProject('ae-block-residual-', ({ root, put, invoke }) => {
+    surveyed(put)
+    const call = (...args) => invoke(forge, [...args, '--root', root])
+    assert.equal(call('start', '--id', 'block-residual', '--title', 'Check change', '--kind', 'feature', '--risk', 'none').status, 0)
+    assert.equal(call('artifact', '--id', 'block-residual').status, 0)
+    assert.equal(call('brief', '--id', 'block-residual').status, 0)
+    const briefPath = join(root, '.dev/work/block-residual/brief.md')
+    writeFileSync(briefPath, readFileSync(briefPath, 'utf8').replaceAll('TODO', 'Specified for test.'))
+    approvePlan({ root, put, call }, 'block-residual')
+    assert.equal(call('lenses', '--id', 'block-residual', '--json', JSON.stringify({ attached: {}, assessed: true })).status, 0)
+    assert.equal(call('phase', '--id', 'block-residual', '--to', 'build', '--summary', 'Build').status, 0)
+    const built = put('.dev/work/block-residual/results/builder.md', '# Builder\n\n## OUTCOME\nBuilt.\n')
+    assert.equal(call('note', '--id', 'block-residual', '--role', 'builder', '--summary', 'Built', '--severity', 'none', '--result', built).status, 0)
+    assert.equal(call('phase', '--id', 'block-residual', '--to', 'verify', '--summary', 'Verify').status, 0)
+    const verdict = put('.dev/work/block-residual/results/verifier.md', reviewResult('verifier', 'PASS WITH RESIDUAL RISK'))
+    assert.equal(call('section', '--id', 'block-residual', '--name', 'verification', '--from', verdict).status, 0)
+    assert.equal(call('note', '--id', 'block-residual', '--role', 'verifier', '--summary', 'Unfixed', '--severity', 'high',
+      '--residual', 'Accepted by author', '--review-context', 'same-session', '--result', verdict).status, 0)
+    const finish = call('finish', '--id', 'block-residual', '--summary', 'Done', '--verification', 'Checked',
+      '--result', 'PASS WITH RESIDUAL RISK', '--accept-gaps', 'audit')
+    assert.equal(finish.status, 5)
+    assert.match(JSON.parse(finish.stdout).error, /unresolved blocking findings/)
+  })
+})
+
+test('audit can complete while reporting a high-severity repository finding', () => {
+  withProject('ae-audit-high-', ({ root, put, invoke }) => {
+    surveyed(put)
+    const call = (...args) => invoke(forge, [...args, '--root', root])
+    assert.equal(call('start', '--id', 'audit-high', '--title', 'Audit code', '--kind', 'audit', '--risk', 'none').status, 0)
+    assert.equal(call('artifact', '--id', 'audit-high').status, 0)
+    assert.equal(call('lenses', '--id', 'audit-high', '--json', JSON.stringify({ attached: {}, assessed: true })).status, 0)
+    const audited = put('.dev/work/audit-high/results/auditor.md', '# Auditor\n\n## OUTCOME\nHigh-risk finding.\n')
+    assert.equal(call('note', '--id', 'audit-high', '--role', 'auditor', '--summary', 'Found issue', '--severity', 'high', '--result', audited).status, 0)
+    assert.equal(call('phase', '--id', 'audit-high', '--to', 'verify', '--summary', 'Review').status, 0)
+    const verified = put('.dev/work/audit-high/results/verifier.md', reviewResult('verifier', 'PASS'))
+    assert.equal(call('section', '--id', 'audit-high', '--name', 'verification', '--from', verified).status, 0)
+    assert.equal(call('note', '--id', 'audit-high', '--role', 'verifier', '--summary', 'Audit sound', '--severity', 'high',
+      '--review-context', 'same-session', '--result', verified).status, 0)
+    const finish = call('finish', '--id', 'audit-high', '--summary', 'Reported finding', '--verification', 'Evidence checked', '--result', 'PASS')
+    assert.equal(finish.status, 0, finish.stdout)
+  })
+})
+
+test('routine delivery requires an approved current Plan Reviewer pass without Challenger or user approval', () => {
+  withProject('ae-standard-depth-', ({ root, put, invoke }) => {
+    surveyed(put)
+    const defaultStart = spawnSync(process.execPath, [forge, 'start', '--id', 'default-depth',
+      '--title', 'Default small change', '--kind', 'feature', '--risk', 'none', '--root', root], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, AE_WORKFLOW_DEPTH: '' },
+    })
+    assert.equal(defaultStart.status, 0, defaultStart.stdout)
+    assert.deepEqual(JSON.parse(defaultStart.stdout).team, ['architect', 'plan-reviewer', 'builder', 'verifier'])
+    const call = (...args) => invoke(forge, [...args, '--root', root])
+    const started = call('start', '--id', 'standard-depth', '--title', 'Small behavior change',
+      '--kind', 'feature', '--risk', 'none', '--depth', 'standard')
+    assert.equal(started.status, 0, started.stdout)
+    const routed = JSON.parse(started.stdout)
+    assert.deepEqual(routed.team, ['architect', 'plan-reviewer', 'builder', 'verifier'])
+    assert.equal(routed.approval_required, false)
+    assert.equal(call('brief', '--id', 'standard-depth').status, 0)
+    assert.equal(call('artifact', '--id', 'standard-depth').status, 0)
+    const briefPath = join(root, '.dev/work/standard-depth/brief.md')
+    writeFileSync(briefPath, readFileSync(briefPath, 'utf8').replaceAll('TODO', 'Specified for test.'))
+    assert.equal(call('phase', '--id', 'standard-depth', '--to', 'plan', '--summary', 'Plan').status, 0)
+    const plan = put('.dev/work/standard-depth/results/architect.md', '# Architect\n\n## OUTCOME\nSmall plan.\n')
+    assert.equal(call('section', '--id', 'standard-depth', '--name', 'plan', '--from', plan).status, 0)
+    assert.equal(call('note', '--id', 'standard-depth', '--role', 'architect', '--summary', 'Planned',
+      '--severity', 'none', '--result', plan).status, 0)
+    const runPath = join(root, '.dev/work/standard-depth/run.json')
+    const currentRun = readFileSync(runPath, 'utf8')
+    const legacyRun = JSON.parse(currentRun)
+    legacyRun.contract = 7
+    legacyRun.team = legacyRun.team.filter((role) => role !== 'plan-reviewer')
+    writeFileSync(runPath, JSON.stringify(legacyRun))
+    const legacy = call('phase', '--id', 'standard-depth', '--to', 'build', '--summary', 'Build')
+    assert.equal(legacy.status, 5)
+    assert.match(JSON.parse(legacy.stdout).error, /missing mandatory Plan Reviewer/)
+    writeFileSync(runPath, currentRun)
+    const unreviewed = call('phase', '--id', 'standard-depth', '--to', 'build', '--summary', 'Build')
+    assert.equal(unreviewed.status, 5)
+    assert.match(JSON.parse(unreviewed.stdout).error, /Plan Reviewer/)
+    const revise = put('.dev/work/standard-depth/results/reviewer-revise.md',
+      reviewResult('plan-reviewer', 'REVISE'))
+    assert.equal(call('section', '--id', 'standard-depth', '--name', 'plan-review', '--from', revise).status, 0)
+    assert.equal(call('note', '--id', 'standard-depth', '--role', 'plan-reviewer', '--summary', 'Revise',
+      '--severity', 'high', '--result', revise).status, 0)
+    const rejected = call('phase', '--id', 'standard-depth', '--to', 'build', '--summary', 'Build')
+    assert.equal(rejected.status, 5)
+    assert.match(JSON.parse(rejected.stdout).error, /Plan Reviewer has not approved/)
+    const approved = put('.dev/work/standard-depth/results/reviewer-approved.md',
+      reviewResult('plan-reviewer', 'APPROVED'))
+    assert.equal(call('section', '--id', 'standard-depth', '--name', 'plan-review', '--from', approved).status, 0)
+    assert.equal(call('note', '--id', 'standard-depth', '--role', 'plan-reviewer', '--summary', 'Approved',
+      '--severity', 'none', '--result', approved).status, 0)
+    const changed = put('.dev/work/standard-depth/results/changed-plan.md', '# Architect\n\n## OUTCOME\nChanged plan.\n')
+    assert.equal(call('section', '--id', 'standard-depth', '--name', 'plan', '--from', changed).status, 0)
+    const stale = call('phase', '--id', 'standard-depth', '--to', 'build', '--summary', 'Build')
+    assert.equal(stale.status, 5)
+    assert.match(JSON.parse(stale.stdout).error, /plan changed after Plan Reviewer/)
+    assert.equal(call('section', '--id', 'standard-depth', '--name', 'plan', '--from', plan).status, 0)
+    const build = call('phase', '--id', 'standard-depth', '--to', 'build', '--summary', 'Build')
+    assert.equal(build.status, 0, build.stdout)
+  })
+})
+
+test('access and irreversible changes cannot downgrade to standard review', () => {
+  withProject('ae-deep-required-', ({ root, put, invoke }) => {
+    surveyed(put)
+    const result = invoke(forge, ['start', '--id', 'deep-required', '--title', 'Change auth', '--kind', 'feature',
+      '--risk', 'access', '--depth', 'standard', '--root', root])
+    assert.equal(result.status, 2)
+    assert.match(JSON.parse(result.stdout).error, /requires deep review/)
+  })
+})
+
+test('planning, diagnosis, and candidate review have read-only completion paths', () => {
+  for (const [kind, role, section] of [
+    ['plan', 'architect', 'plan'], ['diagnose', 'investigator', 'investigation'], ['review', null, null],
+  ]) {
+    withProject(`ae-${kind}-only-`, ({ root, put, invoke }) => {
+      surveyed(put)
+      const call = (...args) => invoke(forge, [...args, '--root', root])
+      const id = `${kind}-only`
+      const started = call('start', '--id', id, '--title', `${kind} only`, '--kind', kind, '--risk', 'none')
+      assert.equal(started.status, 0, started.stdout)
+      const run = JSON.parse(started.stdout)
+      assert.equal(run.approval_required, false)
+      const guarded = spawnSync(process.execPath, [guard, 'pre-tool-use'], {
+        cwd: root, encoding: 'utf8', input: JSON.stringify({ cwd: root, tool_name: 'apply_patch',
+          tool_input: { command: '*** Begin Patch\n*** Update File: src/app.js\n*** End Patch' } }),
+      })
+      assert.equal(guarded.status, 2)
+      assert.equal(call('artifact', '--id', id).status, 0)
+      assert.equal(call('lenses', '--id', id, '--json', JSON.stringify({ attached: {}, assessed: true })).status, 0)
+      assert.equal(call('phase', '--id', id, '--to', 'build', '--summary', 'Should fail').status, 5)
+      if (kind === 'plan') assert.equal(call('phase', '--id', id, '--to', 'plan', '--summary', 'Design').status, 0)
+      if (role) {
+        const written = put(`.dev/work/${id}/results/${role}.md`, `# ${role}\n\n## OUTCOME\nEvidence-based result.\n`)
+        assert.equal(call('section', '--id', id, '--name', section, '--from', written).status, 0)
+        assert.equal(call('note', '--id', id, '--role', role, '--summary', 'Assessment', '--severity', 'none', '--result', written).status, 0)
+      }
+      assert.equal(call('phase', '--id', id, '--to', 'verify', '--summary', 'Check assessment').status, 0)
+      const verdict = put(`.dev/work/${id}/results/verifier.md`, reviewResult('verifier', 'PASS'))
+      assert.equal(call('section', '--id', id, '--name', 'verification', '--from', verdict).status, 0)
+      assert.equal(call('note', '--id', id, '--role', 'verifier', '--summary', 'Sound assessment', '--severity', 'none',
+        '--review-context', 'same-session', '--result', verdict).status, 0)
+      const finished = call('finish', '--id', id, '--summary', 'Assessment delivered', '--verification', 'Evidence checked',
+        '--result', 'PASS', '--accept-gaps', 'baseline')
+      assert.equal(finished.status, 0, finished.stdout)
+    })
+  }
+})
+
+test('read-only review refuses completion if source changed after start', () => {
+  withProject('ae-review-source-', ({ root, put, invoke }) => {
+    surveyed(put)
+    put('src/app.js', 'export const value = 1\n')
+    const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+    assert.equal(git('init', '-q').status, 0)
+    assert.equal(git('add', '.').status, 0)
+    assert.equal(git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'baseline').status, 0)
+    const call = (...args) => invoke(forge, [...args, '--root', root])
+    assert.equal(call('start', '--id', 'source-review', '--title', 'Review candidate', '--kind', 'review', '--risk', 'none').status, 0)
+    assert.equal(call('artifact', '--id', 'source-review').status, 0)
+    assert.equal(call('lenses', '--id', 'source-review', '--json', JSON.stringify({ attached: {}, assessed: true })).status, 0)
+    assert.equal(call('phase', '--id', 'source-review', '--to', 'verify', '--summary', 'Review').status, 0)
+    const verdict = put('.dev/work/source-review/results/verifier.md', reviewResult('verifier', 'PASS'))
+    assert.equal(call('section', '--id', 'source-review', '--name', 'verification', '--from', verdict).status, 0)
+    assert.equal(call('note', '--id', 'source-review', '--role', 'verifier', '--summary', 'Reviewed', '--severity', 'none',
+      '--review-context', 'same-session', '--result', verdict).status, 0)
+    put('src/app.js', 'export const value = 2\n')
+    const finish = call('finish', '--id', 'source-review', '--summary', 'Reviewed', '--verification', 'Checked', '--result', 'PASS')
+    assert.equal(finish.status, 5)
+    assert.match(JSON.parse(finish.stdout).error, /source changed during a read-only run/)
+  })
 })

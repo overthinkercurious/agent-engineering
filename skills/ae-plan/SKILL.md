@@ -108,8 +108,9 @@ Plan written · .dev/runs/<id>.md · 1 open question (blocks step 4)
 Next · Forge dispatches the next selected role.
 ```
 
-Every delivery plan goes through Plan Reviewer and Plan Challenger. In a shared
-context, each reopens the evidence it uses.
+Every delivery plan goes through Plan Reviewer; deep plans also use Challenger. In a shared
+context, each reopens the evidence it uses. On revisions, Architect reads both
+the review and challenge findings before changing the plan.
 
 ## Hard stops
 

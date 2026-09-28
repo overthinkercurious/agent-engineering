@@ -17,7 +17,7 @@ later requests can use durable project knowledge and rules:
 | `ae-forge` | Orchestrator — routes, gates, owns the run artifact |
 | `ae-investigate` | Establish the cause of a failure before anyone plans a fix |
 | `ae-plan` | Write the implementation plan |
-| `ae-plan-review` | Review and challenge every delivery plan before code exists |
+| `ae-plan-review` | Review every delivery plan; challenge deeper-risk plans before code exists |
 | `ae-build` | Implement the agreed brief |
 | `ae-verify` | Independently verify the candidate and issue the verdict |
 | `ae-audit` | Audit the repository cold, with no plan and no diff |
@@ -53,7 +53,7 @@ or understand the internal lifecycle.
 
 ## The team
 
-Forge has eleven internal experts. Each has a dedicated workflow and one
+Forge has twelve internal experts. Each has a dedicated workflow and one
 exclusive outcome:
 
 | Role | Used when |
@@ -61,8 +61,8 @@ exclusive outcome:
 | Product | A new idea or feature outcome is genuinely ambiguous |
 | Investigator | A bug or performance problem has no demonstrated cause |
 | Architect | Every delivery needs an evidence-backed implementation plan |
-| Plan Reviewer | Every delivery plan needs an independent correctness review |
-| Plan Challenger | Every material plan decision needs an adversarial challenge |
+| Plan Reviewer | Every delivery plan receives an independent correctness review |
+| Plan Challenger | Deep delivery plans receive an adversarial decision challenge |
 | Security | Trust, authorization, privacy, abuse, or payment risk is present |
 | Data | Stored-data invariants, migration, backfill, or recovery is affected |
 | Experience | A user journey, interface state, or accessibility behavior changes |
@@ -80,14 +80,14 @@ plan makes; a reference that does not resolve is an automatic blocker.
 not read the plan or the diff, because an auditor who knows what was intended
 audits the intention.
 
-Every delivery uses Architect, Plan Reviewer, Plan Challenger, Builder, and
-Verifier. Other experts are selected only when their exclusive
+Standard delivery uses Architect, Plan Reviewer, Builder, and Verifier. Deep
+delivery adds Plan Challenger. Other experts are selected only when their exclusive
 boundary is present, and that selection is **behavioural, not lexical**: Forge
 answers a short set of questions about what the change actually does — does it
 change who can reach anything, does it change stored shape, does it change a
 rendered surface, does it change runtime behaviour, is any part irreversible —
-and each answer maps deterministically to an expert. The wording of a request
-never decides whether a review happens, so "add OAuth login", "wire up SSO"
+and each answer maps deterministically to an expert. The affected boundary
+decides whether deep review is required, so "add OAuth login", "wire up SSO"
 and "add RBAC" all reach the Security expert.
 
 Depth inside a boundary comes from **lenses** rather than more experts. A lens
@@ -117,9 +117,17 @@ specialist. They exclude Architect, Plan Reviewer, Plan Challenger and Builder
 because there is no future implementation to plan or challenge, and they do
 not modify code.
 
+Planning-only (`plan`), diagnosis-only (`diagnose`), and candidate-review-only
+(`review`) requests also finish read-only. They use the relevant expert and
+Verifier, skip Builder and implementation approval, and cannot enter Build or
+Repair. A `review` inspects an existing candidate; `audit` reads the repository
+cold. Applying findings starts a delivery run.
+
 ### Risk-sized specialist coverage
 
-Planning, review, and challenge are mandatory for every delivery. An
+Planning and plan review are required for every delivery. Challenge is required
+for deep runs involving access, stored data shape, irreversible effects,
+security or ambiguous ideas, unknown causes, or listed high-impact domains. An
 Investigator is added for unknown bugs and performance problems. Product is
 added for ambiguous ideas. Experience is selected for user-facing journeys;
 Security, Data, and Reliability are selected for their named risk boundaries.
@@ -128,13 +136,14 @@ present. It does not impose a numeric team cap.
 
 ## Autonomy and approval
 
-Forge works autonomously through investigation, planning, and internal review.
-Every delivery then pauses for explicit user approval of the reviewed and
-challenged plan before Builder starts. Risk selects specialist coverage; it
-never bypasses this gate. A reviewer verdict cannot grant user authority.
+Forge works autonomously through investigation and planning. Standard runs
+proceed to Build after a complete brief, expert constraints, and approval from
+Plan Reviewer of the current plan. Deep runs
+record explicit user approval of the reviewed and challenged plan before
+Builder starts. A reviewer verdict cannot grant user authority.
 Forge renders an approval packet containing the request, plan, review, and
-challenge before asking. A verifier finding requires the same explicit approval
-for its repair scope before Builder changes code again.
+challenge for deep runs. A verifier finding in a deep run requires approval
+for its bounded repair scope before Builder changes code again.
 
 An audit-only run is never gated. It cannot enter build and cannot modify code,
 so there is no action to authorise.
@@ -177,9 +186,9 @@ npx skills@1.7.0 add overthinkercurious/agent-engineering --agent AGENT_ID --cop
 
 These are not guessed compatibility paths. `.agents/skills` is an officially
 supported project location for every tool assigned to it above. Claude Code is
-the exception and receives its own native `.claude/skills` copy. The mapping is
-also verified against the installer registry and by an executable acceptance
-test for every `AGENT_ID`.
+the exception and receives its own native `.claude/skills` copy. The mapping
+was checked against the installer registry. The shipped suite does not exercise
+installation in each host; verify discovery and dispatch in the target host.
 
 For example, Antigravity IDE needs exactly:
 
@@ -216,6 +225,20 @@ runs refresh the repository analysis and check whether the durable knowledge
 is current.
 
 ### Antigravity activation
+
+To check an installed copy without changing application files, run
+`node .agents/skills/ae-forge/scripts/host-smoke.mjs --root .` from the project.
+Distribution checks, hook observation, and actual host activation are reported
+separately. See the installed `ae-forge/references/evaluation.md` for behavioral
+cases and the live-host check. Updating source-kit files does not update an
+existing `--copy` installation; refresh that project's skills too.
+
+For native edit enforcement in Antigravity, merge the kit-owned entry from
+`ae-forge/assets/antigravity-hooks.json` into `.agents/hooks.json`, preserving
+other hooks. Its adapter uses Antigravity's documented event and JSON decision
+format. Restart the conversation and confirm hook observation before claiming
+native enforcement. The hook supplies the conversation ID used by Forge's
+`--session` option. Shell writes remain outside this edit hook.
 
 Current Antigravity versions support both semantic activation and skill slash
 commands. Use `/ae-surveyor`, `/ae-forge`, or a normal request such as "Use ae-forge

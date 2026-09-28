@@ -92,6 +92,8 @@ with the causal account, never a demanded solution.
 
 ## Stop conditions
 
-Stop after three unsuccessful reproduction or discrimination attempts. Report
+Stop after three unsuccessful reproduction attempts or four tested hypotheses.
+Record what was ruled out and request a justified extension only when a named
+new evidence source would change the result. Report
 what was ruled out and the single next observation most likely to reduce
 uncertainty.

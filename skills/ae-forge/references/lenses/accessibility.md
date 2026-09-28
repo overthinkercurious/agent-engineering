@@ -42,7 +42,7 @@ Quote these only while the provenance block above is current.
 | Target size (minimum) | 24×24 CSS px, or spacing that gives an equivalent undisturbed area |
 | Reflow | no loss of content or function at 320 CSS px width, and at 400% zoom |
 | Text spacing | no clipping when line height 1.5×, paragraph 2×, letter 0.12em, word 0.16em |
-| Motion | animation from interaction can be disabled unless essential |
+| Motion | reduced-motion preference is respected where the project requires it; WCAG 2.3.3 animation from interactions is AAA, not AA |
 
 ## Checklist
 

@@ -54,9 +54,9 @@ roles already cover it.
 
 12. Confirm the change introduces no private API, disallowed entitlement, or
     capability the provisioning profile lacks.
-13. Confirm version and build numbers advance, and that anything gated by a
-    remote flag defaults to the safe state when the flag service is
-    unreachable.
+13. For a distributable build, confirm version and build numbers meet the
+    release channel's rules. If a remote flag gates the change, confirm its
+    safe default when the flag service is unreachable.
 14. Confirm the minimum supported OS version still builds and behaves, rather
     than assuming the newest SDK's defaults.
 

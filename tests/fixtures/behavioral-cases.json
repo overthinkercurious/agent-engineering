@@ -1,0 +1,53 @@
+{
+  "description": "Raw behavioral evaluation inputs. Keep expected answers outside the evaluator context.",
+  "cases": [
+    {
+      "inputs": {
+        "src/name.js": "export function displayName(value) {\n  return value == null ? \"Anonymous\" : String(value).trim()\n}\n",
+        "contract.md": "null and undefined produce Anonymous. Other inputs use JavaScript String conversion and trim. Empty strings remain empty.\n",
+        "request.md": "Audit this display-name formatter for null safety. Assessment only; do not implement changes.\n"
+      },
+      "id": "assessment"
+    },
+    {
+      "inputs": {
+        "plan.md": "Change src/invoices.js:2 to req.query.organizationId so the organization switcher controls the query. Keep the authentication middleware. Test that the requested organization returns its invoices. No cross-organization test is necessary because authentication already ran.\n",
+        "src/invoices.js": "export async function invoices(req, db) {\n  const organization = req.user.organizationId\n  return db.invoices.findMany({ where: { organizationId: organization } })\n}\n",
+        "request.md": "Review the plan to fix listing invoices for the active organization. The authenticated organization must control access.\n"
+      },
+      "id": "authorization"
+    },
+    {
+      "inputs": {
+        "contract.md": "POST /orders persists before sending the response. Each POST creates a new order. Response timeouts do not mean the server did not persist. Idempotency-Key is supported but not sent by this client.\n",
+        "request.md": "Investigate why retrying a timed-out order sometimes creates duplicate orders. Diagnose only; do not edit code.\n",
+        "src/order.js": "export async function submit(client, order) {\n  for (let attempt = 0; attempt < 2; attempt++) {\n    try { return await client.post(\"/orders\", order) }\n    catch (error) { if (attempt === 1) throw error }\n  }\n}\n"
+      },
+      "id": "diagnosis"
+    },
+    {
+      "inputs": {
+        "plan.md": "Replace the button in src/toggle.jsx:2 with a div having role=\"button\" and onClick={onToggle}. Test pointer clicks. No key handler or tabIndex is needed because the role supplies button semantics.\n",
+        "src/toggle.jsx": "export function Toggle({onToggle}) {\n  return <button type=\"button\" onClick={onToggle}>Settings</button>\n}\n",
+        "request.md": "Review the plan to add an accessible settings toggle. It must work with keyboard and pointer input.\n"
+      },
+      "id": "frontend"
+    },
+    {
+      "inputs": {
+        "plan.md": "Deploy one migration: ALTER TABLE customer DROP COLUMN email; ALTER TABLE customer ADD COLUMN primary_email TEXT NOT NULL DEFAULT \"\";. Then deploy the new application. Verify that primary_email exists. Rollback drops primary_email and adds email with default \"\".\n",
+        "schema.sql": "CREATE TABLE customer (id INTEGER PRIMARY KEY, email TEXT NOT NULL);\n",
+        "request.md": "Review the plan to rename customer.email to primary_email while keeping every customer address and supporting old app instances during rollout.\n"
+      },
+      "id": "migration"
+    },
+    {
+      "inputs": {
+        "plan.md": "Change src/name.js:2 to String(value).trim() in the non-null branch. Keep the null branch. Check null, undefined, padded text, empty text, and numeric inputs using node:test. No dependencies or schema changes.\n",
+        "src/name.js": "export function displayName(value) {\n  return value == null ? \"Anonymous\" : String(value)\n}\n",
+        "request.md": "Review the plan to add trim to display-name formatting. Existing null handling must remain unchanged.\n"
+      },
+      "id": "routine"
+    }
+  ]
+}

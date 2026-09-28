@@ -62,9 +62,9 @@ Everything a skill needs at runtime must live inside its own directory.
   stale generated knowledge is a reading lead, not current evidence.
 - Use the smallest team that covers the actual behavioral risk.
 - Builder and Verifier are required for completion.
-- Standard delivery uses Architect, Builder, and Verifier. A separate Plan
-  Reviewer is reserved for deep design risk.
-- Most work uses three roles. More than five requires genuinely independent
+- Standard delivery uses Architect, Plan Reviewer, Builder, and Verifier.
+  Plan Challenger is reserved for deep design risk.
+- Most work uses four roles. More than five requires genuinely independent
   risk boundaries and a plain-language explanation to the user.
 - Where isolation is unavailable, complete stages sequentially in one session,
   recheck review evidence, and report the review context honestly.

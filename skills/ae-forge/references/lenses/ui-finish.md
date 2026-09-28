@@ -13,12 +13,11 @@ against the design system).
 
 Signals: `design-system`, `visual`, `layout`, `spacing`, `typography`,
 `polish`, `component-library`, `theming`, `pixel`, `icon-system`, or a
-detected design-token/theme config in the sensor dump (a tokens file, a
-Tailwind/style-dictionary config, a Storybook config, when a survey exists).
+design-token/theme config identified and supplied as an explicit domain.
 
 Skip when the change has no rendered visual surface. When the project has no
-established design system and the change is a one-off internal tool, record
-that as a finding rather than inventing a system to check against.
+established design system, judge consistency against its existing components
+and the request. Its absence alone is not a defect.
 
 ## Checklist
 
@@ -74,4 +73,4 @@ accessible at the semantic level (Experience owns that generically — this
 lens only adds the visual-craft layer on top), backend or data implementation,
 or platform-specific rendering behavior (a platform lens, such as `android`,
 owns that when both apply; this lens and a platform lens may attach to the
-same role together, up to the two-lens cap).
+same role together; the selector attaches every relevant lens).

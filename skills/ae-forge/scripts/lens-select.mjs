@@ -45,6 +45,10 @@ export function loadTeamContract(teamPath) {
 export function deriveDomains(analysis, detectors = []) {
   if (!analysis) return { tags: [], because: {} }
   const imports = Object.keys(analysis.stack?.external_imports ?? {}).map((s) => s.toLowerCase())
+  // A dependency can define the affected domain even when no source import
+  // was parsed (Python and generated entrypoints are common examples).
+  imports.push(...(analysis.stack?.manifests ?? []).flatMap((m) =>
+    [...Object.keys(m.deps ?? {}), ...Object.keys(m.devDeps ?? {})].map((s) => s.toLowerCase())))
   const languages = Object.keys(analysis.inventory?.by_language ?? {}).map((s) => s.toLowerCase())
   const paths = [
     ...(analysis.selection?.files ?? []),
@@ -95,6 +99,13 @@ export function selectLenses(team, roles, signals, stackSignals = [], options = 
   const allSignals = new Set([...requested, ...derived])
   const lenses = team.lenses || {}
   const attached = {}
+  // Project dependencies are context, not evidence that this change touches
+  // every domain in the repository. Once the request identifies a domain,
+  // project-only matches remain visible as derived tags but do not attach.
+  const genericKinds = new Set(['idea', 'feature', 'bug', 'refactor', 'performance', 'security',
+    'audit', 'plan', 'diagnose', 'review'])
+  const hasRequestedLens = Object.values(lenses).some((lens) =>
+    (lens.signals ?? []).some((signal) => requested.has(signal.toLowerCase()) && !genericKinds.has(signal.toLowerCase())))
 
   for (const role of roles) {
     const scored = Object.entries(lenses)
@@ -105,7 +116,7 @@ export function selectLenses(team, roles, signals, stackSignals = [], options = 
         const byProject = own.filter((s) => derived.has(s) && !requested.has(s)).length
         return { name, byRequest, byProject, score: byRequest + byProject }
       })
-      .filter((m) => m.score > 0)
+      .filter((m) => m.score > 0 && (!hasRequestedLens || m.byRequest > 0))
       // Lexicographic, not a weighted sum: ANY lens the request asked for
       // outranks every lens the project merely suggests. A weighted sum lets a
       // lens matching many project tags beat the one the change is actually
@@ -170,6 +181,8 @@ function runCli() {
   const roles = run ? run.team : split(option('--team'))
   const signals = run ? run.signals : split(option('--signals'))
   const supplied = run ? run.domains : split(option('--domain') || option('--stack'))
+  const risks = run ? (run.routing?.risks ?? run.risks ?? []) : split(option('--risk'))
+  const kind = run ? run.kind : option('--kind')
 
   // Read the survey automatically. The project is the most reliable source of
   // domain truth available, and it does not depend on anyone remembering.
@@ -196,8 +209,9 @@ function runCli() {
   // --domain and --signals are both statements about THIS CHANGE, so they
   // carry request weight. Only what the sensor observed about the repository
   // is project-derived.
-  const assessed = supplied.length > 0 || signals.length > 0 || derived.tags.length > 0
-  const result = selectLenses(team, roles, [...signals, ...supplied], derived.tags, { assessed })
+  const changeSignals = [...signals, ...supplied, ...risks.filter((r) => r !== 'none'), ...(kind ? [kind] : [])]
+  const assessed = changeSignals.length > 0 || derived.tags.length > 0
+  const result = selectLenses(team, roles, changeSignals, derived.tags, { assessed })
   process.stdout.write(`${JSON.stringify({
     ...result,
     derived_from_project: derived.tags,

@@ -15,7 +15,8 @@ metadata:
 Forge tells you whether this invocation is **Plan Reviewer** or **Plan
 Challenger**. Read the matching role file. Reviewer checks correctness as
 written; Challenger tests every material decision against its strongest
-evidence-backed opposing case. Both run before every delivery build.
+evidence-backed opposing case. Reviewer runs before every delivery build;
+Challenger runs on deep delivery plans.
 
 ## Resolve the contract
 
@@ -57,7 +58,7 @@ Three things are true at once and all three bind:
 1. **APPROVED with zero findings is valid and expected.** A good plan produces
    no findings. Do not manufacture one to justify the review.
 2. **APPROVED WITH NOTES is the normal result.**
-3. **Only a critical or high finding forces REVISE.**
+3. **An established critical/high finding or blocking unknown forces REVISE.**
 
 If you find yourself reaching for something to say, the correct output is
 APPROVED. A review that always finds something teaches the pipeline to ignore
@@ -82,7 +83,8 @@ see its reasoning, which is exactly why you must not rely on it.
 ## Work
 
 Follow the selected role file. Both roles use delta-only review on cycle 2 and
-later, at most five findings, and the shared seven-column findings table.
+later, a summary of at most five findings, and the shared seven-column findings
+table. Preserve all established blockers in the full result.
 
 Two severity caps apply and both exist to stop reviews becoming feature
 requests:
@@ -90,8 +92,9 @@ requests:
 - A finding whose remedy **adds** scope, abstraction, indirection or defensive
   code is capped at `low`, unless its absence causes a correctness, security or
   data-integrity failure.
-- A finding about something correctly recorded in `Open questions` is capped at
-  `low`. Escalating an unknown is the desired behaviour.
+- A nonblocking recorded question does not force REVISE. Required unresolved
+  facts go in `UNKNOWNS` with `Blocks? yes` and prevent approval. Recording the
+  question does not lower its impact or make implementation safe.
 
 ## Record the result
 
@@ -100,14 +103,16 @@ node "$FORGE/scripts/forge.mjs" section --id <id> --name <plan-review|plan-chall
 node "$FORGE/scripts/forge.mjs" note --id <id> --role <plan-reviewer|plan-challenger> \
   --summary "<verdict and the one blocking condition, if any>" \
   --severity <none|low|medium|high|critical> \
+  --review-context <isolated|same-session> \
   --result .dev/work/<id>/results/<role>.md
 ```
 
 On a second pass, use a new result filename in both commands, such as
 `plan-reviewer-2.md` or `plan-challenger-2.md`. Preserve prior evidence.
 
-Severity must match the verdict. REVISE with no critical or high finding is a
-contradiction, and the verdict is the thing that is wrong.
+Severity must match the verdict. REVISE requires a critical/high finding or
+blocking unknown and high or critical note severity. Write the full shared
+result form: Forge validates its sections, evidence, criteria, and unknowns.
 
 The section write is enforced, not requested: `finish` refuses to close a run
 whose contributing role left its section scaffolded. A ledger note says you
@@ -121,14 +126,14 @@ Next · Forge returns the blocker to Architect, then dispatches both passes agai
 ```
 
 On APPROVED or APPROVED WITH NOTES, hand back to Forge — never to Builder.
-Reviewer approval proceeds to Challenger; Challenger approval makes Forge show
-the plan to the user and wait for explicit approval before build.
+On routine runs, Reviewer approval lets Forge proceed to Build. On deep runs,
+it proceeds to Challenger, then Forge records user approval before Build.
 
 ## Hard stops
 
 - Do not modify code, rewrite the plan, or propose an alternative design.
-- Do not return REVISE without at least one critical or high finding.
+- Do not return REVISE without an established blocker or blocking unknown.
 - Do not raise a finding citing evidence you did not re-read in this stage.
 - Do not perform a full re-review on cycle 2 or later.
-- Do not exceed five findings.
+- Summarize at most five findings; never omit an established blocker.
 - Do not treat your own approval as authorisation to build.
