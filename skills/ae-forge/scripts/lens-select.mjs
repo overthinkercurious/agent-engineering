@@ -85,7 +85,7 @@ export function deriveDomains(analysis, detectors = []) {
  * @param {object} team - parsed team.json
  * @param {string[]} roles - the selected team roles (from forge.mjs chooseTeam)
  * @param {string[]} signals - the request's own signals
- * @param {string[]} stackSignals - domain tags, supplied or derived from the survey
+ * @param {string[]} stackSignals - domain tags, supplied or derived from analysis
  * @param {object} [options] - { assessed: boolean, today: Date }
  */
 export function selectLenses(team, roles, signals, stackSignals = [], options = {}) {
@@ -184,7 +184,7 @@ function runCli() {
   const risks = run ? (run.routing?.risks ?? run.risks ?? []) : split(option('--risk'))
   const kind = run ? run.kind : option('--kind')
 
-  // Read the survey automatically. The project is the most reliable source of
+  // Read Forge analysis automatically. The project is the most reliable source of
   // domain truth available, and it does not depend on anyone remembering.
   const analysisPath = resolve(option('--analysis', join(process.cwd(), '.dev', 'context', 'analysis.json')))
   let derived = { tags: [], because: {} }
@@ -192,7 +192,7 @@ function runCli() {
   if (existsSync(analysisPath)) {
     try {
       const analysis = JSON.parse(readFileSync(analysisPath, 'utf8'))
-      // A survey written by a different generation of the surveyor does not
+      // Analysis written with a different schema does not
       // fail here - it reports. Without this the failure mode was silent and
       // indistinguishable from success: a renamed field yields FEWER lenses,
       // returned as a legitimate selection. Every other absence in this kit
@@ -203,7 +203,7 @@ function runCli() {
       } else {
         derived = deriveDomains(analysis, team.domain_detectors ?? [])
       }
-    } catch { /* an unreadable survey is a missing survey, not a hard failure */ }
+    } catch { /* unreadable analysis is a depth gap, not a hard failure */ }
   }
 
   // --domain and --signals are both statements about THIS CHANGE, so they

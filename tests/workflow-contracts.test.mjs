@@ -1,7 +1,7 @@
 import test from 'node:test'
 import { reviewResult } from './helpers/review-fixtures.mjs'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -12,16 +12,13 @@ const script = (name) => resolve(repo, name)
 const forge = script('skills/ae-forge/scripts/forge.mjs')
 const lensSelect = script('skills/ae-forge/scripts/lens-select.mjs')
 const guard = script('skills/ae-forge/scripts/guard.mjs')
-const analyze = script('skills/ae-surveyor/scripts/analyze.mjs')
-const knowledge = script('skills/ae-surveyor/scripts/knowledge.mjs')
-const rules = script('skills/ae-surveyor/scripts/rules.mjs')
-const citations = script('skills/ae-surveyor/scripts/verify-citations.mjs')
+const analyze = script('skills/ae-forge/scripts/analyze.mjs')
 const validateKit = script('skills/ae-forge/scripts/validate-kit.mjs')
 
-test('only Forge and Surveyor are standalone routing surfaces', () => {
+test('only Forge is a standalone routing surface', () => {
   const stages = ['ae-investigate', 'ae-plan', 'ae-plan-review', 'ae-build', 'ae-verify', 'ae-audit']
   const owns = new Set()
-  for (const name of [...stages, 'ae-forge', 'ae-surveyor']) {
+  for (const name of [...stages, 'ae-forge']) {
     const source = readFileSync(script(`skills/${name}/SKILL.md`), 'utf8')
     assert.match(source, new RegExp(`^name: ${name}$`, 'm'))
     const ownership = source.match(/^  owns: "([^"]+)"$/m)?.[1]
@@ -45,6 +42,11 @@ function withProject(name, run) {
   }
   const invoke = (file, args, env = {}) => {
     if (args[0] === 'note' && ['plan-reviewer', 'plan-challenger'].includes(args[args.indexOf('--role') + 1]) && !args.includes('--review-context')) args = [...args, '--review-context', 'same-session']
+    if (args[0] === 'start' && !['audit', 'plan', 'diagnose', 'review'].includes(args[args.indexOf('--kind') + 1])
+      && !args.includes('--approval-required') && env.AE_TEST_NO_APPROVAL !== '1'
+      && (args.includes('--depth') ? args[args.indexOf('--depth') + 1] : (env.AE_WORKFLOW_DEPTH ?? 'deep')) === 'deep') {
+      args = [...args, '--approval-required', '--approval-reason', 'Fixture requires an explicit user decision']
+    }
     return spawnSync(process.execPath, [file, ...args], {
     cwd: root, encoding: 'utf8', env: { ...process.env, AE_WORKFLOW_DEPTH: 'deep', ...env },
   })
@@ -52,12 +54,7 @@ function withProject(name, run) {
   try { run({ root, put, invoke }) } finally { rmSync(root, { recursive: true, force: true }) }
 }
 
-function surveyed(put) {
-  for (const name of ['00-index', 'stack', 'architecture', 'schema', 'commands', 'decisions']) {
-    put(`.dev/knowledge/${name}.md`, `# ${name}\nReadiness: ready for reuse\n`)
-  }
-  put('.dev/rules/00-index.md', '# Rules\n')
-}
+function surveyed() { /* Legacy test fixtures: Forge now starts without a survey. */ }
 
 function approvePlan({ root, put, call }, id) {
   assert.equal(call('phase', '--id', id, '--to', 'plan', '--summary', 'Planning').status, 0)
@@ -79,26 +76,13 @@ function approvePlan({ root, put, call }, id) {
   assert.equal(call('approve', '--id', id, '--by', 'user', '--basis', 'Approved in test').status, 0)
 }
 
-test('Surveyor generators reject incompatible analysis before writing knowledge or rules', () => {
-  withProject('ae-analysis-schema-', ({ root, put, invoke }) => {
-    put('.dev/context/analysis.json', JSON.stringify({ schema: 1, generated_at: '2026-01-01T00:00:00Z' }))
-    for (const entry of [knowledge, rules]) {
-      const result = invoke(entry, ['--root', root])
-      assert.equal(result.status, 2)
-      assert.match(result.stderr, /schema 1 is incompatible; expected 2/)
-    }
-  })
-})
-
-test('Surveyor analyzer produces the schema its generators accept', () => {
+test('Forge analyzer produces the schema used by lens selection', () => {
   withProject('ae-analysis-current-', ({ root, put, invoke }) => {
     put('src/answer.js', 'export const answer = 42\n')
     const scan = invoke(analyze, ['--root', root])
     assert.equal(scan.status, 0, scan.stderr)
     const analysis = JSON.parse(readFileSync(join(root, '.dev/context/analysis.json'), 'utf8'))
     assert.equal(analysis.schema, 2)
-    assert.equal(invoke(knowledge, ['--root', root]).status, 0)
-    assert.equal(invoke(rules, ['--root', root]).status, 0)
   })
 })
 
@@ -190,10 +174,14 @@ test('Forge cannot finish with a verdict that disagrees with Verifier evidence',
     assert.equal(mismatch.status, 5)
     assert.match(JSON.parse(mismatch.stdout).error, /verdict disagrees/)
     const pass = put('.dev/work/verdict/results/verifier-pass.md', reviewResult('verifier', 'PASS'))
+    put('.dev/work/verdict/scratch/temporary.md', 'Disposable notes\n')
     assert.equal(call('section', '--id', 'verdict', '--name', 'verification', '--from', pass).status, 0)
     assert.equal(call('note', '--id', 'verdict', '--role', 'verifier', '--summary', 'Passed', '--severity', 'none', '--review-context', 'same-session', '--result', pass).status, 0)
     assert.equal(finish('--result', 'PASS').status, 0)
-    assert.match(readFileSync(join(root, '.dev/runs/verdict.md'), 'utf8'), /### Verdict\nPASS/)
+    assert.match(readFileSync(join(root, '.dev/completed/verdict.md'), 'utf8'), /### Verdict\nPASS/)
+    assert.match(readFileSync(join(root, '.dev/completed/verdict.md'), 'utf8'), /Implementation summary:\*\* Audit reviewed/)
+    assert.equal(existsSync(join(root, '.dev/work/verdict/scratch')), false)
+    assert.equal(JSON.parse(finish('--result', 'PASS').stdout).reused, true)
   })
 })
 
@@ -323,6 +311,12 @@ test('repair must contribute a new Builder result before the next verification',
     assert.equal(call('note', '--id', 'repair-gate', '--role', 'builder', '--summary', 'Repair complete',
       '--severity', 'none', '--result', repaired).status, 0)
     assert.equal(call('phase', '--id', 'repair-gate', '--to', 'verify', '--summary', 'Reviewing again').status, 0)
+    const record = join(root, '.dev/work/repair-gate/run.json')
+    const current = JSON.parse(readFileSync(record, 'utf8'))
+    writeFileSync(record, JSON.stringify({ ...current, repair_cycles: 2 }))
+    const capped = call('phase', '--id', 'repair-gate', '--to', 'plan', '--summary', 'Try another approach')
+    assert.equal(capped.status, 5)
+    assert.match(JSON.parse(capped.stdout).error, /repair limit reached/)
   })
 })
 
@@ -350,6 +344,7 @@ test('approval requires a complete brief and build refuses a changed approved br
 test('finish rejects files changed after Verifier inspected the candidate', () => {
   withProject('ae-candidate-gate-', ({ root, put, invoke }) => {
     surveyed(put)
+    put('src/existing.js', 'export const existing = true\n')
     const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
     assert.equal(git('init', '-q').status, 0)
     assert.equal(git('add', '.').status, 0)
@@ -374,6 +369,12 @@ test('finish rejects files changed after Verifier inspected the candidate', () =
     assert.equal(call('audit', '--id', 'candidate-gate').status, 0)
     const verified = put('.dev/work/candidate-gate/results/verifier.md',
       reviewResult('verifier', 'PASS'))
+    put('src/behavior.js', 'export const value = 9\n')
+    const movedDuringReview = call('note', '--id', 'candidate-gate', '--role', 'verifier', '--summary', 'Stale review',
+      '--severity', 'none', '--review-context', 'same-session', '--result', verified)
+    assert.equal(movedDuringReview.status, 5)
+    assert.match(JSON.parse(movedDuringReview.stdout).error, /candidate changed during verification/)
+    put('src/behavior.js', 'export const value = 1\n')
     assert.equal(call('note', '--id', 'candidate-gate', '--role', 'verifier', '--summary', 'Passed',
       '--severity', 'none', '--review-context', 'same-session', '--result', verified).status, 0)
     put('src/behavior.js', 'export const value = 2\n')
@@ -512,20 +513,6 @@ test('Python manifest dependencies derive AI and payments domains', () => {
     const lenses = JSON.parse(selected.stdout)
     assert.ok(lenses.derived_from_project.includes('ai-llm'))
     assert.ok(lenses.derived_from_project.includes('payments'))
-  })
-})
-
-test('citation check resolves route-group paths and rejects extensionless out-of-range references', () => {
-  withProject('ae-citations-', ({ root, put, invoke }) => {
-    put('src/app/(auth)/page.tsx', 'export default 1\n')
-    put('docs/My Guide.md', '# Guide\n')
-    put('Dockerfile', 'FROM scratch\n')
-    put('.dev/knowledge/stack.md', '`src/app/(auth)/page.tsx:1`, `docs/My Guide.md:1`, and `Dockerfile:900`\n')
-    const checked = invoke(citations, ['--root', root])
-    assert.equal(checked.status, 1, checked.stdout)
-    assert.match(checked.stdout, /Dockerfile:900/)
-    assert.doesNotMatch(checked.stdout, /NO FILE.*page\.tsx/)
-    assert.doesNotMatch(checked.stdout, /NO FILE.*Guide\.md/)
   })
 })
 

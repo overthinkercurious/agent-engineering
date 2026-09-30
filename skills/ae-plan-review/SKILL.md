@@ -127,7 +127,8 @@ Next · Forge returns the blocker to Architect, then dispatches both passes agai
 
 On APPROVED or APPROVED WITH NOTES, hand back to Forge — never to Builder.
 On routine runs, Reviewer approval lets Forge proceed to Build. On deep runs,
-it proceeds to Challenger, then Forge records user approval before Build.
+it proceeds to Challenger. Forge records user approval before Build only when
+the run identifies an unresolved material decision or authority boundary.
 
 ## Hard stops
 

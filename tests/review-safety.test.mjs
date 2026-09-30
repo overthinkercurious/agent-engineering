@@ -27,7 +27,8 @@ function fixture(run, depth = 'standard') {
   try {
     for (const name of ['00-index', 'stack', 'architecture', 'schema', 'commands', 'decisions']) put(`.dev/knowledge/${name}.md`, '# Knowledge\nReadiness: ready for reuse\n')
     put('.dev/rules/00-index.md', '# Rules\n')
-    ok('start', '--id', 'safe', '--title', 'Small change', '--kind', 'feature', '--risk', 'none', '--depth', depth)
+    ok('start', '--id', 'safe', '--title', 'Small change', '--kind', 'feature', '--risk', 'none', '--depth', depth,
+      ...(depth === 'deep' ? ['--approval-required', '--approval-reason', 'Fixture requires user authorization'] : []))
     ok('artifact', '--id', 'safe'); ok('brief', '--id', 'safe')
     const brief = join(root, '.dev/work/safe/brief.md')
     writeFileSync(brief, readFileSync(brief, 'utf8').replaceAll('TODO', 'Specified for fixture.'))

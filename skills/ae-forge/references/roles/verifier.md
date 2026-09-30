@@ -39,6 +39,8 @@ from summaries without the underlying repository and command evidence.
    meaningful, whether scope crept under a plausible justification, and
    whether the residual risk is acceptable.
 3. Re-open changed files and compare request, plan, and actual diff.
+   Reject a local workaround that leaves the planned invariant broken at its
+   owner, even if the new test passes for one caller.
 4. Account for every unexpected file or behavior change.
 5. Map each acceptance criterion to inspected or executed evidence.
 6. Re-run required project gates independently; record exact command and exit.

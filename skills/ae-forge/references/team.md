@@ -71,6 +71,17 @@ Critical and high findings block delivery. Medium and low findings are visible
 but do not expand the approved scope automatically. Experts do not edit another
 role's result or claim its decision.
 
+## Dispatch packet
+
+Forge gives each stage the same small, explicit packet: run ID, contract
+version, current phase and revision, assigned role, exact repository scope,
+brief path, artifact path, paths to the latest relevant result files, and
+attached lens paths. Candidate reviewers also receive the baseline and exact
+diff target. The stage reads those files itself and checks that its assigned
+phase and revision still match `run.json` before recording a result. If they
+do not match, it returns to Forge without writing a stale review. Never pass
+only a conversation summary or a prior agent's opinion as the handoff.
+
 ## Exclusive ownership
 
 Each role's exclusive outcome, and what it explicitly does not own, is stated
@@ -106,10 +117,13 @@ let both roles issue competing answers to the same question.
    results. On deep runs, Plan Challenger then challenges each material decision
    in the reviewed plan. A REVISE from either returns the plan to Architect
    for a focused revision, followed by a new Reviewer pass and, when selected,
-   a Challenger pass. Blocking unknowns also force REVISE or NEEDS INPUT.
-5. On deep runs, Forge presents the current reviewed and challenged plan to the user and
-   waits for explicit approval. A reviewer or challenger verdict is never user
-   authorization. Any plan change repeats review, challenge, and user approval.
+   a Challenger pass. Do not dispatch an identical review on an unchanged
+   plan and evidence; record a blocked unknown or seek the missing decision.
+   Blocking unknowns also force REVISE or NEEDS INPUT.
+5. When an unresolved material choice or authority boundary requires it,
+   Forge presents the current reviewed plan to the user and records approval.
+   A reviewer verdict is never user authorization. A changed plan repeats the
+   selected reviews and, when required, user approval.
 6. Builder alone performs implementation and reads all selected constraints.
 7. Selected technical specialists (Security, Data, Experience, Reliability)
    inspect the candidate in their own boundary. Product defines the outcome
@@ -118,7 +132,7 @@ let both roles issue competing answers to the same question.
 
 Delivery runs may omit Product, Investigator, and named specialists. Every
 delivery retains Architect, Plan Reviewer, Builder, and Verifier. Deep runs add
-Challenger and user plan approval.
+Challenger; user approval depends on the decision boundary.
 Audit-only work omits Builder and cannot modify application code. Selected
 specialists examine their scoped boundaries, Auditor makes the cold assessment,
 and Verifier assesses the combined findings. Auditor does not read the earlier
@@ -126,39 +140,16 @@ specialist results, preserving its independent read.
 
 ## Dispatch capability
 
-The host's dispatch capability is read from the project, never assumed:
+Use isolated stage dispatch only when the current host exposes it and the
+session permits delegation. Otherwise run stages sequentially and record
+`same-session` for review contributions. A same-session Verifier must reopen
+claims and run checks directly; the report states its context. Never infer
+isolation from installed files or a saved project profile.
 
-- `native-parallel` — concurrent isolated dispatch, confirmed for this host.
-- `native-sequential` — isolation confirmed, concurrency not.
-- `none` — no confirmed isolation. Run explicit sequential role passes in this
-  session. Record `same-session` on all review notes and disclose the context
-  in the report.
-
-`ae-surveyor` resolves every known host's dispatch capability from its own `targets.yml` at
-scaffold time and publishes the table to `.dev/context/host.json`. Read that
-file and look up the tool you are running as, matching either the host key or
-an entry in its comma-separated `installer_ids`. A documented dispatch tier
-is only a capability: use isolated agents when the active session actually
-exposes them and delegation is permitted. Otherwise use the same-session path
-and disclose that limitation.
-
-**Two coupling styles, and the difference is deliberate.** Across a *product*
-boundary — `ae-forge` and `ae-surveyor` — this kit never reads another
-skill's files. The channel is an artifact inside the project, versioned by
-`analysis.json`'s `schema` field and checked against `team.json`'s
-`analysis_schema`, so it cannot silently rot the way a "keep these in sync"
-instruction would. Within the *delivery pipeline*, the six stage skills
-(`ae-plan`, `ae-plan-review`, `ae-build`, `ae-verify`, `ae-investigate`,
-`ae-audit`) do read `ae-forge/references/` directly, by resolving it as a
-sibling. That is not an exception to the rule, it is the rule applied to a
-different thing: they are one distribution unit with `ae-forge`, installed
-together and versioned together by `contract`. A stage skill that cannot
-resolve that sibling stops rather than improvising, which is what keeps the
-coupling honest.
-
-Assume `none` when the file is missing or your host has no matching key or
-alias, and say which. A same-session Verifier must
-reopen claims and run checks directly; the report must state its context.
+The six stage skills (`ae-plan`, `ae-plan-review`, `ae-build`, `ae-verify`,
+`ae-investigate`, `ae-audit`) read `ae-forge/references/` as siblings. They
+ship together under one contract. A stage that cannot resolve this directory
+stops instead of inventing its method.
 
 ## Enforcement modes
 
@@ -207,8 +198,7 @@ node "$AE/scripts/lens-select.mjs" --id <run-id>
    It also reads `.dev/context/analysis.json` and derives domain tags from what is
    actually in the repository, so a React dependency attaches the
    web-performance and accessibility lenses whether or not anyone asked.
-   `--domain` adds anything the project cannot reveal — never a substitute
-   for the survey.
+   `--domain` adds a platform or standard the project cannot reveal.
 2. The script attaches **every** matching lens per role, ranked by
    signal-match count (`lenses[*].signals` scored against the combined request
    + stack signals; ties keep `team.json`'s declared order). A role with no

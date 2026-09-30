@@ -63,36 +63,29 @@ Say the directory could not be resolved, print the restore command
 --copy -y`, or set `AE_SKILL_DIR`), and end the turn. A shell that cannot run
 the resolution at all is the same condition.
 
-Inspect the project instructions and current work. Before a **new** Forge run,
-check for `.dev/knowledge/00-index.md`, the five knowledge documents, and
-`.dev/rules/00-index.md`. If
-they are missing, run the sibling `ae-surveyor` skill through its six stages
-first, including verification and the final index. Tell the user that the
-first survey is in progress. Do not substitute `analyze.mjs` for a complete
-survey. Resume an existing Forge run without repeating this first-run step.
-`forge.mjs start` checks that the durable knowledge exists and explains the
-missing prerequisite when it does not. If Surveyor is unavailable or fails,
-report the reason and stop this new run; do not claim it was surveyed.
+Inspect project instructions and current work. `start` reuses an active run
+with the same request scope. It references a completed run only when its
+recorded source fingerprint still matches; otherwise it starts a numbered run.
+It ensures `/.dev/` is ignored by Git. Resume its state and read its
+brief, current artifact, and latest result files before any new work. Use
+`--new --id <distinct-id>` only for intentionally separate work with the same
+scope. Never reset an existing run to make a stage easier to repeat. State the
+full requested behavior in `--title`; omitted details cannot be matched.
+Keep disposable notes in `.dev/work/<id>/scratch/`; `finish` clears that
+directory after archiving the completed record. Put evidence a later reviewer
+needs in `results/` or the artifact, never only in scratch.
 
-Runs created before contract v5 cannot enter implementation because they lack
-the mandatory user-plan-approval record. Return them to planning and create a
-new current-contract run rather than treating a historic internal review as current user
-authorization.
+Runs created before contract v5 retain their historic approval gate. Return
+them to planning and create a current-contract run before implementation.
 
-Runs created before contract v6 also cannot enter repair: they lack the
-mandatory user approval that bounds a repair to the verifier finding. Return
-them to Plan and create a current-contract run rather than applying a repair
-outside a recorded decision.
+Runs created before contract v6 retain their historic repair gate. Return
+them to Plan and create a current-contract run before repair.
 
-Build the repository map **once per run**, before any expert starts, and give
-every expert the same map:
+`start` runs the bundled analyzer once for a new run, before any expert
+starts. On resuming a run after the source has changed, refresh the map once:
 
 ```bash
-# ae-surveyor installs as a sibling of this skill; use its analyzer when present.
-SV="$(dirname "$AE")/ae-surveyor"
-if [ -f "$SV/scripts/analyze.mjs" ]; then
-  node "$SV/scripts/analyze.mjs" --budget-tokens 60000
-fi
+node "$AE/scripts/analyze.mjs" --budget-tokens 60000
 ```
 
 `--budget-tokens` sizes the analyzer's suggested reading set, not the run's
@@ -103,11 +96,10 @@ a changed boundary, and record what remained unread. Increase the estimate or
 inspect a targeted area when the selection misses important files; never treat
 the estimate as a quality ceiling or a reason to end the task.
 
-Read `.dev/knowledge/00-index.md` first and follow it to the one or two
-relevant documents. Compare its source fingerprint with the fresh analysis;
-stale knowledge is a reading lead, not current evidence. If analysis is
-unavailable or its schema is incompatible, inspect the repository directly and
-report the gap.
+Use current source and project instructions as evidence. Existing project
+documentation can guide the reading set but must be checked against source.
+If analysis is unavailable or its schema is incompatible, inspect the
+repository directly and report the gap.
 
 **Explore the repository once.** Isolated experts start with a clean context
 window, so an unbudgeted "go read the code" instruction is paid again by every
@@ -115,15 +107,17 @@ expert on the team. Give each expert the ranked file list and the paths its own
 boundary needs, and let it open only what its question requires. A five-role
 run should read the repository once, not five times.
 
-First list current runs. Resume only a clearly matching active run; otherwise
-create one small record. Skip the record for explanation-only work.
+First list current runs. `start` reuses current matching work or creates one
+small record. Skip the record for
+explanation-only work.
 
 ```bash
 node "$AE/scripts/forge.mjs" list
 node "$AE/scripts/forge.mjs" start --title "<request>" --kind <kind> \
   --risk <comma-list|none> \
   [--cause known --cause-evidence <repro-or-code-evidence>] \
-  [--signals <comma-list>] [--domain <comma-list>] [--depth standard|deep]
+  [--signals <comma-list>] [--domain <comma-list>] [--depth standard|deep] \
+  [--approval-required --approval-reason "<unresolved material decision>"]
 ```
 
 `--signals` passes vocabulary the user actually used. Signals may add a
@@ -152,7 +146,7 @@ evidence of safety** — it records that you assessed and found none. Omitting
 `--risk` entirely is recorded as unassessed and reported to the user.
 
 Domain depth adapts to the request and project: `lens-select.mjs` reads the
-run's recorded request signals and domain hints, then the survey's sensor dump
+run's recorded request signals and domain hints, then Forge's sensor dump
 and derives domain tags from what the repository actually
 contains, so a Stripe dependency reaches the payments lens and an OpenAI
 dependency reaches the AI/LLM lens without anyone naming them. Pass `--domain`
@@ -242,21 +236,13 @@ new result in the `repair` phase before Forge moves back to `verify`.
 
 ### How a stage is invoked
 
-Prefer isolated dispatch where this host has it, one stage at a time:
+Prefer isolated dispatch when the current host actually exposes it, one stage
+at a time. Use the host's live tool capability, not project files or an
+inferred installation. If unavailable, record `same-session` review context.
 
-```bash
-cat .dev/context/host.json   # committed by ae-surveyor stage 1
-```
-
-Find **your own** row in `hosts` — you know which tool you are running as — and
-use its `dispatch` value. Do not infer a dispatch capability from `detected_in_project`; that
-field describes what this repository contains, not what is executing. If the
-file is absent or your row is not in it, assume `none` and say which of the two
-it was.
-
-- **Isolation available** — dispatch the stage with its skill name, the run id,
-  the artifact path, the exact repository scope, and the specialists and lenses
-  attached to it. It inherits nothing else, which is the point.
+- **Isolation available** — dispatch the stage with its skill name and the
+  exact packet in `references/team.md`. It inherits nothing else, which is
+  the point.
 - **No isolation** — execute each selected stage sequentially in this session.
   Load its stage skill and selected role method, write its result, and record
   the section before proceeding. Verifier reopens claims and runs checks
@@ -293,10 +279,11 @@ log. `phase`, `lenses`, `approve`, `finish`, and `cancel` also refresh the live
 status. During a long role, update `focus` when its work materially changes;
 the displayed timestamp is the last recorded update, not a heartbeat.
 
-Record material contributions with:
+Record material contributions with the result file the next stage can read:
 
 ```bash
-node "$AE/scripts/forge.mjs" note --id <id> --role <role> --summary "<result>"
+node "$AE/scripts/forge.mjs" note --id <id> --role <role> \
+  --summary "<result>" --result .dev/work/<id>/results/<role>.md
 ```
 
 For Reviewer, Challenger, and Verifier, add `--review-context isolated` only when the host actually
@@ -306,9 +293,10 @@ provided an isolated context; otherwise add `--review-context same-session`.
 
 Work through investigation and planning autonomously. Standard runs proceed
 from Plan to Build after a complete brief, constraints, and Plan Reviewer approval.
-Deep runs show the reviewed plan and record explicit user approval before
-Build. If the user already approved that exact plan in the active conversation,
-record that decision without asking again.
+Deep runs add Plan Challenger. Review depth alone does not require user
+approval. Require it only for an unresolved material choice or authority
+boundary. If the user already authorized the exact action in the active
+conversation, record that decision without asking again.
 
 **A reviewer verdict is not user approval.** An expert clearing its findings
 says the change is sound; only the user says it is wanted. `approve` refuses a
@@ -317,19 +305,16 @@ condition independently before it edits anything. Two keys, because a gate
 enforced at one point is a gate one mistake opens.
 
 Do not ask which file to edit, whether to write a test, how to name something,
-or whether to run the project's checks. After Plan Challenger approves, show a
+or whether to run the project's checks. When the run requires user approval,
+after the selected reviews approve show a
 concise decision record: intended behavior, affected boundaries, alternatives
 rejected, verification plan, residual risks, and every open question. Ask one
 clear question: **“Approve this plan for implementation?”** Do not call
 `approve` until the user explicitly answers yes.
 
-Four actions are gated at the moment of action, every run, no matter what was
-approved earlier: **pushing to a remote, merging, migrating a shared
-environment, and anything that spends money.** Approval of a brief authorises
-the change, never its release. These leave the machine or touch state other
-people depend on, so a plan-time "yes" cannot cover them — the person saying
-yes has not seen the diff yet. Editing files, running checks, and committing
-locally are not in this set and need no separate approval.
+For **pushing to a remote, merging, migrating a shared environment, and
+spending money**, check the authority already provided by the user and project
+before acting. A plan decision alone does not imply release authority.
 
 Approval is a document and a user decision. Scaffold the brief and fill it,
 then point the user at it:
@@ -341,12 +326,12 @@ node "$AE/scripts/forge.mjs" brief --id <id>
 The brief always carries the decision and verification sections used by the
 reviewer and challenger. Keep each concise: a four-page plan for a one-line
 fix is a defect, not thoroughness.
-Fill its `TODO` sections before Build. On deep runs, move to `approval` only
-after both review passes approve the current plan. The ledger rejects an
+Fill its `TODO` sections before Build. Move to `approval` only when the run
+requires a user decision and selected reviews approve the current plan. The ledger rejects an
 unfinished brief and changes to an approved brief.
 
 Record the user's decision with `approve --by <user> --basis
-<decision-evidence>`. Approval is required for deep delivery runs. It freezes
+<decision-evidence>` when required. It freezes
 both the brief and the exact Plan section; any change returns the work to Plan
 Reviewer, Plan Challenger, and the user. Do not rewrite a frozen brief.
 
@@ -371,13 +356,13 @@ Use these phases internally:
 
 1. **Understand:** inspect instructions, reproduce bugs, and identify unknowns.
 2. **Plan:** state acceptance behavior and the smallest implementation path.
-3. **Approval, deep runs:** render `approval-packet --id <id>`, show the
+3. **Approval, when required:** render `approval-packet --id <id>`, show the
    reviewed and challenged plan, and record explicit user approval.
 4. **Build:** edit the code and tests in small coherent steps.
 5. **Verify:** inspect the exact diff and run the project's relevant checks.
-6. **Repair:** after a verifier finding in a deep run, return to Approval,
-   show the repair packet, and record approval for the bounded repair. Standard
-   runs may enter Repair directly. Return to Plan when the approach changes,
+6. **Repair:** after a verifier finding in a run requiring user approval,
+   return to Approval, show the repair packet, and record approval for the
+   bounded repair. Other runs may enter Repair directly. Return to Plan when the approach changes,
    then verify again.
    Record a new Builder contribution for each repair before returning to Verify.
    Keep the second cycle focused on the repair: confirm named blockers are
@@ -444,13 +429,14 @@ node "$AE/scripts/forge.mjs" finish --id <id> --summary "<delivered outcome>" \
 
 Share concise progress at meaningful milestones and explain blockers promptly.
 Keep expert transcripts and ledger details in the run files. Present the
-approval packet only when a deep run needs a decision.
+approval packet only when the run needs a user decision.
 
-## Leave the project smarter than you found it
+## Preserve design reasoning
 
-For a material accepted design decision, append a short entry below the managed
-block in `.dev/knowledge/decisions.md`: decision, evidence, and rejected
-alternative. Skip routine choices and preserve existing entries.
+The Architect records material decisions and rejected alternatives in the
+Plan section. Builder records how the actual implementation works in the
+Implementation section. On completion, Forge writes the outcome and checks
+into Summary and archives the document at `.dev/completed/<id>.md`.
 
 ## Final response
 
@@ -490,10 +476,9 @@ accounting, or coordination files alongside it.
 - Do not deploy, publish, spend money, access new private systems, or perform a
   destructive action without the authority required by the user and project.
 - Do not expand a bounded request into unrelated cleanup.
-- Do not turn missing metadata into a refusal to help after the first survey.
-  Stale knowledge, an absent lens, and an unresolved judgment in `decisions.md`
-  are reported while work proceeds. A new run requires first-run survey
-  knowledge. `scripts/` is also required because it gates the run.
+- Do not turn missing generated context into a refusal to help. An absent
+  lens or analyzer is reported while work proceeds. `scripts/` is required
+  because it gates the run.
 - Do not run an expert pass, print a routing block, or write a delivery report
   while the skill directory is unresolved. A Forge-shaped answer produced
   without Forge's gates is the failure this kit exists to prevent.

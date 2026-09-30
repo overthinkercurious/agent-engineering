@@ -11,13 +11,13 @@ decisions), Builder (implementation), and Verifier (platform-specific checks).
 
 Signals: `android`, `kotlin`, `jetpack`, `play store`, `apk`, `aab`, or a
 detected `build.gradle`/`build.gradle.kts`/`AndroidManifest.xml` in the
-sensor dump (`ae-surveyor`'s `stack.md`, when a survey exists).
+fresh analyzer output.
 
 `gradle`, `manifest`, and `compose` are deliberately not auto-trigger
 signals on their own — a request can mention any of them without being
 Android-specific (a generic build-system question, an unrelated manifest
 file, a design term). They count only as supporting evidence once one of
-the unambiguous signals above has already matched, or once a survey has
+the unambiguous signals above has already matched, or once source inspection has
 confirmed the actual file.
 
 ## Checklist

@@ -1,6 +1,6 @@
 {
   "name": "agent-engineering",
-  "version": "1.2.2",
+  "version": "2.0.0",
   "description": "Project-scoped product discovery and specialist engineering workflows for independently verified software delivery.",
   "author": {
     "name": "overthinkercurious",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Agent Engineering",
     "shortDescription": "A project-aware specialist team for shipping software",
-    "longDescription": "Agent Engineering surveys a project before its first new delivery run, then selects a risk-sized team to understand, plan, implement, audit, and verify a change.",
+    "longDescription": "Agent Engineering selects a risk-sized team to understand, plan, implement, audit, and verify a change. Forge keeps local Git-ignored recovery records and reuses matching runs.",
     "developerName": "overthinkercurious",
     "category": "Developer Tools",
     "capabilities": [
@@ -34,7 +34,7 @@
     "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
     "brandColor": "#7C3AED",
     "defaultPrompt": [
-      "Index this project and prepare it for Agent Engineering.",
+      "Use ae-forge to inspect this project and deliver a verified change.",
       "Forge this idea into a verified product change."
     ]
   }
