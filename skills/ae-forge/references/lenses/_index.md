@@ -5,8 +5,8 @@ generically — platform, protocol, or standard-specific constraints. It never
 replaces a role's exclusive ownership; it narrows what that role must check
 within its own boundary.
 
-Selection is mechanical and change-aware. `lens-select.mjs` reads the survey's
-sensor dump and derives domain tags from repository dependencies. When the
+Selection is mechanical and change-aware. `lens-select.mjs` reads Forge's
+fresh analyzer output and derives domain tags from repository dependencies. When the
 request names a domain, it takes precedence and unrelated project-only tags
 remain visible without attaching their lenses. Otherwise the detected stack
 supplies domain depth. `--domain`, `--risk`, and `--kind` describe this change.
@@ -56,9 +56,8 @@ review_after: "2027-09-20"
 ```
 
 Past `review_after`, record `LENS STALE` alongside `LENS UNAVAILABLE` and
-re-verify before quoting the number. This is the same provenance discipline
-`ae-surveyor`'s `targets.yml` uses for tool paths, applied to domain facts,
-and it exists because the opposite failure is silent: a lens that confidently
+re-verify before quoting the number. This provenance discipline exists
+because the opposite failure is silent: a lens that confidently
 cites a superseded threshold is worse than a lens that admits it is old.
 
 The project always outranks a lens. Where the repository declares its own

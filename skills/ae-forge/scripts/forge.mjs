@@ -2,10 +2,11 @@
 
 import { createHash } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateReviewResult } from './review-result.mjs'
+import { ensureArtifactIgnore } from './artifact-ignore.mjs'
 
 const args = process.argv.slice(2)
 const command = args[0] || 'help'
@@ -87,10 +88,9 @@ function workRoot(root) {
   return path
 }
 
-// The artifact lives OUTSIDE .dev/work/ deliberately. work/ is gitignored raw
-// evidence - transcripts, per-role results, things that may carry sensitive
-// material. The artifact is the opposite: the one document a human reads, a
-// reviewer approves, and a fresh agent resumes from, so it is committed.
+// The artifact lives OUTSIDE .dev/work/ deliberately. Both are local and
+// gitignored, but the artifact is the one readable handoff while work/ holds
+// machine state and raw evidence that may contain sensitive material.
 //
 // In a split pipeline this file is also the only channel between roles. Each
 // role is invoked separately and inherits nothing, so a decision that lives
@@ -108,8 +108,18 @@ function runsRoot(root) {
 }
 
 function artifactPath(root, id) {
-  const path = join(runsRoot(root), `${safeId(id)}.md`)
+  const completedRoot = join(root, '.dev', 'completed')
+  if (existsSync(completedRoot) && !inside(root, realpathSync(completedRoot))) {
+    die('completed directory resolves outside project root')
+  }
+  const completed = join(completedRoot, `${safeId(id)}.md`)
+  const path = existsSync(completed) ? completed : join(runsRoot(root), `${safeId(id)}.md`)
   if (!inside(root, path)) die('artifact path escapes project root')
+  let entry = null
+  try { entry = lstatSync(path) } catch { /* file not created yet */ }
+  if (entry && (!entry.isFile() || !inside(root, realpathSync(path)))) {
+    die('artifact is not a regular file within the project root')
+  }
   return path
 }
 
@@ -298,26 +308,14 @@ function fileDigest(path) {
 
 function contextStatus(root) {
   const analysisPath = join(root, '.dev', 'context', 'analysis.json')
-  if (!existsSync(analysisPath)) return { analysis: 'missing', knowledge: 'unknown' }
+  if (!existsSync(analysisPath)) return { analysis: 'missing' }
   try {
     const analysis = JSON.parse(readFileSync(analysisPath, 'utf8'))
     if (analysis.schema !== TEAM.analysis_schema) {
-      return { analysis: 'schema-mismatch', expected: TEAM.analysis_schema, found: analysis.schema ?? null, knowledge: 'unknown' }
+      return { analysis: 'schema-mismatch', expected: TEAM.analysis_schema, found: analysis.schema ?? null }
     }
-    const indexPath = join(root, '.dev', 'knowledge', '00-index.md')
-    if (!existsSync(indexPath)) return { analysis: 'current', knowledge: 'absent' }
-    const snapshot = readFileSync(indexPath, 'utf8').match(/<!-- agent-engineering:snapshot:([a-f0-9]+) -->/)?.[1]
-    return { analysis: 'current', knowledge: snapshot && snapshot === analysis.provenance?.fingerprint ? 'current' : 'stale' }
-  } catch { return { analysis: 'unreadable', knowledge: 'unknown' } }
-}
-
-function surveyReady(root) {
-  const base = join(root, '.dev', 'knowledge')
-  const files = ['00-index.md', 'stack.md', 'architecture.md', 'schema.md', 'commands.md', 'decisions.md']
-    .map((name) => join(base, name))
-  files.push(join(root, '.dev', 'rules', '00-index.md'))
-  return files.every((path) => existsSync(path) && statSync(path).size > 0
-    && !readFileSync(path, 'utf8').includes('TODO (judgment)'))
+    return { analysis: 'current' }
+  } catch { return { analysis: 'unreadable' } }
 }
 
 function baseline(root, id) {
@@ -420,9 +418,37 @@ function taskDiff(root, baseline) {
 }
 
 function candidateDigest(root, baseline) {
-  if (!baseline?.head) return null
+  if (!baseline?.head) return projectFingerprint(root).fingerprint
   const files = taskDiff(root, baseline).names.sort().map((name) => [name, fileDigest(resolve(root, name))])
   return createHash('sha256').update(JSON.stringify(files)).digest('hex')
+}
+
+function requestSignature(scope) {
+  return createHash('sha256').update(JSON.stringify(scope)).digest('hex')
+}
+
+// The analyzer uses the same exclusions for Git and non-Git projects. Its
+// inspected-source fingerprint is the honest limit of a completed-run reuse
+// decision; failure to scan means the old result cannot prove it is current.
+function projectFingerprint(root) {
+  const scan = spawnSync(process.execPath, [join(SCRIPT_DIR, 'analyze.mjs'), '--root', root,
+    '--budget-tokens', '60000'], { cwd: root, encoding: 'utf8' })
+  if (scan.status !== 0) return { fingerprint: null, scan }
+  try {
+    const analysis = JSON.parse(readFileSync(join(root, '.dev', 'context', 'analysis.json'), 'utf8'))
+    const fingerprint = analysis.provenance?.fingerprint
+    return { fingerprint: typeof fingerprint === 'string' ? fingerprint : null, scan }
+  } catch { return { fingerprint: null, scan } }
+}
+
+function nextRunId(title, existing) {
+  const base = slug(title)
+  const used = new Set(existing.map((run) => run.id))
+  if (!used.has(base)) return base
+  for (let suffix = 2; ; suffix++) {
+    const candidate = `${base.slice(0, 63 - String(suffix).length)}-${suffix}`
+    if (!used.has(candidate)) return candidate
+  }
 }
 
 function briefPath(root, id) {
@@ -451,9 +477,7 @@ function brief() {
   const id = safeId(option('--id'))
   const { run } = load(root, id)
   const path = briefPath(root, id)
-  if (existsSync(path) && !args.includes('--force')) {
-    die('brief already exists; edit it in place or pass --force to rescaffold', 4, { id })
-  }
+  if (existsSync(path)) return output({ ok: true, id, reused: true, brief: relative(root, path).replaceAll('\\', '/') })
   const lines = [
     `# ${run.title}`, '',
     `> ${run.kind} · risk: ${run.risks?.length ? run.risks.join(', ') : (run.routing?.risk_assessed ? 'none declared' : 'NOT ASSESSED')}`,
@@ -653,9 +677,7 @@ function artifact() {
   const id = safeId(option('--id'))
   const { run } = load(root, id)
   const path = artifactPath(root, id)
-  if (existsSync(path) && !args.includes('--force')) {
-    die('artifact already exists; write sections into it or pass --force to rescaffold', 4, { id })
-  }
+  if (existsSync(path)) return output({ ok: true, id, reused: true, artifact: relative(root, path).replaceAll('\\', '/') })
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, artifactSkeleton(run), 'utf8')
   output({
@@ -719,6 +741,8 @@ function runPath(root, id) {
 function load(root, id) {
   const path = runPath(root, id)
   if (!existsSync(path)) die('run not found', 4, { id })
+  try { ensureArtifactIgnore(root, { untrack: true }) }
+  catch (error) { die(`cannot protect generated artifacts from Git: ${error.message}`, 5) }
   let run
   try { run = JSON.parse(readFileSync(path, 'utf8')) }
   catch (error) { die('run record is unreadable', 4, { id, detail: error.message }) }
@@ -766,23 +790,21 @@ function bindSession(root, run) {
 
 function start() {
   const root = projectRoot()
-  if (!surveyReady(root)) {
-    die('first-run project survey is required before a new Forge run', 5, {
-      resolve: 'Run the sibling ae-surveyor skill through all six stages, then retry Forge. Existing runs can still be resumed.',
-      expected: 'completed .dev/knowledge/00-index.md and five knowledge documents, plus .dev/rules/00-index.md',
-    })
-  }
   const title = option('--title')
   const kind = option('--kind')
   if (!title) die('--title is required')
   if (!KINDS.includes(kind)) die(`kind must be one of: ${KINDS.join(', ')}`)
-  const id = safeId(option('--id', slug(title)))
-  const path = runPath(root, id)
-  if (existsSync(path)) die('run already exists; resume it instead', 4, { id })
+  let ignore
+  try { ignore = ensureArtifactIgnore(root, { untrack: true }) }
+  catch (error) { die(`cannot protect generated artifacts from Git: ${error.message}`, 5) }
+  const requestKey = String(option('--key') ?? `${kind}:${title}`).trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!requestKey) die('--key must not be empty')
   const signals = splitSignals()
   const { risks, assessed } = splitRisks()
-  if (option('--approval-required') !== null || option('--approval-reason') !== null) {
-    die('approval is derived from standard/deep routing; do not pass an approval override')
+  const approvalRequired = args.includes('--approval-required')
+  const approvalReason = option('--approval-reason')?.trim() ?? null
+  if (approvalRequired !== Boolean(approvalReason)) {
+    die('--approval-required and --approval-reason must be supplied together for an unresolved material decision or authority boundary')
   }
   const cause = option('--cause') ?? ((kind === 'bug' || kind === 'performance') ? 'unknown' : null)
   if (cause && !['known', 'unknown'].includes(cause)) die('--cause must be known or unknown')
@@ -792,6 +814,7 @@ function start() {
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
   if (option('--tier') !== null) die('--tier is retired; use --depth standard|deep')
   const readOnly = READ_ONLY_KINDS.has(kind)
+  if (readOnly && approvalRequired) die('read-only runs cannot require build approval; record an open decision in the assessment')
   const requiredDeep = !readOnly && (!assessed || ['security', 'idea'].includes(kind)
     || risks.some((risk) => ['access', 'stored-shape', 'irreversible'].includes(risk))
     || [...signals, ...domains].some((signal) => ['payments', 'auth', 'privacy', 'identity-auth', 'migration', 'schema', 'compliance'].includes(signal))
@@ -802,12 +825,67 @@ function start() {
   if (requestedDepth === 'standard' && requiredDeep) die('declared risk or unresolved cause requires deep review')
   if (readOnly && explicitDepth) die('--depth applies only to delivery runs')
   const depth = readOnly ? 'assessment' : (requestedDepth ?? (requiredDeep ? 'deep' : 'standard'))
+  const signature = requestSignature({ key: requestKey, kind, title: title.trim(), signals: [...signals].sort(),
+    risks: [...risks].sort(), assessed, cause, causeEvidence, domains: [...domains].sort(), depth,
+    approvalRequired, approvalReason })
+  const explicitId = option('--id')
+  const existing = existsSync(workRoot(root)) ? readdirSync(workRoot(root), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const file = join(workRoot(root), entry.name, 'run.json')
+      if (!existsSync(file)) return null
+      try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return null }
+    }).filter(Boolean) : []
+  const sameRequest = (run) => run.request_key === requestKey
+    || (!run.request_key && run.kind === kind && run.title.trim().toLowerCase().replace(/\s+/g, ' ') === title.trim().toLowerCase().replace(/\s+/g, ' '))
+  const matches = existing.filter(sameRequest).sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))
+  const explicitMatch = explicitId ? existing.find((run) => run.id === explicitId) : null
+  if (explicitMatch && args.includes('--new')) die('--new requires a distinct, unused --id', 4, { id: explicitId })
+  if (explicitMatch && !sameRequest(explicitMatch)) die('run ID belongs to another request', 4, { id: explicitMatch.id })
+  if (explicitMatch?.request_signature && explicitMatch.request_signature !== signature) {
+    die('run ID has a different request scope; start a new run with a distinct ID', 4, { id: explicitId })
+  }
+  if (explicitMatch?.status === 'done') {
+    const current = projectFingerprint(root)
+    if (!current.fingerprint || current.fingerprint !== explicitMatch.source_fingerprint_at_finish) {
+      die('completed run does not match current source; omit --id to start a new run or use status to inspect history', 4,
+        { id: explicitId })
+    }
+  }
+  let match = explicitMatch ?? (!args.includes('--new') ? matches.find((run) =>
+    run.status === 'active' && (!run.request_signature || run.request_signature === signature)) : null)
+  let currentSource = null
+  if (!match && !args.includes('--new')) {
+    const completed = matches.filter((run) => run.status === 'done' && run.request_signature === signature)
+    if (completed.length) {
+      currentSource = projectFingerprint(root)
+      match = currentSource.fingerprint ? completed.find((run) =>
+        run.source_fingerprint_at_finish === currentSource.fingerprint) : null
+    }
+  }
+  if (match) {
+    if (match.status === 'active') {
+      bindSession(root, match)
+      save(runPath(root, match.id), match)
+    }
+    return output({ ok: true, reused: true, id: match.id, status: match.status, phase: match.phase,
+      record: relative(root, runPath(root, match.id)).replaceAll('\\', '/'),
+      artifact: relative(root, artifactPath(root, match.id)).replaceAll('\\', '/'),
+      tracked_artifacts: ignore.trackedRemaining })
+  }
+  if (args.includes('--new') && !explicitId) die('--new requires a distinct --id')
+  const id = safeId(explicitId ?? nextRunId(title, existing))
+  const path = runPath(root, id)
+  if (existsSync(path)) die('run ID belongs to another request; use its ID to resume or choose a distinct ID', 4, { id })
   const routing = chooseTeam(kind, [...signals, ...domains], risks, cause, depth)
   const now = new Date().toISOString()
+  const scan = (currentSource ?? projectFingerprint(root)).scan
   const initialBaseline = baseline(root, id)
   const run = {
     schema: 1,
     id,
+    request_key: requestKey,
+    request_signature: signature,
     title,
     kind,
     read_only: readOnly,
@@ -828,16 +906,18 @@ function start() {
       skipped: routing.skipped,
     },
     contract: TEAM.version,
-    approval_reason: depth === 'deep' ? 'user approval of a deeply reviewed plan' : 'none',
-    approval_required: depth === 'deep',
+    approval_reason: approvalReason ?? 'none',
+    approval_required: approvalRequired,
     approval: null,
     baseline: initialBaseline,
     source_sha_at_start: readOnly ? candidateDigest(root, initialBaseline) : undefined,
-    context: contextStatus(root),
+    context: scan.status === 0 ? contextStatus(root) : { analysis: 'failed',
+      reason: String(scan.stderr || scan.error?.message || 'analyzer failed').trim().slice(0, 300) },
     status: 'active',
     phase: 'understand',
     active_role: null,
     revision: 0,
+    repair_cycles: 0,
     summary: 'Run created.',
     contributions: [],
     verification: null,
@@ -860,6 +940,7 @@ function start() {
     // recalled. See SKILL.md, "Print the routing decision".
     contract: `contract v${TEAM.version} · run ${id}`,
     record: relative(root, path).replaceAll('\\', '/'),
+    tracked_artifacts: ignore.trackedRemaining,
   })
 }
 
@@ -915,6 +996,10 @@ function note() {
   ensureActive(feature.run)
   ensureRecordedResults(root, feature.run)
   if (!feature.run.team.includes(role)) die('role is not selected for this run', 4, { role, team: feature.run.team })
+  if (role === 'verifier' && feature.run.contract >= 11 && feature.run.verify_candidate_sha
+    && feature.run.verify_candidate_sha !== candidateDigest(root, feature.run.baseline)) {
+    die('candidate changed during verification; return to Build or Repair and start a new verification pass', 5, { id })
+  }
   const permitted = allowedPhases(role)
   if (!permitted.includes(feature.run.phase)) {
     die('role cannot contribute in the current phase', 5, {
@@ -1028,7 +1113,7 @@ function note() {
     result: recordedPath,
     result_sha: fileDigest(resultPath),
     ...(reviewVerdict ? { verdict: reviewVerdict, plan_sha: planSha } : {}),
-    ...(role === 'verifier' ? { candidate_sha: candidateDigest(root, feature.run.baseline) } : {}),
+    ...(role === 'verifier' ? { candidate_sha: feature.run.verify_candidate_sha ?? candidateDigest(root, feature.run.baseline) } : {}),
     ...(['plan-reviewer', 'plan-challenger', 'verifier'].includes(role) && option('--review-context') ? { review_context: option('--review-context') } : {}),
     at: new Date().toISOString(),
   })
@@ -1073,6 +1158,14 @@ function phase() {
   ensureActive(feature.run)
   if (['build', 'verify', 'repair'].includes(to)) ensureRecordedResults(root, feature.run)
   const from = feature.run.phase
+  // Repeating a command after an interrupted session must not create another
+  // candidate revision or consume another repair attempt.
+  if (from === to) return output({ ok: true, id, phase: to, reused: true, revision: feature.run.revision })
+  if ((feature.run.repair_cycles ?? 0) >= 2
+    && (['build', 'repair'].includes(to) || (from === 'verify' && to === 'plan'))) {
+    die('repair limit reached; record the blocker and start a separately scoped run for a new approach', 5,
+      { id, repair_cycles: feature.run.repair_cycles })
+  }
   if (READ_ONLY_KINDS.has(feature.run.kind) && ['approval', 'build', 'repair'].includes(to)) {
     die('read-only runs cannot enter approval, build, or repair; start a delivery run for changes', 5, { id, kind: feature.run.kind })
   }
@@ -1138,6 +1231,10 @@ function phase() {
     die('user approval of the reviewed and challenged plan is required before build', 5, { id })
   }
   if (to === 'repair') {
+    if ((feature.run.repair_cycles ?? 0) >= 2) {
+      die('two repair attempts have failed; return to design or report the blocker', 5,
+        { id, repair_cycles: feature.run.repair_cycles })
+    }
     const verifier = feature.run.contributions.filter((item) => item.role === 'verifier').at(-1)
     if (!verifier || !verifier.severity || verifier.severity === 'none' || verifier.revision !== feature.run.revision) {
       die('repair requires a current verifier finding; return to Plan for a discretionary change', 5, { id })
@@ -1171,6 +1268,10 @@ function phase() {
   }
   if (to === 'build' || to === 'repair') {
     feature.run.revision = (feature.run.revision || 0) + 1
+    if (to === 'repair') feature.run.repair_cycles = (feature.run.repair_cycles ?? 0) + 1
+  }
+  if (to === 'verify' && feature.run.contract >= 11) {
+    feature.run.verify_candidate_sha = candidateDigest(root, feature.run.baseline)
   }
   if (to === 'build' && !feature.run.approval_required && feature.run.contract >= 3) {
     feature.run.brief_sha_at_build = briefDigest(root, id)
@@ -1200,7 +1301,7 @@ function lenses() {
     stale: parsed.stale ?? [],
     assessed: parsed.assessed ?? false,
     derived_from_project: parsed.derived_from_project ?? [],
-    // A survey from a different generation of the surveyor degrades lens
+    // Analyzer output from a different schema degrades lens
     // depth silently. Recording it is what lets the report say so.
     ...(parsed.schema_mismatch ? { schema_mismatch: parsed.schema_mismatch } : {}),
   }
@@ -1318,6 +1419,14 @@ function finish() {
   const requestedResult = option('--result')
   if (!summary || !verification) die('--summary and --verification are required')
   const feature = load(root, id)
+  if (feature.run.status === 'done') {
+    if (feature.run.summary !== summary || feature.run.result !== requestedResult) {
+      die('run is already complete; use its archived record', 5, { id, summary: feature.run.summary, result: feature.run.result })
+    }
+    return output({ ok: true, reused: true, id, status: 'done', summary: feature.run.summary,
+      verification: feature.run.verification, result: feature.run.result,
+      artifact: relative(root, artifactPath(root, id)).replaceAll('\\', '/') })
+  }
   // Older runs may predate an explicit verdict field. Preserve their resume
   // path while requiring current-contract runs to name and evidence it.
   const result = requestedResult ?? (feature.run.contract >= 3 ? null : 'PASS')
@@ -1326,7 +1435,7 @@ function finish() {
   }
   const accepted = new Set(String(option('--accept-gaps', ''))
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))
-  const GAPS = ['risk', 'lenses', 'audit', 'sections', 'baseline']
+  const GAPS = ['risk', 'lenses', 'audit', 'baseline']
   const unknownGap = [...accepted].filter((value) => !GAPS.includes(value))
   if (unknownGap.length) die(`unknown gap(s): ${unknownGap.join(', ')}`, 2, { allowed: GAPS })
 
@@ -1376,12 +1485,18 @@ function finish() {
   // scaffolded has a complete record of work nobody can read, which is the
   // one failure the single-artifact design exists to remove.
   const unwritten = unwrittenSections(root, id, feature.run)
-  if (unwritten.length) {
-    gaps.push({
-      gap: 'sections',
-      why: `${unwritten.map((s) => `${s.name} (${s.owner})`).join(', ')} — ${unwritten[0].why}`,
-    })
+  if (!READ_ONLY_KINDS.has(feature.run.kind)) {
+    const docPath = artifactPath(root, id)
+    const doc = existsSync(docPath) ? readFileSync(docPath, 'utf8') : ''
+    for (const [role, sectionName] of [['builder', 'implementation'], ['verifier', 'verification']]) {
+      const latest = feature.run.contributions.filter((item) => item.role === role
+        && item.revision === feature.run.revision).at(-1)
+      if (latest && sectionBody(doc, sectionName) !== readFileSync(resolve(root, latest.result), 'utf8').trim()) {
+        unwritten.push({ name: sectionName, owner: role, why: 'the section does not reflect the current candidate' })
+      }
+    }
   }
+  if (unwritten.length) die('artifact sections are missing or stale', 5, { id, sections: unwritten })
   const blockingGaps = gaps.filter((item) => !accepted.has(item.gap))
   if (blockingGaps.length) {
     die('required workflow steps did not happen', 5, {
@@ -1412,6 +1527,11 @@ function finish() {
   if (!READ_ONLY_KINDS.has(feature.run.kind) && verifierReview.candidate_sha
     && verifierReview.candidate_sha !== candidateDigest(root, feature.run.baseline)) {
     die('candidate changed after Verifier inspected it; verify the current files again', 5, { id })
+  }
+  if (!READ_ONLY_KINDS.has(feature.run.kind) && feature.run.contract >= 11
+    && feature.run.verify_candidate_sha
+    && feature.run.verify_candidate_sha !== candidateDigest(root, feature.run.baseline)) {
+    die('candidate changed during verification; verify the current files again', 5, { id })
   }
   if (feature.run.contract >= 3 && !verifierReview.review_context) {
     die('Verifier review context was not recorded', 5, { id })
@@ -1495,9 +1615,17 @@ function finish() {
       })
     }
   }
+  const scratch = join(workRoot(root), id, 'scratch')
+  if (existsSync(scratch)) {
+    if (!lstatSync(scratch).isDirectory() || !inside(root, realpathSync(scratch))) {
+      die('scratch directory is unsafe to clean', 5, { scratch })
+    }
+    rmSync(scratch, { recursive: true, force: true })
+  }
   feature.run.acceptance = ACCEPTANCE[feature.run.kind] ?? null
   feature.run.tests_changed_justified = args.includes('--tests-changed-justified') || undefined
   feature.run.brief_sha_at_finish = briefDigest(root, id)
+  feature.run.source_fingerprint_at_finish = projectFingerprint(root).fingerprint
   feature.run.status = 'done'
   feature.run.phase = 'done'
   feature.run.active_role = null
@@ -1506,8 +1634,24 @@ function finish() {
     ? `${verification} · Audit adjudication: ${auditJustification}` : verification
   feature.run.review_context = verifierReview.review_context ?? 'unrecorded'
   feature.run.result = result
+  const currentArtifact = artifactPath(root, id)
+  if (existsSync(currentArtifact)) {
+    const doc = readFileSync(currentArtifact, 'utf8')
+    const bounds = sectionBounds(doc, 'summary')
+    if (!bounds) die('artifact is missing its Summary section', 5, { id })
+    const body = `**Result:** ${result}\n\n**Implementation summary:** ${summary}\n\n**Verification:** ${feature.run.verification}`
+    const replacement = `${bounds.marker}\n## ${SECTIONS.summary.title}\n\n${body}\n\n`
+    writeFileSync(currentArtifact, doc.slice(0, bounds.start) + replacement + doc.slice(bounds.end), 'utf8')
+  }
+  const completed = join(root, '.dev', 'completed', `${id}.md`)
+  if (existsSync(currentArtifact) && currentArtifact !== completed) {
+    mkdirSync(dirname(completed), { recursive: true })
+    if (existsSync(completed)) die('completed artifact already exists', 5, { id })
+    renameSync(currentArtifact, completed)
+  }
   save(feature.path, feature.run)
-  output({ ok: true, id, status: 'done', summary, verification, result: feature.run.result })
+  output({ ok: true, id, status: 'done', summary, verification, result: feature.run.result,
+    artifact: relative(root, artifactPath(root, id)).replaceAll('\\', '/') })
 }
 
 // Rendered from the ledger, never composed from memory. A model-written
@@ -1528,6 +1672,8 @@ function report() {
     : (run.risks?.length ? `\`${run.risks.join(', ')}\`` : 'none declared')
   out.push(`**Routing** · risk ${risk} · ${run.routing?.routing_reason ?? 'no reason recorded'}`, '')
   out.push(`**Mode** · ${run.kind} · ${run.depth ?? 'legacy'}${READ_ONLY_KINDS.has(run.kind) ? ' · read-only' : ''}`, '')
+  out.push(`**Outcome** · ${run.summary ?? 'not recorded'}`)
+  out.push(`**Record** · ${relative(root, artifactPath(root, id)).replaceAll('\\', '/')}`, '')
 
   out.push('| Expert | Why selected | Contribution |', '|---|---|---|')
   for (const role of run.team) {
@@ -1579,11 +1725,13 @@ function report() {
       out.push(`> **Lens stale.** ${lens.stale.join(', ')} — past its review date. Treat its thresholds as unverified.`, '')
     }
     if (lens.assessed === false) {
-      out.push('> **Lens note.** No domain input and no survey, so no domain depth was applied. That is untested, not clean.', '')
+      out.push('> **Lens note.** No domain input was recorded, so domain depth is unverified.', '')
     }
   }
-  if (run.context?.knowledge === 'stale') out.push('> **Project knowledge stale.** Read current source before relying on generated knowledge.', '')
   if (run.context?.analysis === 'schema-mismatch') out.push('> **Project analysis incompatible.** Automatic domain depth is unverified.', '')
+  if (['failed', 'unreadable', 'missing'].includes(run.context?.analysis)) {
+    out.push(`> **Project analysis ${run.context.analysis}.** Automatic domain depth is unverified.`, '')
+  }
 
   const skipped = Object.entries(run.routing?.skipped ?? {})
   if (skipped.length) {
@@ -1604,7 +1752,7 @@ function report() {
     const review = run.contributions.filter((item) => item.role === role).at(-1)
     if (review) out.push(`**${role} context** · ${review.review_context ?? 'unrecorded'}${review.review_context === 'same-session' ? '; not context independent' : ''}`)
   }
-  const cycles = Math.max(0, (run.revision ?? 1) - 1)
+  const cycles = run.repair_cycles ?? 0
   out.push(`**Loop** · ${run.revision} revision(s) · repair cycle ${cycles} of 2`)
   // Never fall back to the CURRENT team.json version here. A run started
   // before this field existed did not run under v${TEAM.version}; we simply do
@@ -1666,7 +1814,7 @@ function audit() {
   // `git diff` only sees tracked files, so a brand-new untracked file - the
   // most likely place for a leaked credential to sit - would be invisible to
   // every check below. Include untracked files and treat them as wholly added.
-  // A project that installed this kit but has not yet wired ae-surveyor's
+  // A project that installed this kit but has not yet wired the plugin's
   // .gitignore fragment leaves the kit's own skill files untracked, which
   // would otherwise inflate every count below with this run's own tooling
   // rather than the work it produced. Exclude by the same pattern the
@@ -1830,7 +1978,8 @@ function help() {
 
 Internal recovery ledger for the autonomous Forge workflow.
 
-  start  --title TEXT --kind KIND --risk FLAGS [--domain a,b] [--signals a,b]
+  start  --title TEXT --kind KIND --risk FLAGS [--key KEY] [--new --id ID]
+         [--domain a,b] [--signals a,b]
          [--depth standard|deep] (delivery only)
          kinds: idea, feature, bug, refactor, performance, security,
                 audit, plan, diagnose, review
@@ -1843,7 +1992,7 @@ Internal recovery ledger for the autonomous Forge workflow.
          [--residual TEXT]  (record a nonblocking residual risk; critical and
           high delivery findings still block completion)
   phase  --id ID --to PHASE --summary TEXT
-  brief  --id ID [--force]
+  brief  --id ID
   lenses --id ID --json '<lens-select.mjs output>'
   approve --id ID --by NAME --basis TEXT
   approval-packet --id ID       (show the exact plan or repair scope for the user decision)
@@ -1853,7 +2002,7 @@ Internal recovery ledger for the autonomous Forge workflow.
          [--audit-justification TEXT] (counter-evidence for audit false positives;
           requires explicit nonblocking Verifier severity after the current audit)
          [--tests-changed-justified]   (refactor only; explain in the report)
-         [--accept-gaps risk,lenses,audit,sections]  (close without a required step;
+         [--accept-gaps risk,lenses,audit,baseline]  (close without a required step;
           each accepted gap is named in the delivery report)
   cancel --id ID [--reason TEXT]
   contract                      (the ordering tables, as JSON; what validate checks)

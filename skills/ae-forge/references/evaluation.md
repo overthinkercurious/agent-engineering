@@ -17,6 +17,24 @@ cases, including clean controls:
 | Unknown cause | retry create after persistence but before response arrives | reproduce duplicates with controls; diagnose without edits |
 | Assessment | audit a correct null-safe formatter against a narrow contract | bounded zero-finding audit, freshly verified; no edits |
 
+The kit-development harness prepares all six cases without expectations in
+their project directories:
+
+```bash
+node tests/behavioral-eval.mjs --out <fresh-temp-directory>
+node tests/behavioral-eval.mjs --score <same-directory>
+```
+
+For a real host run, pass `--runner <executable-or-node-script>` on prepare.
+The runner receives three arguments: case root, evaluation prompt path, and
+result JSON path. It must invoke the installed kit in the host being evaluated
+and write `{ "verdict": "...", "findings": [{ "id": "...", "evidence": "..." }] }`.
+The prompt lists a common finding taxonomy but never the case expectations.
+The scorer checks verdicts, missed and false findings, minimum evidence text,
+and whether any case input changed. Evidence quality still needs independent
+human review; matching labels alone cannot prove a real diagnosis. A prepared
+case without a host result is unrun, not a passing evaluation.
+
 Score actual artifacts against expected behavior after the pass. Count missed
 blockers and false blockers, whether the requested outcome completed, and any
 scope or order violation. Record elapsed time and token/cost metrics only when

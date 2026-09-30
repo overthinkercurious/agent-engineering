@@ -94,5 +94,5 @@ decision cannot be challenged on evidence.
 
 Return to Forge. On `REVISE`, Forge sends the findings to Architect for a
 focused revision, then runs both Plan Reviewer and Plan Challenger again. On
-approval, Forge presents the plan to the user. Only the user's explicit
-approval of that exact plan allows Forge to open build.
+approval, Forge opens Build after recording any user decision required by the
+run. Challenger approval alone does not grant that authority.

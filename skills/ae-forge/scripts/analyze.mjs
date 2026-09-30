@@ -20,7 +20,10 @@ import { execFileSync } from 'node:child_process'
 import { join, relative, extname, basename, dirname, isAbsolute, resolve, sep } from 'node:path'
 import { createHash } from 'node:crypto'
 import { sense, manifestKind, redact, maskComments } from './sense.mjs'
-import { ANALYSIS_SCHEMA } from './artifact-support.mjs'
+import { ensureArtifactIgnore } from './artifact-ignore.mjs'
+// The analyzer is an internal Forge sensor, not a project-wide knowledge
+// generator. Keep its schema aligned with references/team.json.
+const ANALYSIS_SCHEMA = 2
 
 // ---------------------------------------------------------------- args ------
 
@@ -31,7 +34,7 @@ const arg = (name, dflt) => {
 }
 const has = (name) => argv.includes(name)
 
-const ROOT = resolveRoot(arg('--root', process.cwd()))
+const ROOT = canonicalPath(arg('--root', process.cwd()))
 const BUDGET = parseInt(arg('--budget-tokens', '120000'), 10)
 const DEPTH = arg('--depth', 'ranked')
 const OUT = canonicalPath(arg('--out', join(ROOT, '.dev', 'context', 'analysis.json')))
@@ -58,20 +61,15 @@ function canonicalPath(value) {
   catch { return absolute }
 }
 
-function resolveRoot(p) {
-  try {
-    const top = execFileSync('git', ['-C', p, 'rev-parse', '--show-toplevel'], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-    return canonicalPath(top)
-  } catch { return canonicalPath(p) }
-}
-
-const outRelative = relative(ROOT, OUT)
-if (outRelative.startsWith('..') || isAbsolute(outRelative)) {
-  process.stderr.write(`--out escapes the project root: ${OUT}\n`)
+const DEV = canonicalPath(join(ROOT, '.dev'))
+const devRelative = relative(ROOT, DEV)
+const outRelative = relative(DEV, OUT)
+if (devRelative.startsWith('..') || isAbsolute(devRelative)
+  || outRelative.startsWith('..') || isAbsolute(outRelative) || outRelative === '') {
+  process.stderr.write(`--out must be a file inside the project's ignored .dev directory: ${OUT}\n`)
   process.exit(2)
 }
+if (!ESTIMATE_ONLY) ensureArtifactIgnore(ROOT, { untrack: true })
 
 const sh = (cmd, args) => {
   try {

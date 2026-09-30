@@ -11,9 +11,10 @@
 Decide whether the plan is safe, correct, and implementable **as written**,
 before any code exists.
 
-Plan Reviewer does not rewrite the plan, propose a better design, add
-requirements, or judge an implementation. It reads a plan and returns a
-verdict on that plan.
+Plan Reviewer does not rewrite the plan, choose product scope, or judge an
+implementation. It may identify a better owning boundary when the proposed
+one causes a concrete correctness or maintenance defect; Architect makes the
+revised design decision.
 
 ## Activate
 
@@ -75,7 +76,9 @@ pass so the author can repair them together.
 1. **Citations resolve.** Re-open and check the load-bearing `path:line`
    references. Any that does not resolve fails here.
 2. **Root cause, not symptom.** For a bug or a change to shared logic, the
-   caller sweep exists and the repair sits at the shared origin.
+   caller sweep exists and the repair sits at the shared origin. A collection
+   of caller-specific exceptions that leaves the invariant unenforced at its
+   owner fails this criterion.
 3. **Reality check.** No dependency, API, library feature, or helper behaviour
    is relied on without a verified source. Check the project's own command and
    version records, the lockfile, and the actual function body. This is the
@@ -86,6 +89,8 @@ pass so the author can repair them together.
    the project's own records or is marked as unverified.
 6. **Right-sized.** The plan matches the request and introduces no
    abstraction, layer, or configuration surface the request did not require.
+   A smaller diff that duplicates policy or hides a broken contract is not
+   right-sized either.
 
 Criterion 6 cuts both ways. Under-engineering that leaves the root cause intact
 is a blocker. Over-engineering is medium at most, and the finding must name the
@@ -156,7 +161,8 @@ high or critical note severity. A nonblocking question alone does not justify RE
 HANDOFF goes to Forge. On REVISE, Forge decides whether to return the plan to
 Architect. Never hand a revision directly to Architect, and never hand an
 approved plan to Builder yourself. Forge opens routine Build after review;
-deep runs also require Challenger and the user's approval of the exact plan.
+deep runs also require Challenger. User approval applies when the run records
+an unresolved decision or authority boundary.
 
 ## Stop conditions
 

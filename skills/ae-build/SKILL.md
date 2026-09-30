@@ -51,7 +51,7 @@ node "$FORGE/scripts/forge.mjs" status --id <id>
 
 1. A plan exists in the artifact.
 2. Plan Reviewer approved the current plan; on deep runs, Challenger also approved it.
-3. On deep runs, **user approval** is recorded after both passes.
+3. When the ledger requires it, **user approval** is recorded after the selected reviews.
 4. No unresolved blocking open question sits under a step you will execute.
 
 Name the missing one and stop. Do not start and unwind — a half-applied plan is
@@ -62,8 +62,8 @@ transition. That duplication is deliberate: a gate enforced at one point is a
 gate one mistake opens, and this is the moment worth spending a second check
 on, because after it, code changes.
 
-**A reviewer verdict is not user approval.** Deep runs require the user's
-decision on the current reviewed and challenged plan.
+**A reviewer verdict is not user approval.** When the run requires a user
+decision, it applies to the current reviewed plan.
 
 ## Work
 

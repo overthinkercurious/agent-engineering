@@ -30,6 +30,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { ensureArtifactIgnore } from './artifact-ignore.mjs'
 
 const ALLOW = 0
 const DENY = 2
@@ -68,6 +69,7 @@ function isBookkeeping(root, filePath) {
   if (!filePath) return false
   const rel = relative(resolve(root), resolve(root, String(filePath)))
   return rel.startsWith(`.dev${sep}work${sep}`) || rel.startsWith(`.dev${sep}runs${sep}`)
+    || rel.startsWith(`.dev${sep}completed${sep}`) || rel.startsWith(`.dev${sep}context${sep}`)
 }
 
 function sessionStart(input) {
@@ -75,8 +77,10 @@ function sessionStart(input) {
   // later session cannot inherit a false native-enforcement claim.
   try {
     const root = input.cwd || process.cwd()
+    if (!existsSync(join(root, '.dev'))) return ALLOW
+    ensureArtifactIgnore(root)
     const dir = join(root, '.dev', 'context')
-    if (!existsSync(dir)) return ALLOW // an unsurveyed project keeps no context
+    mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'enforce.json'), `${JSON.stringify({
       enforce: 'native',
       session_id: input.session_id ?? null,

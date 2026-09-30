@@ -5,12 +5,10 @@ is installed.
 
 ## Product
 
-Agent Engineering ships eight skills behind **two user-facing surfaces**:
+Agent Engineering ships seven skills behind **one user-facing surface**:
 
 - ae-forge takes a software request through a risk-sized expert team,
   implementation, and independent verification.
-- ae-surveyor creates durable repository knowledge and enforceable rules before
-  the first new Forge run in a project that lacks them.
 
 The other six — ae-investigate, ae-plan, ae-plan-review, ae-build, ae-verify,
 ae-audit — are dispatch targets, not routing surfaces. Forge invokes them one
@@ -27,7 +25,6 @@ second agent runtime.
 | Path | Role |
 |---|---|
 | skills/ae-forge/ | Autonomous delivery workflow, the shared contract, and the recovery ledger |
-| skills/ae-surveyor/ | Optional project indexing, knowledge, and rules |
 | skills/ae-{investigate,plan,plan-review,build,verify,audit}/ | Stage skills: protocol only; method stays in ae-forge/references/roles/ |
 | hooks/ | The enforcement tier. Loaded only on the plugin install path |
 | .codex-plugin/ | Codex package manifest |
@@ -44,7 +41,7 @@ Everything a skill needs at runtime must live inside its own directory.
 - Routing is behavioural, never lexical. `--risk` flags map deterministically
   to roles; keyword signals may only ADD a role, never withhold one. An absent
   risk assessment is recorded and reported, never treated as safety.
-- Two user-facing routing surfaces only: ae-surveyor and ae-forge. The six
+- One user-facing routing surface only: ae-forge. The six
   stage skills are dispatch targets; they must read as unreachable outside a
   run, never as a second way to ask for work.
 - Enforcement is a read tier, never an assumption, and never described as a
@@ -52,14 +49,17 @@ Everything a skill needs at runtime must live inside its own directory.
   not yet authorised; `none` is the honest default. Hooks load from a file the
   model can edit and a subagent may bypass them, so both limits ship with the
   claim.
-- The one artifact that crosses a product boundary (.dev/context/analysis.json)
-  is versioned and its version is asserted. A consumer reading it with `?? []`
-  turns a rename into silent depth loss, which is the only fail-open path this
-  kit is allowed to have and it must be reported when it fires.
-- A new Forge run completes Surveyor once when durable project knowledge is
-  absent; existing runs can resume, and stale knowledge does not block work.
-- Refresh deterministic analysis for each run when the analyzer is available;
-  stale generated knowledge is a reading lead, not current evidence.
+- The generated analysis (.dev/context/analysis.json) is versioned and its
+  schema is asserted. Missing analysis degrades domain detection and must be
+  reported; it never blocks source inspection.
+- A new run adds `/.dev/` to the project root `.gitignore` and removes
+  previously tracked kit artifacts from the Git index without deleting their
+  working copies. Every generated artifact remains local.
+- Matching active requests reuse a run across sessions. Completed work is
+  referenced only while its inspected source fingerprint matches. Phase
+  retries do not advance revisions, and repair is capped at two cycles.
+- Refresh deterministic analysis for each run when available; current source
+  and project instructions are the evidence.
 - Use the smallest team that covers the actual behavioral risk.
 - Builder and Verifier are required for completion.
 - Standard delivery uses Architect, Plan Reviewer, Builder, and Verifier.
@@ -71,10 +71,14 @@ Everything a skill needs at runtime must live inside its own directory.
 - Prefer native host subagents and permissions over custom adapters.
 - Keep one compact ignored recovery record per task, plus the frozen brief
   and one append-only result file per expert contribution.
+- The active handoff document records the chosen approach and actual
+  implementation. Completion writes the outcome and verification summary,
+  then moves the document from `.dev/runs/` to `.dev/completed/`.
 - Ask for approval only for material choices or authority boundaries.
 - Planning is not completion. Requested changes must be implemented and checked.
 - Verification inspects the exact diff and relevant test results; isolated
-  review is claimed only when the host actually provided it.
+  review is claimed only when the host actually provided it. A candidate
+  change after entering Verify invalidates that review.
 - Capture pre-existing dirty and untracked files at run start, then compare
   task work against that baseline without attributing user changes to Builder.
 - The delivery report is rendered from the ledger, never recalled. A summary
@@ -125,14 +129,3 @@ public skill or globally visible persona.
 Runtime scripts use Node without package dependencies. Portable shell stays
 Bash 3.2 compatible: no associative arrays, mapfile, sed -i, or non-POSIX awk.
 Pin shell, Node, Markdown, YAML, and JSON files to LF.
-
-<!-- agent-engineering:start -->
-## Project knowledge
-
-This project was surveyed by [agent-engineering](https://github.com/overthinkercurious/agent-engineering).
-
-**This is the Agent Engineering source repository.** `skills/` is the tracked
-Root-level validation, evaluation, design, and generated survey artifacts are
-not part of the kit distribution. Runtime scripts and method references live
-inside their owning skill directories.
-<!-- agent-engineering:end -->

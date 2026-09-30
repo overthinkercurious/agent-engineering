@@ -10,7 +10,7 @@ const project = resolve(index >= 0 ? args[index + 1] : process.cwd())
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const skills = resolve(scriptDir, '../..')
 const errors = []
-for (const name of ['ae-forge', 'ae-surveyor', 'ae-plan', 'ae-plan-review', 'ae-build', 'ae-verify', 'ae-investigate', 'ae-audit']) {
+for (const name of ['ae-forge', 'ae-plan', 'ae-plan-review', 'ae-build', 'ae-verify', 'ae-investigate', 'ae-audit']) {
   if (!existsSync(join(skills, name, 'SKILL.md'))) errors.push(`missing stage: ${name}`)
 }
 const run = (name, extra = []) => {
