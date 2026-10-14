@@ -1,116 +1,32 @@
 ---
 name: ae-investigate
 description: >
-  Dispatch target only for the Investigator stage of an active ae-forge run.
-  Forge invokes it for an undiagnosed bug or performance failure after creating
-  the run. It establishes a reproduced, evidence-supported cause or returns
-  INCONCLUSIVE. For a standalone diagnosis request, start with ae-forge.
-  Never implements the fix.
+  Dispatch target only for investigation in an active ae-forge run.
+  Establish the reproduced symptom and supported cause before a fix is designed.
+  For standalone requests, start with ae-forge.
 metadata:
   owns: "the reproduced symptom and evidence-supported causal account for one failure"
 ---
 
-# Find the cause
+# Investigation
 
-You are the **Investigator** stage.
+Establish the reproduced symptom and supported cause before a fix is designed.
 
-> No fix without root-cause evidence.
-
-## Resolve the contract
-
-```bash
-AE="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
-[ -n "$AE" ] || for d in .claude/skills/ae-investigate .agents/skills/ae-investigate \
-                         .gemini/skills/ae-investigate .agent/skills/ae-investigate; do
-  [ -f "$d/SKILL.md" ] && AE="$d" && break
-done
-FORGE="$(dirname "$AE")/ae-forge"
-[ -f "$FORGE/references/roles/investigator.md" ] \
-  && printf 'contract: %s\n' "$FORGE" \
-  || printf 'AE-CONTRACT UNRESOLVED\n'
-```
-
-**If that prints `AE-CONTRACT UNRESOLVED`, stop and say so**, print the restore
-command, and end the turn. An investigation with no attempt budget does not
-terminate; it just stops being reported.
-
-Then read `$FORGE/references/team.md`,
-`$FORGE/references/roles/investigator.md`, attached lenses, and the artifact's
-`Request` and `Decisions` sections.
-
-## State your boundary
-
-Open with one line: you will diagnose, not implement, and you will not plan the
-fix.
-
-## Attempt budget
-
-| Phase | Budget | On exhaustion |
-|---|---:|---|
-| Reproduction | 3 attempts | Stop. Return INCONCLUSIVE with what was ruled out |
-| Hypothesis testing | 4 tested hypotheses | Stop. Return INCONCLUSIVE with the ranked survivors |
-
-Exceeding the budget is not persistence. In a stage that runs to completion
-before handing back, it is an unbounded loop. **INCONCLUSIVE with a clean
-elimination list is a useful result** — the user can act on it, and the next
-stage can plan around it. A confident wrong cause cannot be acted on at all.
-
-## Work
-
-Follow `investigator.md`:
-
-1. **Observed failure.** Quote the exact symptom, error, trace or wrong value.
-   Do not paraphrase it.
-2. **Reproduction.** A minimal command or test that fails reliably. Without one
-   you have a report, not a bug.
-3. **Trace.** Follow control and data flow to the first point where the
-   invariant actually breaks. That point is usually upstream of where the error
-   surfaced.
-4. **Root cause versus symptom.** A report names a symptom at a call site.
-   Trace back to the shared function, query or state transition that produced
-   the bad value.
-5. **Caller sweep.** Grep every caller of the suspect shared function and mark
-   each Broken, At risk or Safe with `path:line`.
-
-A hypothesis is not a cause until you have shown the failure follows from it
-and stops without it. Keep the evidence classes labelled and separate:
-observed, reproduced, inferred, hypothesis, confirmed.
-
-You may write a throwaway reproduction script or a failing test. Both are
-diagnostic artifacts and must be named as such — they are not the fix.
-
-## Record the result
-
-```bash
-node "$FORGE/scripts/forge.mjs" section --id <id> --name investigation --from .dev/work/<id>/results/investigator.md
-node "$FORGE/scripts/forge.mjs" note --id <id> --role investigator \
-  --summary "<the cause, or INCONCLUSIVE and what was ruled out>" \
-  --severity <none|low|medium|high|critical> \
-  --result .dev/work/<id>/results/investigator.md
-```
-
-The severity here describes the **reported defect**, not a defect in any fix —
-no fix exists yet. The ledger knows this and will not read it as an unresolved
-blocker on the delivered candidate.
-
-The section write is enforced, not requested: `finish` refuses to close a run
-whose contributing role left its section scaffolded. A ledger note says you
-worked; the section is the only thing the next stage can read.
-
-## Hand back
-
-```text
-Cause confirmed · transfer link never supersedes transactionClass · 2 callers affected
-Next · /ae-plan — with the causal account, not a demanded solution.
-```
-
-Hand the causal account to Forge, which routes to planning. Recommend the
-shortest correction at the root cause; do not specify the diff.
-
-## Hard stops
-
-- Do not implement the production fix.
-- Do not exceed the attempt budget.
-- Do not present a hypothesis as a confirmed cause.
-- Do not plan a repair for one call site while its siblings stay broken.
-- Do not claim a command ran when it did not.
+1. Require a Forge dispatch packet and active run. Check the assigned role,
+   phase (understand or plan), revision and exact scope against the ledger.
+2. Resolve this installed skill directory using AE_SKILL_DIR, then
+   CLAUDE_SKILL_DIR, then project .agents/skills or .claude/skills
+   (or the host equivalent). Resolve ae-forge alongside it; use absolute
+   paths. A missing sibling contract is AE-CONTRACT UNRESOLVED: report
+   the installation gap and stop.
+3. Read ae-forge/references/team.md, the assigned method identified by
+   references/team.json, and only the attached lenses. Reopen the brief,
+   relevant current source and accepted result files from the packet.
+4. Follow the method and its exclusive ownership. A stage cannot grant
+   user approval, expand scope, or enter a different phase on its own.
+   Only Builder edits application code; Verifier reviews without repairs.
+5. Write the shared result to a new .dev/work/<id>/results/ file and record
+   it once with forge.mjs note. Reviews declare isolated or same-session
+   context honestly. The coordinator renders the ticket and owns routing.
+6. Return the result path, findings or unresolved decisions, and next action
+   to Forge. Standalone requests start with ae-forge.

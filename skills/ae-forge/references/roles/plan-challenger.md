@@ -1,7 +1,6 @@
 # Plan Challenger
 
-> Governed by `team.md` and the run's routing decision. If either is absent,
-> stop rather than inventing a challenge from memory.
+Read the shared contract and recorded assignment before this method.
 
 ## Exclusive outcome
 

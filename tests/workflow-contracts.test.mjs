@@ -47,6 +47,7 @@ function withProject(name, run) {
       && (args.includes('--depth') ? args[args.indexOf('--depth') + 1] : (env.AE_WORKFLOW_DEPTH ?? 'deep')) === 'deep') {
       args = [...args, '--approval-required', '--approval-reason', 'Fixture requires an explicit user decision']
     }
+    if (args[0] === 'start' && !['audit', 'plan', 'diagnose', 'review'].includes(args[args.indexOf('--kind') + 1]) && !args.includes('--approval-required')) args = [...args, '--autonomous', 'Fixture explicitly authorizes execution without approach review']
     return spawnSync(process.execPath, [file, ...args], {
     cwd: root, encoding: 'utf8', env: { ...process.env, AE_WORKFLOW_DEPTH: 'deep', ...env },
   })
@@ -178,8 +179,8 @@ test('Forge cannot finish with a verdict that disagrees with Verifier evidence',
     assert.equal(call('section', '--id', 'verdict', '--name', 'verification', '--from', pass).status, 0)
     assert.equal(call('note', '--id', 'verdict', '--role', 'verifier', '--summary', 'Passed', '--severity', 'none', '--review-context', 'same-session', '--result', pass).status, 0)
     assert.equal(finish('--result', 'PASS').status, 0)
-    assert.match(readFileSync(join(root, '.dev/completed/verdict.md'), 'utf8'), /### Verdict\nPASS/)
-    assert.match(readFileSync(join(root, '.dev/completed/verdict.md'), 'utf8'), /Implementation summary:\*\* Audit reviewed/)
+    assert.match(readFileSync(join(root, '.dev/completed/verdict.md'), 'utf8'), /\*\*Verdict:\*\* PASS/)
+    assert.match(readFileSync(join(root, '.dev/completed/verdict.md'), 'utf8'), /## Outcome and verification\n\nAudit reviewed/)
     assert.equal(existsSync(join(root, '.dev/work/verdict/scratch')), false)
     assert.equal(JSON.parse(finish('--result', 'PASS').stdout).reused, true)
   })
@@ -256,7 +257,8 @@ test('delivery requires an approved review and challenge of the current plan bef
     assert.match(JSON.parse(changedAfterApproval.stdout).error, /user approval/)
     assert.equal(call('section', '--id', 'plan-gate', '--name', 'plan', '--from', secondPlan).status, 0)
     assert.equal(call('phase', '--id', 'plan-gate', '--to', 'build', '--summary', 'Building').status, 0)
-    assert.match(call('report', '--id', 'plan-gate').stdout, /\*\*Plan review\*\* · APPROVED · 2 passes/)
+    assert.match(call('report', '--id', 'plan-gate').stdout, /plan-reviewer-approved\.md/)
+    assert.equal(JSON.parse(call('status', '--id', 'plan-gate').stdout).contributions.filter(item => item.role === 'plan-reviewer').length, 2)
   })
 })
 
@@ -292,16 +294,6 @@ test('repair must contribute a new Builder result before the next verification',
       reviewResult('verifier', 'FAIL'))
     assert.equal(call('note', '--id', 'repair-gate', '--role', 'verifier', '--summary', 'Failed',
       '--severity', 'high', '--review-context', 'same-session', '--result', failed).status, 0)
-    const repairWithoutApproval = call('phase', '--id', 'repair-gate', '--to', 'repair', '--summary', 'Repairing')
-    assert.equal(repairWithoutApproval.status, 5)
-    assert.match(JSON.parse(repairWithoutApproval.stdout).error, /repair scope/)
-    assert.equal(call('phase', '--id', 'repair-gate', '--to', 'approval', '--summary', 'Awaiting repair approval').status, 0)
-    const packet = call('approval-packet', '--id', 'repair-gate')
-    assert.equal(packet.status, 0, packet.stderr)
-    assert.match(packet.stdout, /Repair approval packet/)
-    assert.match(packet.stdout, /Verification finding that defines the repair scope/)
-    assert.match(packet.stdout, /### Verdict\nFAIL/)
-    assert.equal(call('approve', '--id', 'repair-gate', '--by', 'user', '--basis', 'Repair is within the approved plan').status, 0)
     assert.equal(call('phase', '--id', 'repair-gate', '--to', 'repair', '--summary', 'Repairing').status, 0)
     const missing = call('phase', '--id', 'repair-gate', '--to', 'verify', '--summary', 'Reviewing again')
     assert.equal(missing.status, 5)
@@ -446,6 +438,9 @@ test('a pre-v5 delivery cannot bypass mandatory user plan approval on resume', (
     legacy.contract = 4
     legacy.approval_required = false
     writeFileSync(path, `${JSON.stringify(legacy, null, 2)}\n`)
+    // Construct the historic artifact as well as its historic ledger.
+    rmSync(join(root, '.dev/runs/legacy-approval.md'))
+    assert.equal(call('artifact', '--id', 'legacy-approval').status, 0)
     assert.equal(call('phase', '--id', 'legacy-approval', '--to', 'plan', '--summary', 'Resuming plan').status, 0)
     const blocked = call('phase', '--id', 'legacy-approval', '--to', 'approval', '--summary', 'Awaiting approval')
     assert.equal(blocked.status, 5)

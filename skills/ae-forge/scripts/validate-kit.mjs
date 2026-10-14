@@ -11,6 +11,21 @@ const errors = []
 const roleNames = Object.keys(team.roles)
 const names = Object.keys(team.lenses)
 const nameFor = Object.fromEntries(roleNames.map((role) => [role.toLowerCase().replaceAll('-', ' '), role]))
+const skills = ['ae-forge', 'ae-investigate', 'ae-plan', 'ae-plan-review', 'ae-build', 'ae-verify', 'ae-audit']
+const ownership = new Set()
+for (const name of skills) {
+  const path = resolve(root, '../../', name, 'SKILL.md')
+  if (!existsSync(path)) { errors.push(`missing skill: ${name}`); continue }
+  const text = readFileSync(path, 'utf8')
+  // The distribution uses this deliberately small, valid YAML subset.
+  const frontmatter = text.match(/^---\nname: ([a-z0-9-]+)\ndescription: >\n((?:  [^\n]+\n)+)metadata:\n  owns: "([^"\n]+)"\n---\n/)
+  if (!frontmatter || frontmatter[1] !== name) { errors.push(`${name}: invalid canonical frontmatter`); continue }
+  if (ownership.has(frontmatter[3])) errors.push(`${name}: duplicated ownership`)
+  ownership.add(frontmatter[3])
+  if (text.includes('\r')) errors.push(`${name}: skill must use LF`)
+  if (text.slice(frontmatter[0].length).split('\n').length >= 500) errors.push(`${name}: body must stay under 500 lines`)
+  if (name !== 'ae-forge' && !frontmatter[2].includes('Dispatch target only')) errors.push(`${name}: stage must be internal dispatch only`)
+}
 for (const [role, data] of Object.entries(team.roles)) {
   if (!existsSync(resolve(root, data.file))) errors.push(`missing role file: ${role} -> ${data.file}`)
 }
@@ -38,6 +53,6 @@ const handled = new Set([...names, ...(team.lenses_backlog ?? []),
 for (const rule of team.domain_detectors ?? []) {
   for (const tag of rule.emit ?? []) if (!handled.has(tag)) errors.push(`unhandled detector tag: ${tag}`)
 }
-const result = { ok: errors.length === 0, roles: roleNames.length, lenses: names.length, detectors: team.domain_detectors?.length ?? 0, errors }
+const result = { ok: errors.length === 0, skills: skills.length, roles: roleNames.length, lenses: names.length, detectors: team.domain_detectors?.length ?? 0, errors }
 process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
 if (errors.length) process.exitCode = 1

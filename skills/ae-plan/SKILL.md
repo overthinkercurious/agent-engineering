@@ -1,121 +1,32 @@
 ---
 name: ae-plan
 description: >
-  Dispatch target only for the Architect stage of an active ae-forge run.
-  Forge invokes it to produce or revise the implementation plan, affected
-  boundaries, impact map, and ordered file-level steps grounded in inspected
-  code. For a standalone planning request, start with ae-forge. This stage
-  does not write application code or approve its own plan.
+  Dispatch target only for plan in an active ae-forge run.
+  Choose a coherent approach, explain genuine alternatives and plan verifiable vertical slices.
+  For standalone requests, start with ae-forge.
 metadata:
   owns: "the technical design and implementation plan for one Agent Engineering run"
 ---
 
-# Plan a change
+# Plan
 
-You are the **Architect** stage of an Agent Engineering run. Forge routed here;
-your job is one section of one artifact, then hand back.
+Choose a coherent approach, explain genuine alternatives and plan verifiable vertical slices.
 
-## Resolve the contract
-
-```bash
-AE="${AE_SKILL_DIR:-${CLAUDE_SKILL_DIR:-}}"
-[ -n "$AE" ] || for d in .claude/skills/ae-plan .agents/skills/ae-plan \
-                         .gemini/skills/ae-plan .agent/skills/ae-plan; do
-  [ -f "$d/SKILL.md" ] && AE="$d" && break
-done
-FORGE="$(dirname "$AE")/ae-forge"
-[ -f "$FORGE/references/roles/architect.md" ] \
-  && printf 'contract: %s\n' "$FORGE" \
-  || printf 'AE-CONTRACT UNRESOLVED\n'
-```
-
-**If that prints `AE-CONTRACT UNRESOLVED`, stop and say so.** `ae-forge` is
-installed alongside this skill and carries the shared contract, the role
-method, and the ledger. Without it this skill is a plausible-sounding planner
-with none of the guarantees, which is the failure the kit exists to prevent.
-Print the restore command and end the turn.
-
-Then read, in this order and no further:
-
-1. `$FORGE/references/team.md` — the shared result contract.
-2. `$FORGE/references/roles/architect.md` — your method and output form.
-3. Any lenses Forge attached for `architect`.
-4. `.dev/runs/<id>.md`, sections `Request`, `Investigation`, `Decisions`,
-   `Open questions` and, on a revision, the current `Plan review`.
-5. On a revision, the selected specialists' pre-build result files under
-   `.dev/work/<id>/results/`.
-
-Do not read `Implementation` or `Verification`; these mean you are in the wrong
-stage. On the initial plan, `Plan review` does not exist yet.
-
-## State your boundary
-
-Open your first response with one line naming what you will not do here — for
-this stage, that you will not write application code and will not approve your
-own plan. In a pipeline where the previous stage's stance persists, naming the
-boundary is what stops it bleeding through.
-
-## Preconditions
-
-1. A run exists and `status` shows it is active.
-2. If the request is an undiagnosed defect, an Investigator account already
-   exists. Planning a fix for an unproven cause is guessing with structure.
-3. The phase is `understand` or `plan`.
-
-## Work
-
-Follow `architect.md`. It owns the method; this file owns only the protocol
-around it. Two rules are worth repeating because they are the ones that decay
-under time pressure:
-
-- **Read before proposing.** Every path your steps touch appears in `EVIDENCE`
-  with the lines you opened. A step touching a file absent from that list is
-  unverified by construction.
-- **Stop at the first adequate option.** No change, reuse, standard library,
-  installed dependency, then minimum new code. A long plan for a short
-  established change is a defect, not diligence.
-
-Anything you could not settle by reading code goes to `Open questions`, never
-inline as a hedge. Escalating an unknown is the correct behaviour and the
-reviewer may not hold it against you.
-
-## Record the result
-
-```bash
-node "$FORGE/scripts/forge.mjs" phase --id <id> --to plan --summary "<current truth>"
-# write the full result, then the artifact section
-node "$FORGE/scripts/forge.mjs" section --id <id> --name plan --from .dev/work/<id>/results/architect.md
-node "$FORGE/scripts/forge.mjs" note --id <id> --role architect \
-  --summary "<one line>" --severity <none|low|medium|high|critical> \
-  --result .dev/work/<id>/results/architect.md
-```
-
-On a revised plan, use a new result filename in both commands, such as
-`architect-2.md`. Do not overwrite the first plan's evidence.
-
-The section write is not optional and not a copy of the note. The note is the
-ledger entry; the section is what the next stage actually reads, whether its
-context is isolated or shared. `finish`
-refuses to close a run whose contributing role left its section scaffolded.
-
-## Hand back
-
-Print the plan's location and the count of open questions.
-Then hand back to Forge:
-
-```text
-Plan written · .dev/runs/<id>.md · 1 open question (blocks step 4)
-Next · Forge dispatches the next selected role.
-```
-
-Every delivery plan goes through Plan Reviewer; deep plans also use Challenger. In a shared
-context, each reopens the evidence it uses. On revisions, Architect reads both
-the review and challenge findings before changing the plan.
-
-## Hard stops
-
-- Do not write application code, edit tests, or run a build.
-- Do not approve, review, or accept your own plan.
-- Keep the plan proportionate to the request; never pad it with empty sections.
-- Do not plan a repair for one caller while its siblings stay broken.
-- Do not claim `VERIFIED` for a file you did not open in this stage.
+1. Require a Forge dispatch packet and active run. Check the assigned role,
+   phase (understand or plan), revision and exact scope against the ledger.
+2. Resolve this installed skill directory using AE_SKILL_DIR, then
+   CLAUDE_SKILL_DIR, then project .agents/skills or .claude/skills
+   (or the host equivalent). Resolve ae-forge alongside it; use absolute
+   paths. A missing sibling contract is AE-CONTRACT UNRESOLVED: report
+   the installation gap and stop.
+3. Read ae-forge/references/team.md, the assigned method identified by
+   references/team.json, and only the attached lenses. Reopen the brief,
+   relevant current source and accepted result files from the packet.
+4. Follow the method and its exclusive ownership. A stage cannot grant
+   user approval, expand scope, or enter a different phase on its own.
+   Only Builder edits application code; Verifier reviews without repairs.
+5. Write the shared result to a new .dev/work/<id>/results/ file and record
+   it once with forge.mjs note. Reviews declare isolated or same-session
+   context honestly. The coordinator renders the ticket and owns routing.
+6. Return the result path, findings or unresolved decisions, and next action
+   to Forge. Standalone requests start with ae-forge.

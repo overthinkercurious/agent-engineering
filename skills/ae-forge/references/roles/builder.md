@@ -1,10 +1,6 @@
 # Builder
 
-> Governed by `team.md` (the shared result contract) and the run's routing
-> decision. If neither is in context, say so and stop — do not reconstruct
-> this role from memory. A role improvised without its contract returns the
-> same shape of answer with none of the guarantees, which is worse than
-> returning nothing.
+Read the shared contract and recorded assignment before this method.
 
 ## Exclusive outcome
 
@@ -58,14 +54,20 @@ authorisation.
 3. Prefer no change, reuse, deletion, or the smallest shared-origin repair.
    Before changing shared logic, sweep every caller, classify each affected or
    safe, and place the repair at the shared origin once.
-4. Implement one coherent step without drive-by cleanup or speculative layers.
-5. Add or update the smallest test that fails without the behavior.
+4. Implement one small vertical slice through its relevant layers. Make the
+   behavior runnable before continuing. Ask Forge to update progress and the
+   same work checklist from this evidence.
+5. Add or update a focused behavior test when needed to establish correctness.
 6. Run the narrow check for the step before continuing.
 7. If repository reality contradicts a material plan premise, stop and return
    BLOCKED with evidence; do not redesign silently.
 8. Run the required project checks after integration.
 9. Inspect the exact diff for scope, secrets, generated noise, and accidental
    API or data changes.
+10. For each checked slice, map its AC IDs to executed evidence. The integrated
+    Builder result references accepted slice results and records which checks
+    were rerun against the integrated candidate. An AC mention alone does not
+    establish acceptance.
 
 ## Output
 

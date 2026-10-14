@@ -1,87 +1,61 @@
-# Forge workflow contract
+# Forge workflow
 
-`ae-forge` is the only entry point. This document explains the lifecycle;
-`skills/ae-forge/scripts/forge.mjs` and `references/team.json` are the
-executable sources for allowed transitions and team selection.
+Describe an outcome to `ae-forge`. It owns one local ticket throughout.
 
-## Run identity and state
+```mermaid
+flowchart TD
+  A[User request] --> B[Inspect, clarify and research]
+  B --> C{Requested outcome}
+  C -->|Change| D[Plan approach, alternatives and small slices]
+  D --> E[Technical review]
+  E --> F[User approach review]
+  F -->|Approved or explicitly authorized| G[Build and check one slice]
+  G -->|More slices| G
+  G --> H[Verify integrated result]
+  H -->|Bounded repair| G
+  H --> I[Complete ticket]
+  C -->|Audit / plan / diagnosis / review| J[Perform scoped assessment]
+  J --> K[Verify assessment evidence]
+  K --> I
+```
 
-A run records a normalized request key and a scope signature covering the
-request, routing inputs, and approval decision. An active run with that scope
-is reused. A completed run is referenced only when its recorded inspected
-source fingerprint still matches; changed source or scope creates a numbered
-run. An explicit ID selects a run with the same scope. `--new --id
-<distinct-id>` starts intentionally separate work. Existing files are reused
-on retry, never reset. State the full behavior in the title, since omitted
-requirements cannot be detected by the signature. Analyzer exclusions limit
-what the source fingerprint can prove.
+Discovery questions concern intended behavior, scope and constraints. Current
+documents are checked against relevant source and the identified running
+build. Contradictions become explicit decisions; unresolved intent is not
+silently treated as stale documentation.
 
-| State | Run phases | Artifact | Exit condition |
-|---|---|---|---|
-| Draft | `understand`, `plan` | `.dev/runs/<id>.md` | Reviewed plan and required constraints |
-| Active | `approval`, `build`, `repair` | Same document | Candidate ready for independent review |
-| Review | `verify` | Same document | Current candidate passes or produces a bounded finding |
-| Archived | `done` | `.dev/completed/<id>.md` | Summary and verification written, blockers resolved |
-| Blocked | `blocked` | Active document retained | Missing decision or evidence is supplied |
-| Cancelled | `cancelled` | Active document retained | Terminal; no implied success |
+For emulator audits, discover the installed tool's actual capabilities and
+confirm device/app/build identity. Account for requested screens and states:
+inspected, inaccessible or explicitly excluded. Link visual evidence to source
+and the agreed design baseline. Audit-only requests cannot authorize fixes.
 
-`phase` is retry safe: entering the current phase again is a no-op. A new
-Build or Repair candidate advances the revision once. At most two Repair
-entries are allowed; after the second failed candidate, the current run
-cannot enter another Build or Repair. A changed approach starts a new scoped
-run. `finish` is retry safe for the same recorded outcome.
+## One human ticket
 
-## Evidence and ownership
+`.dev/runs/<id>.md` shows status, recorded current owner, now, concrete progress,
+blockers, next action, approach/alternatives, checklist and evidence links.
+It is generated from accepted records; handoffs carry the original requirements
+and relevant evidence rather than just this compact view.
 
-The brief freezes requested behavior and acceptance scope. The Plan section
-holds the chosen approach, owning boundary, decisions, impact map, and checks.
-Builder's Implementation section records how the actual change works, the
-files changed, deviations, and test evidence. Verifier's section records the
-verdict, rerun gates, acceptance evidence, and residual risk. Completion adds
-the outcome and verification summary to Summary. A missing or stale current
-Builder or Verifier section blocks completion.
+Default delivery stops at approach review before application edits. The user
+can question alternatives or request a revision. Explicit autonomy or earlier
+approval of the same approach is reused. After approval, routine slices and
+bounded repairs proceed; material design/scope changes return for review.
 
-Each stage writes a new result file under `.dev/work/<id>/results/`. Forge
-records its path and digest in the ledger. Recorded results are immutable;
-later passes get new names. The dispatch packet is run ID, contract, phase,
-revision, role, scope, brief and artifact paths, latest relevant result paths,
-attached lenses, and the exact candidate baseline. The next stage reads the
-files and current source itself. A conversation summary is never the only
-handoff.
+The same ticket moves to `.dev/completed/` with outcome, verification and
+limits. Frozen accepted requirements, immutable worker results and a compact
+recovery record stay local and ignored. The human ticket is never the source
+of review hashes or permission.
 
-Plan Reviewer checks the design against current source and specialist
-constraints. Deep design risk also selects Plan Challenger. Builder is the
-only role that edits application code. Candidate specialists inspect their
-own boundaries before Verifier checks the exact diff and reruns relevant
-project gates. Entering Verify freezes a candidate digest; a source change
-during review invalidates its result. `same-session` review is reported honestly when the host did
-not provide isolation. Critical or high candidate findings block completion.
-Deep review adds Challenger. User approval is required only for an unresolved
-material choice or authority boundary, recorded at start with
-`--approval-required --approval-reason`.
+## Methods and host capabilities
 
-## Artifact policy
+Keep one entry point. Internal stage skills expose planning, implementation,
+verification, diagnosis and audit methods to Forge. Role names identify
+accountability, not an organization chart. Selected lenses carry domain checks.
 
-At run start Forge appends a managed `/.dev/` rule to the project root
-`.gitignore`. It removes previously tracked kit artifacts from the Git index
-without deleting their working copies. If that removal would discard staged
-content, start stops and asks for the index state to be resolved. The analyzer
-also writes only under the same ignored tree.
+Use native host delegation where available and authorized. Otherwise run
+methods sequentially and report same-session review honestly. Keep workflow
+mechanics separate from host execution; hook checks are not a sandbox.
 
-Successful completion moves the readable document to `completed/` and
-removes only `.dev/work/<id>/scratch/`. Result files and the ledger remain
-local for recovery and audit. Cancellation keeps its record. Forge never
-prunes user files or source code as part of artifact cleanup.
-
-## Migration from the previous kit
-
-Surveyor is retired. A new run needs no project survey. Old `.dev/knowledge/`
-and `.dev/rules/` files are treated as generated kit output and untracked at
-the next start, while their local copies remain available. Prior runs can be
-read or resumed under their recorded contract; a run that predates a required
-plan or repair approval returns to planning rather than inheriting authority
-from a historic review.
-
-Copied installations are outside this source repository. After upgrading
-one, remove the old `ae-surveyor` skill directory if it is still present and
-has no local edits, so the retired entry point does not remain visible.
+See [Forge](../skills/ae-forge/SKILL.md), its
+[shared contract](../skills/ae-forge/references/team.md), and
+[recording commands](../skills/ae-forge/references/commands.md).

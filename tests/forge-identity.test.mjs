@@ -46,7 +46,7 @@ test('request scope and completed source state select a current run without dupl
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 
-test('deep review does not automatically require user approval', () => {
+test('delivery defaults to approach review; material decisions retain an approval gate', () => {
   const root = mkdtempSync(join(tmpdir(), 'ae-review-authority-'))
   const start = (...extra) => spawnSync(process.execPath, [forge, 'start', '--id', extra.length ? 'decision' : 'review',
     '--title', extra.length ? 'Decide migration policy' : 'Inspect access boundary', '--kind', 'feature',
@@ -59,7 +59,7 @@ test('deep review does not automatically require user approval', () => {
     const reviewed = start()
     assert.equal(reviewed.status, 0, reviewed.stdout)
     assert.equal(JSON.parse(reviewed.stdout).depth, 'deep')
-    assert.equal(JSON.parse(reviewed.stdout).approval_required, false)
+    assert.equal(JSON.parse(reviewed.stdout).approval_required, true)
     const decision = start('--approval-required', '--approval-reason', 'Choose a data retention policy')
     assert.equal(decision.status, 0, decision.stdout)
     assert.equal(JSON.parse(decision.stdout).approval_required, true)

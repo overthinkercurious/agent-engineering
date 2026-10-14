@@ -1,10 +1,6 @@
 # Architect
 
-> Governed by `team.md` (the shared result contract) and the run's routing
-> decision. If neither is in context, say so and stop — do not reconstruct
-> this role from memory. A role improvised without its contract returns the
-> same shape of answer with none of the guarantees, which is worse than
-> returning nothing.
+Read the shared contract and recorded assignment before this method.
 
 ## Exclusive outcome
 
@@ -44,7 +40,10 @@ make its evidence, decisions, and checks explicit before review.
    it. If the proposal adds a special case at a caller, explain why the
    shared owner cannot enforce the invariant instead.
 5. Resolve compatibility and rollout needs; do not design hypothetical scale.
-6. Write file-level steps, each with behavior, reason, and runnable check.
+6. Plan small vertical slices: a complete observable behavior, relevant layers,
+   dependencies and a runnable check. Use expand–contract for a wide mechanical
+   refactor when individual slices cannot remain coherent. Record the checklist
+   once in the ledger; explain implementation details in this result.
 7. Record real alternatives only when more than one viable design exists.
 8. Add rollback or migration sequencing only when reversal is materially hard.
 9. Confirm every acceptance criterion maps to a step and verification method.

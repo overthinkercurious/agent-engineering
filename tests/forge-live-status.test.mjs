@@ -32,28 +32,28 @@ test('Forge starts without a survey and keeps the readable run status current', 
     assert.equal(invoke('lenses', '--id', 'live-status', '--json', JSON.stringify({ attached: { auditor: ['android'] } })).code, 0)
 
     assert.equal(invoke('focus', '--id', 'live-status', '--role', 'auditor', '--summary', 'Inspecting Android behavior').code, 0)
-    assert.match(readArtifact(), /auditor \(ae-audit\)/)
-    assert.match(readArtifact(), /\*\*Lenses:\*\* android/)
+    assert.match(readArtifact(), /\*\*Current owner \(recorded\):\*\* auditor/)
+    assert.deepEqual(invoke('status', '--id', 'live-status').body.lenses.attached.auditor, ['android'])
     assert.match(readArtifact(), /Inspecting Android behavior/)
 
     const result = put('.dev/work/live-status/results/auditor.md', 'Audited the change.\n')
     assert.equal(invoke('note', '--id', 'live-status', '--role', 'auditor', '--summary', 'Audit complete', '--result', result).code, 0)
-    assert.match(readArtifact(), /\| 1 \| .* \| auditor \| understand \| 0 \| Audit complete \|/)
-    assert.match(readArtifact(), /\*\*Current handler:\*\* forge \(ae-forge\)/)
+    assert.match(readArtifact(), /\*\*auditor\*\*: Audit complete/)
+    assert.match(readArtifact(), /\*\*Current owner \(recorded\):\*\* Forge/)
 
     assert.equal(invoke('phase', '--id', 'live-status', '--to', 'verify', '--summary', 'Checking audit findings').code, 0)
     assert.equal(invoke('focus', '--id', 'live-status', '--role', 'verifier', '--summary', 'Checking evidence').code, 0)
-    assert.match(readArtifact(), /\*\*Phase:\*\* verify/)
-    assert.match(readArtifact(), /verifier \(ae-verify\)/)
+    assert.match(readArtifact(), /\*\*Stage:\*\* Verification/)
+    assert.match(readArtifact(), /\*\*Current owner \(recorded\):\*\* verifier/)
 
-    const doc = readArtifact().replace('**Phase:** verify', '**Phase:** obsolete')
+    const doc = readArtifact().replace('**Stage:** Verification', '**Stage:** obsolete')
     put('.dev/runs/live-status.md', doc)
     assert.equal(invoke('status', '--id', 'live-status').code, 0)
-    assert.match(readArtifact(), /\*\*Phase:\*\* verify/)
+    assert.match(readArtifact(), /\*\*Stage:\*\* Verification/)
 
     assert.equal(invoke('cancel', '--id', 'live-status', '--reason', 'Fixture complete').code, 0)
-    assert.match(readArtifact(), /\*\*State:\*\* cancelled/)
-    assert.match(readArtifact(), /\*\*Current handler:\*\* none/)
+    assert.match(readArtifact(), /\*\*Status:\*\* Cancelled/)
+    assert.match(readArtifact(), /\*\*Current owner \(recorded\):\*\* None/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
