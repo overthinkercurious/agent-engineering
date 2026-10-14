@@ -63,18 +63,26 @@ Everything a skill needs at runtime must live inside its own directory.
 - Use the smallest team that covers the actual behavioral risk.
 - Builder and Verifier are required for completion.
 - Standard delivery uses Architect, Plan Reviewer, Builder, and Verifier.
-  Plan Challenger is reserved for deep design risk.
-- Most work uses four roles. More than five requires genuinely independent
+  Forge can perform planning itself. Plan Challenger is reserved for deep design
+  risk; an unexplained cause requires investigation rather than design challenge.
+- Most work uses four accountable methods; these do not imply four agent
+  dispatches. More than five requires genuinely independent
   risk boundaries and a plain-language explanation to the user.
 - Where isolation is unavailable, complete stages sequentially in one session,
   recheck review evidence, and report the review context honestly.
 - Prefer native host subagents and permissions over custom adapters.
 - Keep one compact ignored recovery record per task, plus the frozen brief
   and one append-only result file per expert contribution.
-- The active handoff document records the chosen approach and actual
-  implementation. Completion writes the outcome and verification summary,
+- The human-facing run artifact is a generated ticket: status, recorded owner,
+  progress, blockers, next action, approach/alternatives, checklist and evidence
+  links. It is never a gate input. Original accepted contributions supply
+  handoffs and review hashes. Completion records actual implementation,
+  the outcome and verification summary,
   then moves the document from `.dev/runs/` to `.dev/completed/`.
-- Ask for approval only for material choices or authority boundaries.
+- Delivery defaults to user review of the approach and alternatives before
+  application edits. Reuse earlier approval of the same current approach or
+  explicit authorization to skip that checkpoint. Routine accepted slices and
+  bounded repairs proceed; material revisions or new authority return to review.
 - Planning is not completion. Requested changes must be implemented and checked.
 - Verification inspects the exact diff and relevant test results; isolated
   review is claimed only when the host actually provided it. A candidate

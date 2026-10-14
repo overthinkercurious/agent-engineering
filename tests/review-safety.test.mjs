@@ -28,7 +28,7 @@ function fixture(run, depth = 'standard') {
     for (const name of ['00-index', 'stack', 'architecture', 'schema', 'commands', 'decisions']) put(`.dev/knowledge/${name}.md`, '# Knowledge\nReadiness: ready for reuse\n')
     put('.dev/rules/00-index.md', '# Rules\n')
     ok('start', '--id', 'safe', '--title', 'Small change', '--kind', 'feature', '--risk', 'none', '--depth', depth,
-      ...(depth === 'deep' ? ['--approval-required', '--approval-reason', 'Fixture requires user authorization'] : []))
+      ...(depth === 'deep' ? ['--approval-required', '--approval-reason', 'Fixture requires user authorization'] : ['--autonomous', 'Fixture explicitly authorizes execution']))
     ok('artifact', '--id', 'safe'); ok('brief', '--id', 'safe')
     const brief = join(root, '.dev/work/safe/brief.md')
     writeFileSync(brief, readFileSync(brief, 'utf8').replaceAll('TODO', 'Specified for fixture.'))
@@ -119,7 +119,7 @@ test('blocking uncertainty cannot be approved; a truthful NEEDS INPUT review can
   assert.equal(validateReviewResult('plan-reviewer', nonblocking, 'none').ok, true)
 })
 
-test('deep hook rechecks human authorization and permits only a newly approved repair scope', () => {
+test('deep hook rechecks plan authorization and reuses it for a bounded v12 repair', () => {
   fixture(({ root, approve, check, put, ok }) => {
     assert.equal(check().status, 2)
     approve()
@@ -139,7 +139,7 @@ test('deep hook rechecks human authorization and permits only a newly approved r
     ok('phase', '--id', 'safe', '--to', 'repair', '--summary', 'Repair')
     assert.equal(check().status, 0)
     const expired = JSON.parse(readFileSync(record, 'utf8')); expired.approval.at = '2000-01-01T00:00:00Z'
-    writeFileSync(record, JSON.stringify(expired)); assert.equal(check().status, 2)
+    writeFileSync(record, JSON.stringify(expired)); assert.equal(check().status, 0, 'v12 bounded repairs reuse the approved plan without a new time-based approval')
   }, 'deep')
 })
 

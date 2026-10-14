@@ -1,6 +1,6 @@
 {
   "name": "agent-engineering",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "A project-scoped product and engineering system that turns intent into independently verified software.",
   "license": "MIT",
   "repository": {
@@ -21,8 +21,13 @@
     ".claude-plugin/",
     ".codex-plugin/",
     "README.md",
+    "docs/workflow.md",
     "LICENSE",
     "kit-version.txt"
   ],
-  "private": false
+  "private": false,
+  "scripts": {
+    "test": "node --import ./tests/setup.mjs --test tests/*.test.mjs",
+    "validate": "node skills/ae-forge/scripts/validate-kit.mjs"
+  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "agent-engineering",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Project-scoped product discovery and specialist engineering workflows for independently verified software delivery.",
   "author": {
     "name": "overthinkercurious",
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Agent Engineering",
-    "shortDescription": "A project-aware specialist team for shipping software",
-    "longDescription": "Agent Engineering selects a risk-sized team to understand, plan, implement, audit, and verify a change. Forge keeps local Git-ignored recovery records and reuses matching runs.",
+    "shortDescription": "Clarify, review an approach, build slices and verify",
+    "longDescription": "Forge keeps one readable local task ticket, presents meaningful alternatives before implementation, and delivers evidence-backed changes or scoped assessments.",
     "developerName": "overthinkercurious",
     "category": "Developer Tools",
     "capabilities": [

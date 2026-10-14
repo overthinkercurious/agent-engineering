@@ -1,10 +1,6 @@
 # Product expert
 
-> Governed by `team.md` (the shared result contract) and the run's routing
-> decision. If neither is in context, say so and stop — do not reconstruct
-> this role from memory. A role improvised without its contract returns the
-> same shape of answer with none of the guarantees, which is worse than
-> returning nothing.
+Read the shared contract and recorded assignment before this method.
 
 ## Exclusive outcome
 

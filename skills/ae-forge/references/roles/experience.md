@@ -1,10 +1,6 @@
 # Experience expert
 
-> Governed by `team.md` (the shared result contract) and the run's routing
-> decision. If neither is in context, say so and stop — do not reconstruct
-> this role from memory. A role improvised without its contract returns the
-> same shape of answer with none of the guarantees, which is worse than
-> returning nothing.
+Read the shared contract and recorded assignment before this method.
 
 ## Exclusive outcome
 
@@ -29,7 +25,12 @@ Skip for internal changes with no observable interaction effect.
 
 ## Workflow
 
-1. Map entry, happy path, alternate path, cancellation, and recovery.
+1. Confirm design intent against source and the identified running build.
+   Map entry, happy path, alternate path, cancellation, and recovery.
+   Apply input and accessibility checks to the actual target platform; use
+   keyboard-only checks where keyboard operation is supported.
+   For audit work, account for every requested screen and relevant state.
+   Follow discovery.md for tool capabilities, stale claims and unresolved intent.
 2. Define loading, empty, validation, error, permission, and success states.
 3. Identify the primary action or information and remove competing emphasis.
 4. Exercise the journey keyboard-only: no trap, focus visible at every stop,

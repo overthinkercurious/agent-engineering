@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateReviewResult } from './review-result.mjs'
 import { ensureArtifactIgnore } from './artifact-ignore.mjs'
+import { renderTicket, findingState } from './ticket.mjs'
 
 const args = process.argv.slice(2)
 const command = args[0] || 'help'
@@ -321,6 +322,9 @@ function contextStatus(root) {
 function baseline(root, id) {
   let head = null
   try {
+    const top = execFileSync('git', ['rev-parse', '--show-toplevel'],
+      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    if (realpathSync(top) !== realpathSync(root)) throw new Error('target project has no own Git baseline')
     head = execFileSync('git', ['rev-parse', '--short', 'HEAD'],
       { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   } catch { /* not a git repository, or no commit yet */ }
@@ -489,14 +493,21 @@ function brief() {
     'compares the delivered change against that frozen text._',
     '',
   ]
-  for (const [heading, prompt] of BRIEF_SECTIONS) {
+  const sections = run.contract >= 12 ? [
+    ['Request', null],
+    ['Confirmed behavior and answers', 'Confirmed user decisions and the behavior they require.'],
+    ['Assumptions and open questions', 'Separate assumptions from unresolved intent; name dependent work that must wait.'],
+    ['Scope and non-goals', 'Behavioral boundaries and deliberate exclusions. Design details belong in the accepted plan.'],
+    ['Acceptance criteria', 'Observable checks with stable AC-1, AC-2 identifiers.'],
+  ] : BRIEF_SECTIONS
+  for (const [heading, prompt] of sections) {
     lines.push(`## ${heading}`, '')
     if (heading === 'Request') lines.push(run.title, '')
     else lines.push(`<!-- ${prompt} -->`, '', 'TODO', '')
   }
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${lines.join('\n').trimEnd()}\n`, 'utf8')
-  output({ ok: true, id, sections: BRIEF_SECTIONS.map(([heading]) => heading), brief: relative(root, path).replaceAll('\\', '/') })
+  output({ ok: true, id, sections: sections.map(([heading]) => heading), brief: relative(root, path).replaceAll('\\', '/') })
 }
 
 // The artifact is scaffolded once and filled section by section. It is
@@ -551,6 +562,18 @@ function stageLog(run) {
 
 function syncLiveSections(root, run) {
   const path = artifactPath(root, run.id)
+  if (run.contract >= 12) {
+    const gate = gateDocument(root, run)
+    const briefFile = run.status === 'done'
+      ? run.brief_snapshot_at_finish ? resolve(root, run.brief_snapshot_at_finish) : null
+      : briefPath(root, run.id)
+    const current = { ...run, contributions: run.contributions.map(item => ({ ...item, absolute_result: resolve(root, item.result) })) }
+    const changed = run.contributions.some(item => item.result_sha && fileDigest(resolve(root, item.result)) !== item.result_sha)
+      || Object.entries(run.section_hashes ?? {}).some(([name, hash]) => fileDigest(resolve(root, run.section_results[name])) !== hash)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, renderTicket(current, { path, brief: briefFile && existsSync(briefFile) ? readFileSync(briefFile, 'utf8') : '', plan: sectionBody(gate, 'plan'), decision: sectionBody(gate, 'decisions'), evidenceChanged: changed }), 'utf8')
+    return
+  }
   if (!existsSync(path)) return
   let doc = readFileSync(path, 'utf8')
   for (const [name, body] of [['status', liveStatus(run)], ['stage-log', stageLog(run)]]) {
@@ -559,6 +582,22 @@ function syncLiveSections(root, run) {
     doc = doc.slice(0, at.start) + `${at.marker}\n## ${SECTIONS[name].title}\n\n${body}\n\n` + doc.slice(at.end)
   }
   writeFileSync(path, doc, 'utf8')
+}
+
+// New runs keep gate inputs as pointers to original evidence. The generated
+// human ticket is never an authorization or review input. Legacy runs retain
+// their original section contract until they are completed or cancelled.
+function gateDocument(root, run) {
+  if (!(run.contract >= 12)) {
+    const path = artifactPath(root, run.id)
+    return existsSync(path) ? readFileSync(path, 'utf8') : ''
+  }
+  return Object.entries(SECTIONS).map(([name, meta]) => {
+    const ref = run.section_results?.[name] ?? run.contributions.filter(item => item.role === meta.owner).at(-1)?.result
+    const source = ref ? resolve(root, ref) : null
+    const body = name === 'request' ? run.title : source && inside(root, source) && existsSync(source) ? readFileSync(source, 'utf8').trim() : ''
+    return `<!-- forge:section:${name} -->\n## ${meta.title}\n\n${body}\n\n`
+  }).join('')
 }
 
 // One parser, used by both the writer and the completion check. Two
@@ -593,7 +632,7 @@ function ensurePlanReviewed(root, run) {
     die('Plan Reviewer has not approved the latest plan', 5, { id: run.id, verdict: reviewer?.verdict ?? 'missing' })
   }
   const path = artifactPath(root, run.id)
-  const doc = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  const doc = gateDocument(root, run)
   const planSha = createHash('sha256').update(sectionBody(doc, 'plan') ?? '').digest('hex')
   if (reviewer.plan_sha !== planSha) {
     die(run.team.includes('plan-challenger')
@@ -642,7 +681,7 @@ function editCheck() {
   if (run.approval_required) {
     const planSha = run.contributions[reviewerAt].plan_sha
     if (!run.approval || run.approval.plan_sha !== planSha) die('current user plan approval is required', 5)
-    if (run.phase === 'repair') {
+    if (run.phase === 'repair' && run.contract < 12) {
       const verifier = run.contributions.filter((item) => item.role === 'verifier').at(-1)
       if (!verifier || !['critical', 'high', 'medium', 'low'].includes(verifier.severity)
         || !Number.isFinite(Date.parse(run.approval.at)) || !Number.isFinite(Date.parse(verifier.at))
@@ -663,7 +702,7 @@ function unwrittenSections(root, id, run) {
     .map(([name, meta]) => ({ name, owner: meta.owner }))
   if (!owed.length) return []
   if (!existsSync(path)) return owed.map((s) => ({ ...s, why: 'no artifact was ever scaffolded' }))
-  const doc = readFileSync(path, 'utf8')
+  const doc = gateDocument(root, run)
   return owed
     .filter(({ name }) => {
       const body = sectionBody(doc, name)
@@ -708,6 +747,19 @@ function section() {
 
   const body = readFileSync(source, 'utf8').trim()
   if (!body) die('--from file is empty; an empty section is not a written one', 2, { from })
+  if (run.contract >= 12) {
+    if (!inside(root, realpathSync(source))) die('--from resolves outside the project root', 2)
+    const durable = join(workRoot(root), id, 'results', name + '-' + fileDigest(source).slice(0, 16) + '.md')
+    mkdirSync(dirname(durable), { recursive: true })
+    if (!inside(root, realpathSync(dirname(durable)))) die('section evidence directory resolves outside project', 2)
+    if (!existsSync(durable)) writeFileSync(durable, body + '\n', 'utf8')
+    run.section_results ??= {}
+    run.section_hashes ??= {}
+    run.section_results[name] = relative(root, durable).split('\\').join('/')
+    run.section_hashes[name] = fileDigest(durable)
+    save(runPath(root, id), run)
+    return output({ ok: true, id, section: name, owner: owner ?? 'forge', bytes: body.length })
+  }
   const doc = readFileSync(path, 'utf8')
   const at = sectionBounds(doc, name)
   if (!at) die('artifact is missing this section marker; rescaffold it', 4, { section: name })
@@ -764,6 +816,10 @@ function ensureActive(run) {
 }
 
 function ensureRecordedResults(root, run) {
+  for (const [name, hash] of Object.entries(run.section_hashes ?? {})) {
+    const path = resolve(root, run.section_results[name])
+    if (!inside(root, path) || fileDigest(path) !== hash) die('recorded section evidence changed; use a new section result', 5, { section: name })
+  }
   const changed = run.contributions.filter((item) => item.result_sha
     && (!inside(root, resolve(root, item.result))
       || fileDigest(resolve(root, item.result)) !== item.result_sha))
@@ -801,9 +857,9 @@ function start() {
   if (!requestKey) die('--key must not be empty')
   const signals = splitSignals()
   const { risks, assessed } = splitRisks()
-  const approvalRequired = args.includes('--approval-required')
-  const approvalReason = option('--approval-reason')?.trim() ?? null
-  if (approvalRequired !== Boolean(approvalReason)) {
+  const explicitApproval = args.includes('--approval-required')
+  const explicitReason = option('--approval-reason')?.trim() ?? null
+  if (explicitApproval !== Boolean(explicitReason)) {
     die('--approval-required and --approval-reason must be supplied together for an unresolved material decision or authority boundary')
   }
   const cause = option('--cause') ?? ((kind === 'bug' || kind === 'performance') ? 'unknown' : null)
@@ -814,20 +870,29 @@ function start() {
     .split(',').map((value) => value.trim().toLowerCase()).filter(Boolean))]
   if (option('--tier') !== null) die('--tier is retired; use --depth standard|deep')
   const readOnly = READ_ONLY_KINDS.has(kind)
-  if (readOnly && approvalRequired) die('read-only runs cannot require build approval; record an open decision in the assessment')
+  const autonomy = option('--autonomous')?.trim() ?? null
+  if (args.includes('--autonomous') && (!autonomy || autonomy.startsWith('--'))) die('--autonomous requires the explicit user authorization as its value')
+  if (readOnly && (explicitApproval || autonomy)) die('read-only runs cannot require or bypass build approval; record an open decision in the assessment')
+  const approvalRequired = !readOnly && (explicitApproval || !autonomy)
+  const approvalReason = explicitReason ?? (approvalRequired ? 'User reviews the approach and alternatives before application edits.' : null)
   const requiredDeep = !readOnly && (!assessed || ['security', 'idea'].includes(kind)
     || risks.some((risk) => ['access', 'stored-shape', 'irreversible'].includes(risk))
     || [...signals, ...domains].some((signal) => ['payments', 'auth', 'privacy', 'identity-auth', 'migration', 'schema', 'compliance'].includes(signal))
-    || cause === 'unknown')
+    )
   const explicitDepth = option('--depth')
   const requestedDepth = explicitDepth ?? (process.env.AE_WORKFLOW_DEPTH || null)
   if (requestedDepth && !['standard', 'deep'].includes(requestedDepth)) die('--depth must be standard or deep')
-  if (requestedDepth === 'standard' && requiredDeep) die('declared risk or unresolved cause requires deep review')
+  if (requestedDepth === 'standard' && requiredDeep) die('declared behavioral risk requires deep review')
   if (readOnly && explicitDepth) die('--depth applies only to delivery runs')
   const depth = readOnly ? 'assessment' : (requestedDepth ?? (requiredDeep ? 'deep' : 'standard'))
-  const signature = requestSignature({ key: requestKey, kind, title: title.trim(), signals: [...signals].sort(),
+  const requestScope = { key: requestKey, kind, title: title.trim(), signals: [...signals].sort(),
     risks: [...risks].sort(), assessed, cause, causeEvidence, domains: [...domains].sort(), depth,
-    approvalRequired, approvalReason })
+    approvalRequired, approvalReason }
+  const signature = requestSignature(requestScope)
+  const sameScope = (run) => !run.request_signature || run.request_signature === signature
+    || (run.contract < 12 && !explicitApproval && !autonomy && (!requestedDepth || requestedDepth === run.depth)
+      && run.request_signature === requestSignature({ ...requestScope, depth: run.depth,
+        approvalRequired: run.approval_required, approvalReason: run.approval_reason === 'none' ? null : run.approval_reason ?? null }))
   const explicitId = option('--id')
   const existing = existsSync(workRoot(root)) ? readdirSync(workRoot(root), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -842,7 +907,7 @@ function start() {
   const explicitMatch = explicitId ? existing.find((run) => run.id === explicitId) : null
   if (explicitMatch && args.includes('--new')) die('--new requires a distinct, unused --id', 4, { id: explicitId })
   if (explicitMatch && !sameRequest(explicitMatch)) die('run ID belongs to another request', 4, { id: explicitMatch.id })
-  if (explicitMatch?.request_signature && explicitMatch.request_signature !== signature) {
+  if (explicitMatch?.request_signature && !sameScope(explicitMatch)) {
     die('run ID has a different request scope; start a new run with a distinct ID', 4, { id: explicitId })
   }
   if (explicitMatch?.status === 'done') {
@@ -853,10 +918,10 @@ function start() {
     }
   }
   let match = explicitMatch ?? (!args.includes('--new') ? matches.find((run) =>
-    run.status === 'active' && (!run.request_signature || run.request_signature === signature)) : null)
+    run.status === 'active' && sameScope(run)) : null)
   let currentSource = null
   if (!match && !args.includes('--new')) {
-    const completed = matches.filter((run) => run.status === 'done' && run.request_signature === signature)
+    const completed = matches.filter((run) => run.status === 'done' && sameScope(run))
     if (completed.length) {
       currentSource = projectFingerprint(root)
       match = currentSource.fingerprint ? completed.find((run) =>
@@ -908,6 +973,7 @@ function start() {
     contract: TEAM.version,
     approval_reason: approvalReason ?? 'none',
     approval_required: approvalRequired,
+    autonomy_basis: autonomy ?? undefined,
     approval: null,
     baseline: initialBaseline,
     source_sha_at_start: readOnly ? candidateDigest(root, initialBaseline) : undefined,
@@ -916,6 +982,7 @@ function start() {
     status: 'active',
     phase: 'understand',
     active_role: null,
+    ticket: { tasks: [], blockers: [], next_action: 'Forge: inspect current evidence and clarify material requirements.' },
     revision: 0,
     repair_cycles: 0,
     summary: 'Run created.',
@@ -966,6 +1033,39 @@ function status() {
   const { run } = load(root, safeId(option('--id')))
   syncLiveSections(root, run)
   output(run)
+}
+
+function update() {
+  const root = projectRoot()
+  const id = safeId(option('--id'))
+  const feature = load(root, id)
+  ensureActive(feature.run)
+  if (!(feature.run.contract >= 12)) die('ticket updates require a current-contract run', 5)
+  const source = resolve(root, option('--from', ''))
+  if (!option('--from') || !existsSync(source) || !inside(root, realpathSync(source))) die('--from must be a JSON file within the project', 2)
+  let change
+  try { change = JSON.parse(readFileSync(source, 'utf8')) } catch { die('ticket update is not valid JSON', 2) }
+  if (!change || Array.isArray(change) || typeof change !== 'object') die('ticket update must be an object', 2)
+  const allowed = ['next_action', 'progress', 'blockers', 'tasks', 'waiting_for']
+  if (Object.keys(change).some(key => !allowed.includes(key))) die('unknown ticket field', 2, { allowed })
+  for (const key of ['next_action', 'progress']) if (key in change && (typeof change[key] !== 'string' || !change[key].trim())) die(`${key} must be nonempty text`, 2)
+  if ('waiting_for' in change && ![null, 'user', 'external'].includes(change.waiting_for)) die('waiting_for must be user, external or null', 2)
+  if ('blockers' in change && (!Array.isArray(change.blockers) || change.blockers.some(item => typeof item !== 'string' || !item.trim()))) die('blockers must be an array of nonempty strings', 2)
+  if ('tasks' in change) {
+    const ids = new Set()
+    if (!Array.isArray(change.tasks)) die('tasks must be an array', 2)
+    for (const task of change.tasks) {
+      if (!task || typeof task.id !== 'string' || ids.has(task.id) || !task.id.trim()
+        || typeof task.title !== 'string' || !task.title.trim()
+        || !['pending', 'in-progress', 'done', 'blocked'].includes(task.status)
+        || (task.owner !== undefined && typeof task.owner !== 'string')) die('each task needs a unique id, title and valid status', 2)
+      ids.add(task.id)
+      if (task.status === 'done' && (!task.evidence || !feature.run.contributions.some(item => item.result === task.evidence))) die('a completed task must link a recorded contribution as evidence', 5, { task: task.id })
+    }
+  }
+  feature.run.ticket = { ...feature.run.ticket, ...change }
+  save(feature.path, feature.run)
+  output({ ok: true, id, ticket: feature.run.ticket })
 }
 
 function focus() {
@@ -1092,7 +1192,7 @@ function note() {
   }
   if (['plan-reviewer', 'plan-challenger'].includes(role) && feature.run.contract >= (role === 'plan-challenger' ? 4 : 3)) {
     const artifactFile = artifactPath(root, id)
-    const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
+    const doc = gateDocument(root, feature.run)
     const plan = sectionBody(doc, 'plan')
     const label = role === 'plan-reviewer' ? 'Plan Reviewer' : 'Plan Challenger'
     if (!plan || /^_pending\b/.test(plan)) die(`${label} requires a written Plan section`, 5, { id })
@@ -1118,6 +1218,15 @@ function note() {
     at: new Date().toISOString(),
   })
   if (feature.run.active_role?.role === role) feature.run.active_role = null
+  if (feature.run.contract >= 12) {
+    const owned = Object.entries(SECTIONS).find(([, meta]) => meta.owner === role)?.[0]
+    if (owned) {
+      feature.run.section_results ??= {}
+      feature.run.section_results[owned] = recordedPath
+      if (feature.run.section_hashes) delete feature.run.section_hashes[owned]
+    }
+    feature.run.ticket.next_action = 'Forge: reconcile the recorded result and assign the next ready step.'
+  }
   save(feature.path, feature.run)
   // The ledger and the artifact were two writes of one event, reconciled by
   // finish()'s 'sections' gap. They are one write now: a role that records a
@@ -1130,6 +1239,7 @@ function note() {
 
 // Returns the section name if this note filled it, null otherwise.
 function fillOwnedSection(root, id, role, resultPath) {
+  if (load(root, id).run.contract >= 12) return null
   const entry = Object.entries(SECTIONS).find(([, meta]) => meta.owner === role)
   if (!entry) return null
   const [name] = entry
@@ -1185,6 +1295,7 @@ function phase() {
   // Returning from verification for an in-scope repair reuses the accepted
   // plan. Post-build specialist findings must not invalidate its review order.
   if (['approval', 'build'].includes(to) && feature.run.kind !== 'audit' && !(to === 'approval' && from === 'verify')) {
+    if (feature.run.contract >= 12 && feature.run.ticket?.blockers?.length) die('unresolved ticket blockers prevent approach approval or build', 5)
     const required = feature.run.team.filter((role) => !['builder', 'verifier'].includes(role))
     const missing = required.filter((role) => !contributed.has(role))
     const latestReviewer = feature.run.contributions.filter((item) => item.role === 'plan-reviewer').at(-1)
@@ -1213,7 +1324,7 @@ function phase() {
       }
       const review = feature.run.team.includes('plan-challenger') ? feature.run.contributions[challengeAt] : null
       const artifactFile = artifactPath(root, id)
-      const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
+      const doc = gateDocument(root, feature.run)
       const verdict = review?.verdict ?? (review && existsSync(resolve(root, review.result))
         ? planReviewVerdict(readFileSync(resolve(root, review.result), 'utf8')) : null)
       if (review && !['APPROVED', 'APPROVED WITH NOTES'].includes(verdict)) {
@@ -1239,7 +1350,7 @@ function phase() {
     if (!verifier || !verifier.severity || verifier.severity === 'none' || verifier.revision !== feature.run.revision) {
       die('repair requires a current verifier finding; return to Plan for a discretionary change', 5, { id })
     }
-    if (feature.run.approval_required) {
+    if (feature.run.approval_required && feature.run.contract < 12) {
     const approvedAt = feature.run.approval?.at ? Date.parse(feature.run.approval.at) : NaN
     const verifiedAt = verifier?.at ? Date.parse(verifier.at) : NaN
     if (!feature.run.approval || !verifier || !Number.isFinite(approvedAt) || !Number.isFinite(verifiedAt) || approvedAt < verifiedAt) {
@@ -1254,7 +1365,7 @@ function phase() {
     }
     if (feature.run.contract >= 5 && feature.run.approval_required) {
       const artifactFile = artifactPath(root, id)
-      const plan = existsSync(artifactFile) ? sectionBody(readFileSync(artifactFile, 'utf8'), 'plan') : null
+      const plan = sectionBody(gateDocument(root, feature.run), 'plan')
       const planSha = plan ? createHash('sha256').update(plan).digest('hex') : null
       if (!feature.run.approval?.plan_sha || feature.run.approval.plan_sha !== planSha) {
         die('plan changed after user approval; return it to review, challenge, and user approval', 5, { id })
@@ -1278,6 +1389,14 @@ function phase() {
   }
   feature.run.phase = to
   feature.run.summary = summary
+  if (feature.run.contract >= 12) {
+    feature.run.active_role = null
+    delete feature.run.ticket.next_action
+    if (to === 'plan') {
+      if (feature.run.approval) (feature.run.approval_history ??= []).push(feature.run.approval)
+      feature.run.approval = null
+    }
+  }
   save(feature.path, feature.run)
   output({ ok: true, id, phase: to })
 }
@@ -1314,6 +1433,7 @@ function approve() {
   const id = safeId(option('--id'))
   const feature = load(root, id)
   ensureActive(feature.run)
+  ensureRecordedResults(root, feature.run)
   if (READ_ONLY_KINDS.has(feature.run.kind)) die('read-only runs have no implementation plan to approve', 5, { id })
   if (feature.run.contract >= 5 && feature.run.phase !== 'approval') {
     die('user approval is requested only after plan review and challenge; move to approval when both passes are current', 5, { id, phase: feature.run.phase })
@@ -1337,7 +1457,7 @@ function approve() {
   let planSha
   if (feature.run.contract >= 5) {
     const artifactFile = artifactPath(root, id)
-    const doc = existsSync(artifactFile) ? readFileSync(artifactFile, 'utf8') : ''
+    const doc = gateDocument(root, feature.run)
     const plan = sectionBody(doc, 'plan')
     if (!plan || /^_pending\b/.test(plan)) die('a written Plan is required before user approval', 5, { id })
     const reviews = feature.run.contributions
@@ -1345,18 +1465,18 @@ function approve() {
     const challengeAt = reviews.map((item) => item.role).lastIndexOf('plan-challenger')
     const reviewer = reviews[reviewAt]
     const challenger = reviews[challengeAt]
-    if (!reviewer || !challenger || challengeAt <= reviewAt) {
+    if (!reviewer || (feature.run.team.includes('plan-challenger') && (!challenger || challengeAt <= reviewAt))) {
       die('Plan Reviewer and Plan Challenger must complete in order before user approval', 5, { id })
     }
-    if (!['APPROVED', 'APPROVED WITH NOTES'].includes(reviewer.verdict) || !['APPROVED', 'APPROVED WITH NOTES'].includes(challenger.verdict)) {
+    if (!['APPROVED', 'APPROVED WITH NOTES'].includes(reviewer.verdict) || (challenger && !['APPROVED', 'APPROVED WITH NOTES'].includes(challenger.verdict))) {
       die('both Plan Reviewer and Plan Challenger must approve before user approval', 5, { id })
     }
     planSha = createHash('sha256').update(plan).digest('hex')
-    if (reviewer.plan_sha !== planSha || challenger.plan_sha !== planSha) {
+    if (reviewer.plan_sha !== planSha || (challenger && challenger.plan_sha !== planSha)) {
       die('the plan changed after review or challenge; rerun both passes before user approval', 5, { id })
     }
     if (planReviewVerdict(sectionBody(doc, 'plan-review')) !== reviewer.verdict
-      || planReviewVerdict(sectionBody(doc, 'plan-challenge')) !== challenger.verdict) {
+      || (challenger && planReviewVerdict(sectionBody(doc, 'plan-challenge')) !== challenger.verdict)) {
       die('plan review artifacts do not match the current reviewer and challenger verdicts', 5, { id })
     }
   }
@@ -1370,6 +1490,11 @@ function approve() {
     brief_sha: digest,
     ...(planSha ? { plan_sha: planSha } : {}),
   }
+  if (feature.run.contract >= 12) {
+    const snapshot = join(workRoot(root), id, `brief-approved-${digest.slice(0, 16)}.md`)
+    if (!existsSync(snapshot)) copyFileSync(briefPath(root, id), snapshot)
+    feature.run.approval.brief_snapshot = relative(root, snapshot).replaceAll('\\', '/')
+  }
   save(feature.path, feature.run)
   output({ ok: true, id, approval: feature.run.approval })
 }
@@ -1382,9 +1507,18 @@ function approvalPacket() {
   const feature = load(root, id)
   ensureActive(feature.run)
   if (READ_ONLY_KINDS.has(feature.run.kind)) die('read-only runs have no implementation plan to approve', 5, { id })
+  if (feature.run.contract >= 12) {
+    if (feature.run.phase !== 'approval') die('present the approach only after entering its approval checkpoint', 5)
+    ensureRecordedResults(root, feature.run)
+    ensurePlanReviewed(root, feature.run)
+    readyBriefDigest(root, id)
+    syncLiveSections(root, feature.run)
+    process.stdout.write(readFileSync(artifactPath(root, id), 'utf8'))
+    return
+  }
   const path = artifactPath(root, id)
   if (!existsSync(path)) die('run artifact is missing; create it before presenting an approval packet', 5, { id })
-  const doc = readFileSync(path, 'utf8')
+  const doc = gateDocument(root, feature.run)
   const body = (name) => sectionBody(doc, name) ?? '_pending_'
   const verifier = feature.run.contributions.filter((item) => item.role === 'verifier').at(-1)
   const repair = feature.run.phase === 'approval' && verifier
@@ -1441,6 +1575,9 @@ function finish() {
 
   ensureActive(feature.run)
   ensureRecordedResults(root, feature.run)
+  if (feature.run.contract >= 12 && (feature.run.ticket?.blockers?.length || feature.run.ticket?.tasks?.some(task => task.status !== 'done'))) {
+    die('resolve ticket blockers and evidence every checklist item before completion', 5)
+  }
   if (feature.run.phase !== 'verify') die('run must be in verify phase before finish', 5, { phase: feature.run.phase })
   if (!READ_ONLY_KINDS.has(feature.run.kind)) ensurePlanReviewed(root, feature.run)
   if (feature.run.approval_required && !feature.run.approval) die('user approval is missing', 5, { id })
@@ -1487,7 +1624,7 @@ function finish() {
   const unwritten = unwrittenSections(root, id, feature.run)
   if (!READ_ONLY_KINDS.has(feature.run.kind)) {
     const docPath = artifactPath(root, id)
-    const doc = existsSync(docPath) ? readFileSync(docPath, 'utf8') : ''
+    const doc = gateDocument(root, feature.run)
     for (const [role, sectionName] of [['builder', 'implementation'], ['verifier', 'verification']]) {
       const latest = feature.run.contributions.filter((item) => item.role === role
         && item.revision === feature.run.revision).at(-1)
@@ -1546,8 +1683,7 @@ function finish() {
     const reviewText = inside(root, reviewPath) && existsSync(reviewPath)
       ? readFileSync(reviewPath, 'utf8') : ''
     const artifactFile = artifactPath(root, id)
-    const artifactVerdict = existsSync(artifactFile)
-      ? recordedVerdict(sectionBody(readFileSync(artifactFile, 'utf8'), 'verification') ?? '') : null
+    const artifactVerdict = recordedVerdict(sectionBody(gateDocument(root, feature.run), 'verification') ?? '')
     if (recordedVerdict(reviewText) !== result || artifactVerdict !== result) {
       die('finish verdict disagrees with the Verifier result or artifact', 5, {
         requested: result,
@@ -1569,23 +1705,7 @@ function finish() {
   // reported once and never re-inspected - so the severity of the bug it
   // diagnosed must not be read as an unresolved severity of the fix, or a
   // correctly delivered repair could never close.
-  const unresolved = new Map()
-  const acceptedResiduals = []
-  for (const item of feature.run.contributions) {
-    if (item.phase !== 'verify') continue
-    if (READ_ONLY_KINDS.has(feature.run.kind)) {
-      // Audit severity describes the repository findings, not a failed fix.
-      // A sound audit can and should report critical defects.
-      continue
-    }
-    if (item.residual && ['critical', 'high'].includes(item.severity)) {
-      unresolved.set(item.role, item)
-    } else if (item.residual && item.severity) {
-      unresolved.delete(item.role)
-      acceptedResiduals.push({ role: item.role, severity: item.severity, why: item.residual })
-    } else if (['critical', 'high'].includes(item.severity)) unresolved.set(item.role, item)
-    else if (item.severity) unresolved.delete(item.role)
-  }
+  const { unresolved, acceptedResiduals } = findingState(feature.run)
   feature.run.accepted_residuals = acceptedResiduals.length ? acceptedResiduals : undefined
   if (acceptedResiduals.length && result !== 'PASS WITH RESIDUAL RISK') {
     die('accepted blocking findings require PASS WITH RESIDUAL RISK', 5,
@@ -1625,6 +1745,21 @@ function finish() {
   feature.run.acceptance = ACCEPTANCE[feature.run.kind] ?? null
   feature.run.tests_changed_justified = args.includes('--tests-changed-justified') || undefined
   feature.run.brief_sha_at_finish = briefDigest(root, id)
+  if (feature.run.contract >= 12) {
+    const frozen = feature.run.approval?.brief_sha ?? feature.run.brief_sha_at_build
+    if (frozen && feature.run.brief_sha_at_finish && frozen !== feature.run.brief_sha_at_finish) die('brief changed after implementation authorization; return to planning', 5)
+    const approved = feature.run.approval?.brief_snapshot
+    if (approved) {
+      const snapshot = resolve(root, approved)
+      if (!inside(root, snapshot) || fileDigest(snapshot)?.slice(0, 16) !== frozen) die('accepted brief snapshot is missing or changed', 5)
+      feature.run.brief_snapshot_at_finish = approved
+      feature.run.brief_sha_at_finish = frozen
+    } else if (feature.run.brief_sha_at_finish) {
+      const snapshot = join(workRoot(root), id, 'brief-final-' + feature.run.brief_sha_at_finish + '.md')
+      if (!existsSync(snapshot)) copyFileSync(briefPath(root, id), snapshot)
+      feature.run.brief_snapshot_at_finish = relative(root, snapshot).split('\\').join('/')
+    } else if (!READ_ONLY_KINDS.has(feature.run.kind)) die('completed delivery scope is missing', 5)
+  }
   feature.run.source_fingerprint_at_finish = projectFingerprint(root).fingerprint
   feature.run.status = 'done'
   feature.run.phase = 'done'
@@ -1635,7 +1770,7 @@ function finish() {
   feature.run.review_context = verifierReview.review_context ?? 'unrecorded'
   feature.run.result = result
   const currentArtifact = artifactPath(root, id)
-  if (existsSync(currentArtifact)) {
+  if (existsSync(currentArtifact) && feature.run.contract < 12) {
     const doc = readFileSync(currentArtifact, 'utf8')
     const bounds = sectionBounds(doc, 'summary')
     if (!bounds) die('artifact is missing its Summary section', 5, { id })
@@ -1661,6 +1796,11 @@ function report() {
   const root = projectRoot()
   const id = safeId(option('--id'))
   const { run } = load(root, id)
+  if (run.contract >= 12) {
+    syncLiveSections(root, run)
+    process.stdout.write(readFileSync(artifactPath(root, id), 'utf8'))
+    return
+  }
   const byRole = (role) => run.contributions.filter((item) => item.role === role)
   const out = []
 
@@ -1838,10 +1978,10 @@ function audit() {
       `nothing differs from baseline ${from}; the mechanical checks read an empty diff and prove nothing about the work`)
   }
 
-  // 1. Scope: every changed file should appear in the frozen brief.
+  // 1. Scope: the brief sets behavior; the accepted plan identifies files.
   const briefFile = briefPath(root, id)
   if (existsSync(briefFile) && names.length) {
-    const brief = readFileSync(briefFile, 'utf8')
+    const brief = readFileSync(briefFile, 'utf8') + (run.contract >= 12 ? '\n' + (sectionBody(gateDocument(root, run), 'plan') ?? '') : '')
     const unplanned = names.filter((name) => !brief.includes(name))
     add('scope', unplanned.length ? 'REVIEW' : 'OK',
       unplanned.length ? `${unplanned.length} changed file(s) are not named in the brief` : `${names.length} changed file(s), all named in the brief`)
@@ -1900,9 +2040,10 @@ function audit() {
     const ids = [...new Set([...declared.matchAll(/\bAC-\d+\b/g)].map((m) => m[0]))]
     if (ids.length) {
       const dir = join(workRoot(root), id, 'results')
-      const evidence = existsSync(dir)
-        ? readdirSync(dir).map((f) => readFileSync(join(dir, f), 'utf8')).join('\n')
-        : ''
+      const current = run.contributions.filter(item => item.revision === run.revision && ['build', 'repair', 'verify'].includes(item.phase))
+      const evidence = run.contract >= 12
+        ? current.map(item => readFileSync(resolve(root, item.result), 'utf8')).join('\n')
+        : existsSync(dir) ? readdirSync(dir).map((f) => readFileSync(join(dir, f), 'utf8')).join('\n') : ''
       const unevidenced = ids.filter((ac) => !evidence.includes(ac))
       add('acceptance', unevidenced.length ? 'REVIEW' : 'OK',
         unevidenced.length ? `${unevidenced.join(', ')} not referenced by any expert result` : `${ids.length} criterion/criteria referenced in results`)
@@ -1984,8 +2125,10 @@ Internal recovery ledger for the autonomous Forge workflow.
          kinds: idea, feature, bug, refactor, performance, security,
                 audit, plan, diagnose, review
          [--cause known|unknown --cause-evidence TEXT]
+         [--autonomous TEXT] (explicit user authorization to skip approach review)
   list
   status --id ID
+  update --id ID --from PATH    (ticket progress, next action, blockers and tasks)
   focus  --id ID --role ROLE|forge --summary TEXT
   note   --id ID --role ROLE --summary TEXT --result PATH [--severity S]
          [--review-context isolated|same-session] (Verifier)
@@ -2067,11 +2210,10 @@ function runs() {
     if (run.routing?.risk_assessed === false) stats.risk_unassessed++
     if (!run.lenses) stats.lenses_unrecorded++
     if (run.approval_required) stats.approval_required++
-    const cycles = Math.max(0, (run.revision ?? 1) - 1)
+    const cycles = run.repair_cycles ?? Math.max(0, (run.revision ?? 1) - 1)
     stats.repair_cycles[cycles] = (stats.repair_cycles[cycles] ?? 0) + 1
     for (const name of run.team ?? []) role(name).selected++
-    for (const skip of run.routing?.skipped ?? []) {
-      const name = typeof skip === 'string' ? skip : skip.role
+    for (const name of Object.keys(run.routing?.skipped ?? {})) {
       if (name) role(name).skipped++
     }
     const seen = new Set()
@@ -2093,6 +2235,6 @@ function runs() {
   output(stats)
 }
 
-const handlers = { help, start, brief, artifact, section, lenses, list, status, focus, note, phase, approve, approvalPacket, 'approval-packet': approvalPacket, 'edit-check': editCheck, audit, report, finish, cancel, contract, runs }
+const handlers = { help, start, brief, artifact, section, lenses, list, status, update, focus, note, phase, approve, approvalPacket, 'approval-packet': approvalPacket, 'edit-check': editCheck, audit, report, finish, cancel, contract, runs }
 if (!handlers[command]) die('unknown command', 2, { command })
 handlers[command]()
