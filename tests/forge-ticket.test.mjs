@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { reviewResult } from './helpers/review-fixtures.mjs'
+import { retainV12 } from './helpers/legacy-contract.mjs'
 import { renderTicket, findingState } from '../skills/ae-forge/scripts/ticket.mjs'
 const forge = resolve(dirname(fileURLToPath(import.meta.url)), '../skills/ae-forge/scripts/forge.mjs')
 
@@ -17,7 +18,7 @@ function project(body) {
     writeFileSync(path, content)
     return path
   }
-  const call = (...args) => spawnSync(process.execPath, [forge, ...args, '--root', root], { cwd: root, encoding: 'utf8', env: { ...process.env, AE_WORKFLOW_DEPTH: '' } })
+  const call = (...args) => retainV12(root, args, spawnSync(process.execPath, [forge, ...args, '--root', root], { cwd: root, encoding: 'utf8', env: { ...process.env, AE_WORKFLOW_DEPTH: '' } }))
   const ok = (...args) => { const result = call(...args); assert.equal(result.status, 0, result.stdout + result.stderr); return result.stdout }
   const note = (role, file, text, severity = 'none') => {
     const path = put(`.dev/work/task/results/${file}.md`, text)

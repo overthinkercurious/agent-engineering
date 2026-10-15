@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { reviewResult } from './helpers/review-fixtures.mjs'
+import { retainV12 } from './helpers/legacy-contract.mjs'
 import { validateReviewResult } from '../skills/ae-forge/scripts/review-result.mjs'
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const forge = join(repo, 'skills/ae-forge/scripts/forge.mjs')
@@ -17,9 +18,9 @@ function fixture(run, depth = 'standard') {
     const path = join(root, name)
     mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, body); return path
   }
-  const call = (...args) => spawnSync(process.execPath, [forge, ...args, '--root', root], {
+  const call = (...args) => retainV12(root, args, spawnSync(process.execPath, [forge, ...args, '--root', root], {
     cwd: root, encoding: 'utf8', env: { ...process.env, CODEX_SESSION_ID: 'safety-session', CLAUDE_CODE_SESSION_ID: '', AE_WORKFLOW_DEPTH: '' },
-  })
+  }))
   const check = (session = 'safety-session', patch = '*** Begin Patch\n*** Update File: src/app.js\n*** End Patch') => spawnSync(process.execPath, [guard, 'pre-tool-use'], {
     cwd: root, encoding: 'utf8', input: JSON.stringify({ cwd: root, session_id: session, tool_name: 'apply_patch', tool_input: { command: patch } }),
   })
@@ -148,9 +149,9 @@ test('review records preserve more than five blockers and unknown remediation; t
   const text = reviewResult('plan-reviewer', 'REVISE').replace('| F1 | high | fixture plan | invalid invariant | wrong result | fix invariant | fixture check |', rows)
   const checked = validateReviewResult('plan-reviewer', text, 'high')
   assert.equal(checked.ok, true, JSON.stringify(checked.errors)); assert.equal(checked.findings, 7)
-  fixture(({ put }) => {
-    const result = put('review.md', text)
-    const cli = spawnSync(process.execPath, [join(repo, 'skills/ae-forge/scripts/review-result.mjs'), '--role', 'plan-reviewer', '--result', result, '--severity', 'high'], { encoding: 'utf8' })
+  fixture(({ root, put }) => {
+    const result = put('review.md', text.replace('fixture artifact', '`.dev/work/safe/results/architect.md`'))
+    const cli = spawnSync(process.execPath, [join(repo, 'skills/ae-forge/scripts/review-result.mjs'), '--role', 'plan-reviewer', '--result', result, '--severity', 'high', '--root', root], { encoding: 'utf8' })
     assert.equal(cli.status, 0, cli.stderr); assert.equal(JSON.parse(cli.stdout).findings, 7)
   })
 })

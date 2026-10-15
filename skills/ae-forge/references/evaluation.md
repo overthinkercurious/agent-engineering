@@ -5,7 +5,7 @@ independent behavioral cases when changing review methods or lens routing.
 Give the evaluating agent only the request, required kit methods, and raw
 repository evidence. Withhold the expected answer and proposed repair.
 
-Use temporary projects and prohibit production writes. Start with these six
+Use temporary projects and prohibit production writes. Start with these nine
 cases, including clean controls:
 
 | Case | Raw situation | Observable result |
@@ -16,8 +16,11 @@ cases, including clean controls:
 | Frontend | replace native button with role-only div and test pointer only | keyboard requirement blocks the plan |
 | Unknown cause | retry create after persistence but before response arrives | reproduce duplicates with controls; diagnose without edits |
 | Assessment | audit a correct null-safe formatter against a narrow contract | bounded zero-finding audit, freshly verified; no edits |
+| Citation | plausible UI defect cites a different screen's source | reject the audit as written; identify the wrong source citation |
+| Cause | an ANR dialog is offered as proof of a startup call stack | preserve the symptom but reject the unsupported causal claim |
+| Design control | two headers and card radii match explicit supported variants | zero invented design-system violations |
 
-The kit-development harness prepares all six cases without expectations in
+The kit-development harness prepares all nine cases without expectations in
 their project directories:
 
 ```bash
@@ -39,7 +42,7 @@ Score actual artifacts against expected behavior after the pass. Count missed
 blockers and false blockers, whether the requested outcome completed, and any
 scope or order violation. Record elapsed time and token/cost metrics only when
 the host exposes them. Missing metrics are unavailable, never zero. A single
-passing six-case run is a regression baseline, not a universal quality score.
+passing nine-case run is a regression baseline, not a universal quality score.
 Extend cases for each lens used in real projects and when a real failure occurs.
 
 For Auditor, persist scope and exclusions before opening scoped source. For

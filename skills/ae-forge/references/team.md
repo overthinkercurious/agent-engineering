@@ -42,6 +42,13 @@ short presentation summary. Missing remediation never removes a defect:
 record what would resolve it. Suspicions belong in UNKNOWNS.
 
 EVIDENCE names what this pass actually opened, executed or observed.
+Use explicit backticked file paths (including line numbers where useful) or
+Markdown links for local citations; paths resolve from the project root.
+Use primary-source URLs for external evidence. Write `UNAVAILABLE: <reason>`
+for unavailable evidence; never supply a missing file as if it were checked.
+Contract v13 checks the shared form and highest finding severity for every
+expert, and checks explicit local references for existence inside the project.
+It cannot establish that an existing file supports a claim.
 Check consequential external claims against current primary sources;
 unavailable research stays unverified. Discovery and source/runtime
 reconciliation follow [discovery.md](discovery.md).
@@ -66,7 +73,7 @@ standalone requests start with ae-forge.
 
 After writing the result, use `note` as described in
 [commands.md](commands.md). Recording updates accepted pointers and renders
-the human ticket for contract v12. Stages do not rewrite the whole ticket.
+the human ticket for contract v12 and later. Stages do not rewrite the whole ticket.
 Forge updates its checklist, next action and unresolved decisions.
 
 ## Ordering and ownership
@@ -95,6 +102,27 @@ The Auditor reads source/runtime against declared scope without reading earlier
 conclusions. No implementation is authorized. Plan/diagnose/review are also
 read-only. Completion means the requested assessment is supported, not that
 the application has no defects.
+
+Before assigning Auditor, fill the brief with the supplied request, scope,
+exclusions and assessment checks. Preserve the full request when available;
+do not substitute a short run title or reconstruct missing user instructions.
+Accepted Auditor and read-only Verifier contributions bind the brief hash and
+preserve its snapshot. Changing that scope requires fresh assessment/review;
+completion cannot silently attach new requirements to old evidence.
+Keep findings in the canonical FINDINGS section, not a second hazards table
+inside OUTCOME. Record honest severity even for assessment-only hazards.
+Verifier reopens each critical/high upstream finding, identifies it as
+`<role>/<finding ID>` in Claim re-verification, and records `confirmed`,
+`corrected` or `unverified` with the source or artifact actually checked.
+Audit completion with existing high hazards is allowed; unsupported claims
+and unresolved assessment questions are a different matter.
+
+Contract v13 completion requires a filled brief and a nonempty evidenced
+checklist. The generated ticket projects scope, coverage, findings, limits
+and selected evidence from accepted originals. Audit PASS describes assessment
+quality, not application health. Unassessed/unavailable domain depth and other
+accepted evidence gaps require explicit Verifier limitations and PASS WITH
+RESIDUAL RISK; required core evidence still cannot be waived by presentation.
 
 ## Context and enforcement
 

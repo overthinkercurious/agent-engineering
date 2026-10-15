@@ -97,10 +97,15 @@ while its inspected source fingerprint matches. Phase retries do not advance
 revisions. Preserve existing user changes and reopen original evidence on
 handoff; the short ticket alone is not sufficient agent context.
 
-Contract v12 uses generated tickets and default approach review. Existing runs
-retain their historic contract and artifact layout. To adopt the new workflow
-for old active work, explicitly cancel and create a current run rather than
-rewriting its recorded permissions.
+Contract v13 requires filled assessment briefs, consistent expert findings,
+evidenced checklists and explicit claim re-verification. Tickets show scope,
+coverage, application hazards and evidence limits; audit PASS describes the
+assessment quality. It does not certify a healthy application. Local reference
+checks establish existence; reviewers still check the evidence itself.
+Existing runs, including v12, keep their historic gates.
+
+To adopt the new workflow for old active work, explicitly cancel and create
+a current run rather than rewriting its recorded permissions.
 
 ## Development
 

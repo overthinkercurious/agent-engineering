@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { retainV12 } from './helpers/legacy-contract.mjs'
 
 const script = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ae-forge', 'scripts', 'forge.mjs')
 const analyze = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ae-forge', 'scripts', 'analyze.mjs')
@@ -12,7 +13,7 @@ const analyze = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'skills',
 test('Forge starts without a survey and keeps the readable run status current', () => {
   const root = mkdtempSync(join(tmpdir(), 'ae-forge-status-'))
   const invoke = (...args) => {
-    const result = spawnSync(process.execPath, [script, ...args, '--root', root], { encoding: 'utf8' })
+    const result = retainV12(root, args, spawnSync(process.execPath, [script, ...args, '--root', root], { encoding: 'utf8' }))
     return { code: result.status, body: JSON.parse(result.stdout) }
   }
   const put = (name, content) => {

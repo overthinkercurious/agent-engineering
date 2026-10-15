@@ -5,7 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { validateReviewResult } from './review-result.mjs'
+import { validateReviewResult, validateResult, bodyAt, content, unfinished } from './review-result.mjs'
 import { ensureArtifactIgnore } from './artifact-ignore.mjs'
 import { renderTicket, findingState } from './ticket.mjs'
 
@@ -468,12 +468,30 @@ function briefDigest(root, id) {
 }
 
 function readyBriefDigest(root, id) {
+  const { run } = load(root, id)
+  const label = run.contract >= 13 && READ_ONLY_KINDS.has(run.kind) ? 'assessment brief' : 'implementation brief'
   const path = briefPath(root, id)
-  if (!existsSync(path)) die('implementation brief is missing; run brief --id before build or approval', 5, { id })
+  if (!existsSync(path)) die(`${label} is missing; run brief --id and fill it before the assigned work`, 5, { id })
   if (/^TODO\s*$/m.test(readFileSync(path, 'utf8'))) {
-    die('implementation brief still has unfilled sections', 5, { id, brief: relative(root, path).replaceAll('\\', '/') })
+    die(`${label} still has unfilled sections`, 5, { id, brief: relative(root, path).replaceAll('\\', '/') })
   }
+  if (run.contract >= 13) ensureBriefReady(run, readFileSync(path, 'utf8'))
   return briefDigest(root, id)
+}
+
+function ensureBriefReady(run, text) {
+  const checks = READ_ONLY_KINDS.has(run.kind) ? 'Assessment checks' : 'Acceptance criteria'
+  const required = ['Request', 'Confirmed behavior and answers', 'Assumptions and open questions', 'Scope and non-goals', checks]
+  const missing = required.filter(name => unfinished(bodyAt(text, name))
+    || (['Request', 'Scope and non-goals', checks].includes(name) && /^none$/i.test(content(bodyAt(text, name)))))
+  if (missing.length) die('brief must record the supplied request, scope and observable checks before assessment or completion', 5, { id: run.id, sections: missing })
+}
+
+function resultOptions(root, run) {
+  const latest = new Map()
+  for (const item of run.contributions) if (item.role !== 'verifier') latest.set(item.role, item)
+  return { root, contract: run.contract, kind: run.kind, rendered: run.risks?.includes('rendered'),
+    upstream: [...latest.values()].map(item => ({ role: item.role, text: readFileSync(resolve(root, item.result), 'utf8') })) }
 }
 
 function brief() {
@@ -488,21 +506,24 @@ function brief() {
     `> Team: ${run.team.join(' → ')}`,
     `> Baseline: ${run.baseline?.head ?? 'UNKNOWN'} · approval ${run.approval_required ? 'required' : 'not required'}`,
     '',
-    '_This brief is the implementation contract. It is frozen at approval',
-    'when the user approves it. The audit',
-    'compares the delivered change against that frozen text._',
+    ...(run.contract >= 13 && READ_ONLY_KINDS.has(run.kind)
+      ? ['_This brief records the requested assessment, scope, exclusions and checks.',
+        'Record it before assessment; it is preserved with the completed result._']
+      : ['_This brief is the implementation contract. It is frozen at approval',
+        'when the user approves it. Verification compares delivery against that text._']),
     '',
   ]
   const sections = run.contract >= 12 ? [
-    ['Request', null],
+    ['Request', 'Preserve the supplied request, not just its title. If the original is unavailable, say so and record the available scope.'],
     ['Confirmed behavior and answers', 'Confirmed user decisions and the behavior they require.'],
     ['Assumptions and open questions', 'Separate assumptions from unresolved intent; name dependent work that must wait.'],
     ['Scope and non-goals', 'Behavioral boundaries and deliberate exclusions. Design details belong in the accepted plan.'],
-    ['Acceptance criteria', 'Observable checks with stable AC-1, AC-2 identifiers.'],
+    [run.contract >= 13 && READ_ONLY_KINDS.has(run.kind) ? 'Assessment checks' : 'Acceptance criteria',
+      'Observable checks with stable AC-1, AC-2 identifiers; assessment checks describe evidence and scope, not application health.'],
   ] : BRIEF_SECTIONS
   for (const [heading, prompt] of sections) {
     lines.push(`## ${heading}`, '')
-    if (heading === 'Request') lines.push(run.title, '')
+    if (heading === 'Request' && run.contract < 13) lines.push(run.title, '')
     else lines.push(`<!-- ${prompt} -->`, '', 'TODO', '')
   }
   mkdirSync(dirname(path), { recursive: true })
@@ -567,11 +588,13 @@ function syncLiveSections(root, run) {
     const briefFile = run.status === 'done'
       ? run.brief_snapshot_at_finish ? resolve(root, run.brief_snapshot_at_finish) : null
       : briefPath(root, run.id)
-    const current = { ...run, contributions: run.contributions.map(item => ({ ...item, absolute_result: resolve(root, item.result) })) }
+    const current = { ...run, contributions: run.contributions.map(item => ({ ...item, absolute_result: resolve(root, item.result),
+      ...(run.contract >= 13 ? { result_text: inside(root, resolve(root, item.result)) && existsSync(resolve(root, item.result))
+        && (!item.result_sha || fileDigest(resolve(root, item.result)) === item.result_sha) ? readFileSync(resolve(root, item.result), 'utf8') : '' } : {}) })) }
     const changed = run.contributions.some(item => item.result_sha && fileDigest(resolve(root, item.result)) !== item.result_sha)
       || Object.entries(run.section_hashes ?? {}).some(([name, hash]) => fileDigest(resolve(root, run.section_results[name])) !== hash)
     mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, renderTicket(current, { path, brief: briefFile && existsSync(briefFile) ? readFileSync(briefFile, 'utf8') : '', plan: sectionBody(gate, 'plan'), decision: sectionBody(gate, 'decisions'), evidenceChanged: changed }), 'utf8')
+    writeFileSync(path, renderTicket(current, { root, path, brief: briefFile && existsSync(briefFile) ? readFileSync(briefFile, 'utf8') : '', plan: sectionBody(gate, 'plan'), decision: sectionBody(gate, 'decisions'), evidenceChanged: changed }), 'utf8')
     return
   }
   if (!existsSync(path)) return
@@ -645,7 +668,8 @@ function ensurePlanReviewed(root, run) {
   for (const role of ['plan-reviewer', 'plan-challenger'].filter((role) => run.team.includes(role))) {
     const contribution = run.contributions.filter((item) => item.role === role).at(-1)
     if (!contribution) die(`${role} approval is missing`, 5)
-    const result = validateReviewResult(role, readFileSync(resolve(root, contribution.result), 'utf8'), contribution.severity)
+    const result = validateResult(role, readFileSync(resolve(root, contribution.result), 'utf8'), contribution.severity,
+      { root, contract: run.contract, kind: run.kind })
     if (!result.ok || !['APPROVED', 'APPROVED WITH NOTES'].includes(result.verdict)) {
       die('plan review result is incomplete or blocking', 5, { role, errors: result.errors })
     }
@@ -1079,6 +1103,7 @@ function focus() {
     die('role is not selected for this run', 4, { role, team: feature.run.team })
   }
   if (!summary) die('--summary is required')
+  if (role === 'auditor' && feature.run.contract >= 13) readyBriefDigest(root, id)
   feature.run.active_role = { role, summary, at: new Date().toISOString() }
   bindSession(root, feature.run)
   save(feature.path, feature.run)
@@ -1181,14 +1206,30 @@ function note() {
   if (!inside(root, resultPath)) die('--result path escapes the project root', 2, { result })
   if (!existsSync(resultPath)) die('--result file does not exist', 2, { result: resultPath })
   const recordedPath = relative(root, resultPath).split('\\').join('/')
+  if (feature.run.contract >= 13 && (!recordedPath.startsWith(`.dev/work/${id}/results/`)
+    || !inside(root, realpathSync(resultPath)) || !statSync(resultPath).isFile())) die('expert results must be regular files within this run results directory', 5)
   if (feature.run.contributions.some((item) => item.result === recordedPath)) {
     die('expert result path was already recorded; use a new file for each pass', 5, { result: recordedPath })
   }
   let planSha
   let reviewVerdict
-  if (['plan-reviewer', 'plan-challenger', 'verifier'].includes(role) && feature.run.contract >= 9) {
+  let scopeEvidence
+  if (feature.run.contract >= 13) {
+    if (role === 'auditor') readyBriefDigest(root, id)
+    const checked = validateResult(role, readFileSync(resultPath, 'utf8'), severity, resultOptions(root, feature.run))
+    if (!checked.ok) die('expert result is incomplete or inconsistent', 5, { role, errors: checked.errors })
+  } else if (['plan-reviewer', 'plan-challenger', 'verifier'].includes(role) && feature.run.contract >= 9) {
     const checked = validateReviewResult(role, readFileSync(resultPath, 'utf8'), severity)
     if (!checked.ok) die('review result is incomplete or inconsistent', 5, { role, errors: checked.errors })
+  }
+  if (feature.run.contract >= 13 && READ_ONLY_KINDS.has(feature.run.kind) && ['auditor', 'verifier'].includes(role)) {
+    const digest = readyBriefDigest(root, id)
+    const auditor = feature.run.contributions.filter(item => item.role === 'auditor').at(-1)
+    if (role === 'verifier' && auditor && auditor.brief_sha !== digest) die('assessment brief changed after Auditor inspected its scope; record a new assessment before verification', 5)
+    const snapshot = join(workRoot(root), id, `brief-final-${digest}.md`)
+    if (existsSync(snapshot) && fileDigest(snapshot)?.slice(0, 16) !== digest) die('accepted assessment brief snapshot changed', 5)
+    if (!existsSync(snapshot)) copyFileSync(briefPath(root, id), snapshot)
+    scopeEvidence = { brief_sha: digest, brief_snapshot: relative(root, snapshot).replaceAll('\\', '/') }
   }
   if (['plan-reviewer', 'plan-challenger'].includes(role) && feature.run.contract >= (role === 'plan-challenger' ? 4 : 3)) {
     const artifactFile = artifactPath(root, id)
@@ -1212,6 +1253,7 @@ function note() {
     residual: residual ?? undefined,
     result: recordedPath,
     result_sha: fileDigest(resultPath),
+    ...scopeEvidence,
     ...(reviewVerdict ? { verdict: reviewVerdict, plan_sha: planSha } : {}),
     ...(role === 'verifier' ? { candidate_sha: feature.run.verify_candidate_sha ?? candidateDigest(root, feature.run.baseline) } : {}),
     ...(['plan-reviewer', 'plan-challenger', 'verifier'].includes(role) && option('--review-context') ? { review_context: option('--review-context') } : {}),
@@ -1575,6 +1617,26 @@ function finish() {
 
   ensureActive(feature.run)
   ensureRecordedResults(root, feature.run)
+  if (feature.run.contract >= 13) {
+    if (!feature.run.ticket?.tasks?.length) die('record at least one meaningful evidenced checklist item before completion', 5)
+    const path = briefPath(root, id)
+    const snapshot = feature.run.approval?.brief_snapshot
+      ?? feature.run.contributions.filter(item => item.role === 'verifier').at(-1)?.brief_snapshot
+    const scope = existsSync(path) ? path : snapshot ? resolve(root, snapshot) : null
+    if (!scope || !inside(root, scope) || !existsSync(scope)) die('completion requires a filled assessment or delivery brief', 5)
+    ensureBriefReady(feature.run, readFileSync(scope, 'utf8'))
+    const latest = new Map(feature.run.contributions.map(item => [item.role, item]))
+    for (const item of latest.values()) {
+      if (READ_ONLY_KINDS.has(feature.run.kind) && item.brief_sha && item.brief_sha !== fileDigest(scope)?.slice(0, 16)) {
+        die('assessment brief changed after expert review; reassess and verify the current scope', 5, { role: item.role })
+      }
+      const text = readFileSync(resolve(root, item.result), 'utf8')
+      const checked = validateResult(item.role, text, item.severity, resultOptions(root, feature.run))
+      if (!checked.ok || bodyAt(text, 'STATUS') !== 'COMPLETE' || checked.blockingUnknown) {
+        die('completion requires current complete expert evidence without blocking unknowns', 5, { role: item.role, errors: checked.errors })
+      }
+    }
+  }
   if (feature.run.contract >= 12 && (feature.run.ticket?.blockers?.length || feature.run.ticket?.tasks?.some(task => task.status !== 'done'))) {
     die('resolve ticket blockers and evidence every checklist item before completion', 5)
   }
@@ -1593,6 +1655,10 @@ function finish() {
   }
   if (!feature.run.lenses) {
     gaps.push({ gap: 'lenses', why: 'lens selection was never recorded, so no domain depth is evidenced' })
+  }
+  else if (feature.run.contract >= 13 && (feature.run.lenses.assessed !== true
+    || feature.run.lenses.schema_mismatch || feature.run.lenses.unavailable?.length)) {
+    gaps.push({ gap: 'lenses', why: 'domain coverage is unassessed, incompatible or unavailable; inspect and record it or qualify the assessment' })
   }
   if (['plan', 'diagnose', 'review'].includes(feature.run.kind) && !feature.run.baseline?.head) {
     gaps.push({ gap: 'baseline', why: 'no Git baseline was recorded, so read-only source integrity cannot be proved mechanically' })
@@ -1643,6 +1709,9 @@ function finish() {
     })
   }
   feature.run.accepted_gaps = gaps.length ? gaps : undefined
+  if (feature.run.contract >= 13 && gaps.length && result === 'PASS') {
+    die('accepted evidence gaps require PASS WITH RESIDUAL RISK and explicit Verifier limitations', 5, { gaps })
+  }
   const roles = new Set(feature.run.contributions.map((item) => item.role))
   const missing = feature.run.team.filter((role) => !roles.has(role))
   if (missing.length) die('every selected expert must contribute before completion', 5, { missing })
@@ -1660,6 +1729,9 @@ function finish() {
     item.role === 'verifier' && item.phase === 'verify' && item.revision === feature.run.revision).at(-1)
   if (!verifierReview) {
     die('Verifier must record a fresh review of the current candidate before finish', 5, { id, revision: feature.run.revision })
+  }
+  if (feature.run.contract >= 13 && feature.run.contributions.at(-1) !== verifierReview) {
+    die('Verifier must review after the latest expert contribution', 5, { id })
   }
   if (!READ_ONLY_KINDS.has(feature.run.kind) && verifierReview.candidate_sha
     && verifierReview.candidate_sha !== candidateDigest(root, feature.run.baseline)) {
@@ -1746,9 +1818,9 @@ function finish() {
   feature.run.tests_changed_justified = args.includes('--tests-changed-justified') || undefined
   feature.run.brief_sha_at_finish = briefDigest(root, id)
   if (feature.run.contract >= 12) {
-    const frozen = feature.run.approval?.brief_sha ?? feature.run.brief_sha_at_build
+    const frozen = feature.run.approval?.brief_sha ?? feature.run.brief_sha_at_build ?? verifierReview.brief_sha
     if (frozen && feature.run.brief_sha_at_finish && frozen !== feature.run.brief_sha_at_finish) die('brief changed after implementation authorization; return to planning', 5)
-    const approved = feature.run.approval?.brief_snapshot
+    const approved = feature.run.approval?.brief_snapshot ?? verifierReview.brief_snapshot
     if (approved) {
       const snapshot = resolve(root, approved)
       if (!inside(root, snapshot) || fileDigest(snapshot)?.slice(0, 16) !== frozen) die('accepted brief snapshot is missing or changed', 5)

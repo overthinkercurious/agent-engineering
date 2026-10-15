@@ -81,7 +81,9 @@ validate the rendered working slice early. Update the same ticket checklist.
 
 **Audit:** select relevant domain methods, then `ae-audit` and `ae-verify`.
 For a rendered audit, discover tool capabilities, the design baseline and
-screen/state coverage before inspection. A deep audit increases evidence and
+screen/state coverage before inspection. Fill the assessment brief before
+assigning Auditor; record scope, exclusions and observable assessment checks.
+A deep audit increases evidence and
 coverage; it does not authorize fixes or require a delivery plan.
 
 **Plan, diagnose or review:** use the corresponding selected method and
@@ -99,8 +101,9 @@ Repair current findings within the approved approach, recheck, then reverify.
 Repair is capped at two cycles. Material scope or design changes return to
 Plan and approach review. Respect authority boundaries even in autonomous mode.
 
-Finish only when the requested outcome is evidenced, ticket blockers and work
-items are resolved, and delivery has no critical/high findings. A supported
+Finish only when the requested outcome is evidenced, the brief is filled, at
+least one meaningful checklist item has recorded evidence, ticket blockers and
+work items are resolved, and delivery has no critical/high findings. A supported
 audit can finish while reporting serious existing defects. Render the final
 report from the ledger and move the same ticket to `.dev/completed/`.
 Preserve user changes and raw evidence; clean only disposable run scratch.
@@ -110,7 +113,10 @@ Preserve user changes and raw evidence; clean only disposable run scratch.
 The human ticket is generated Markdown, not a gate input or worker transcript.
 Workers write one new immutable result per meaningful pass; recording it
 refreshes the ticket. Hand off source and evidence pointers, not the ticket alone.
-Current runs use contract v12. Older runs keep their stored contract and
+Current runs use contract v13: every expert result uses the shared form,
+Verifier records reopened claims and coverage, and evidence gaps require a
+qualified verdict. Local citation checks establish existence, not truth.
+Older runs, including v12, keep their stored contract and
 artifact layout; do not rewrite them to bypass a gate. Explicitly cancel and
 start a current run when changing their workflow.
 

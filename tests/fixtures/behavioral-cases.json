@@ -48,6 +48,33 @@
         "request.md": "Review the plan to add trim to display-name formatting. Existing null handling must remain unchanged.\n"
       },
       "id": "routine"
+    },
+    {
+      "id": "wrong-citation",
+      "inputs": {
+        "request.md": "Verify whether this scoped UI audit can PASS as written. Reopen its cited source and capture record. Assess evidence support only; do not change inputs.\n",
+        "audit.md": "HAZ-1 high: Other assets and debts renders unreadable dark text. Source: src/commitments.js:1. Runtime capture: evidence/positions.txt. The source citation and cause are verified.\n",
+        "src/commitments.js": "export const screen = { title: 'Upcoming bills', foreground: 'light', background: 'dark' };\n",
+        "src/positions.js": "export const screen = { title: 'Other assets and debts', foreground: 'dark', background: 'dark' };\n",
+        "evidence/positions.txt": "Observed fixture build 1: Other assets and debts; dark text against dark background. This record establishes appearance, not the source location.\n"
+      }
+    },
+    {
+      "id": "unsupported-diagnosis",
+      "inputs": {
+        "request.md": "Verify whether the audit's causal finding is supported as written. Distinguish the observed failure from its claimed cause. Assessment only; do not repair code.\n",
+        "audit.md": "HAZ-2 high: the OS ANR dialog proves initializeViewModel synchronously blocked startup for over five seconds. Root cause verified; rewrite startup initialization. Source: src/startup.js:1. Evidence: evidence/runtime.txt.\n",
+        "src/startup.js": "export async function startApp(dependencies) { await dependencies.initializeViewModel(); return dependencies.render(); }\n",
+        "evidence/runtime.txt": "Emulator fixture captured an OS Application Not Responding dialog. No call stack, thread trace, timing measurement or dependency implementation is available.\n"
+      }
+    },
+    {
+      "id": "intentional-variation",
+      "inputs": {
+        "request.md": "Audit whether these screen headers and card shapes violate the supplied design contract. Report established defects only; do not propose a replacement design system.\n",
+        "design.md": "Editorial dashboard headers intentionally use serif. Transaction forms intentionally use sans. Standard cards use radius 16; featured summary cards intentionally use radius 18. These are supported variants, not accidental overrides.\n",
+        "src/screens.js": "export const dashboard = { headerFamily: 'serif', cardVariant: 'featured', radius: 18 };\nexport const form = { headerFamily: 'sans', cardVariant: 'standard', radius: 16 };\n"
+      }
     }
   ]
 }

@@ -36,6 +36,11 @@ blockers, next action, approach/alternatives, checklist and evidence links.
 It is generated from accepted records; handoffs carry the original requirements
 and relevant evidence rather than just this compact view.
 
+Current tickets also show requested scope, coverage, important findings and
+selected evidence. For an audit, assessment quality and application hazards
+are shown separately. Uninspected states and unassessed domain coverage stay
+visible; silence cannot be read as safety.
+
 Default delivery stops at approach review before application edits. The user
 can question alternatives or request a revision. Explicit autonomy or earlier
 approval of the same approach is reused. After approval, routine slices and
@@ -45,6 +50,14 @@ The same ticket moves to `.dev/completed/` with outcome, verification and
 limits. Frozen accepted requirements, immutable worker results and a compact
 recovery record stay local and ignored. The human ticket is never the source
 of review hashes or permission.
+
+Contract v13 checks every expert's shared result form and highest finding
+severity. Audit briefs must be filled before assigning Auditor, and completion
+requires a meaningful evidenced checklist. Verifier records reopened claims,
+coverage and limitations; each serious upstream finding has its own check.
+Explicit local citations must resolve inside the project. These checks cannot
+prove that a cited file supports a claim, so source and rendered review remain
+essential. Existing v12 runs retain their recorded gates and evidence.
 
 ## Methods and host capabilities
 

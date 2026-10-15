@@ -33,7 +33,7 @@ Skip for internal changes with no observable interaction effect.
    Follow discovery.md for tool capabilities, stale claims and unresolved intent.
 2. Define loading, empty, validation, error, permission, and success states.
 3. Identify the primary action or information and remove competing emphasis.
-4. Exercise the journey keyboard-only: no trap, focus visible at every stop,
+4. Where the target supports keyboard operation, exercise the journey keyboard-only: no trap, focus visible at every stop,
    and focus returning to the trigger when a layer is dismissed.
 5. Check that every control has a programmatic name, role, and state, and that
    validation errors and async status changes are announced, not only shown.
@@ -60,6 +60,10 @@ Fill `OUTCOME` with this form:
 Every changed step needs all four columns. A state nobody designed is a state
 the user will still reach.
 
+For an audit, label each requested state as observed, source-only, inaccessible
+or excluded, with evidence or a reason. A source description is not proof that
+the state was exercised. Account for remaining requested coverage explicitly.
+
 ### Design contract
 | Element | This screen |
 |---|---|
@@ -69,7 +73,8 @@ the user will still reach.
 | Device baseline | minimum touch target, narrowest width, font scaling |
 
 Take the values from the project's own design source when one exists, and cite
-it. Generic UI with no contract is a defect, not a styling preference.
+it. Separate documented requirements from inferred preferences; unresolved
+design intent stays an unknown rather than a new prohibition.
 
 ### Accessibility requirements
 | # | Requirement | Applies to | Checked how |
@@ -82,6 +87,11 @@ it. Generic UI with no contract is a defect, not a styling preference.
 
 Screenshots prove appearance, not interaction. Name what was actually
 exercised; if nothing was, write `not exercised — <reason>`.
+Identify the device/app/build for rendered evidence. Keep hierarchy dumps,
+measurements or command outputs when they support target-size, semantic or
+execution claims. Do not infer exact colors or ratios from a screenshot alone.
+Use the shared FINDINGS and UNKNOWNS sections to preserve established defects
+and unverified claims; report the highest established severity honestly.
 ```
 
 HANDOFF goes to Architect for journey constraints or Builder for accepted UI
