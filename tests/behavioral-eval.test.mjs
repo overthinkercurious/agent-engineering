@@ -16,7 +16,7 @@ test('behavioral evaluation CLI prepares isolated cases and scores missing block
     const prepared = call('--out', out)
     assert.equal(prepared.status, 0, prepared.stderr)
     const items = JSON.parse(prepared.stdout).cases
-    assert.equal(items.length, 6)
+    assert.equal(items.length, 9)
     assert.doesNotMatch(readFileSync(join(out, 'routine/evaluation-prompt.md'), 'utf8'), /expected verdict/i)
     for (const id of items) {
       writeFileSync(join(out, id, 'evaluation-result.json'), JSON.stringify({ verdict: 'PASS', findings: [] }))
@@ -24,8 +24,11 @@ test('behavioral evaluation CLI prepares isolated cases and scores missing block
     const scored = call('--score', out)
     assert.equal(scored.status, 1)
     const result = JSON.parse(scored.stdout)
-    assert.equal(result.total, 6)
+    assert.equal(result.total, 9)
     assert.ok(result.results.find((item) => item.id === 'authorization').missed.includes('cross-organization-access'))
+    assert.ok(result.results.find((item) => item.id === 'wrong-citation').missed.includes('wrong-source-citation'))
+    assert.ok(result.results.find((item) => item.id === 'unsupported-diagnosis').missed.includes('unsupported-anr-cause'))
+    assert.equal(result.results.find((item) => item.id === 'intentional-variation').pass, true)
     writeFileSync(join(out, 'assessment/contract.md'), 'changed\n')
     const altered = JSON.parse(call('--score', out).stdout)
     assert.deepEqual(altered.results.find((item) => item.id === 'assessment').changed_inputs, ['contract.md'])

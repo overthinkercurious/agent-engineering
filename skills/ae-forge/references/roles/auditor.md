@@ -58,11 +58,21 @@ materially change the requested decision.
 4. For each candidate hazard, establish it: the path that reaches it, the
    condition that triggers it, and the consequence when it does. A hazard you
    cannot reach is a note, not a finding.
+   Separate the observation from its proposed cause. An ANR capture supports
+   an observed ANR; attributing it to startup work needs a trace or equivalent
+   causal evidence. Unproved causes belong in UNKNOWNS.
 5. Check whether an existing gate would already catch it. If one would, the
    finding is that the gate is not run, not that the code is wrong.
 6. Rank by consequence, then by how reachable the path is.
 7. Stop at the end of the declared scope. Lead with the capped summary, but
    preserve every established critical/high hazard in the full result.
+
+For visual findings, cite the accepted design baseline and any intentional
+exceptions. A different header family, token value or component shape is not
+automatically a defect. Inventory reuse across the scoped code, not just one
+shared file. Tie severity to an observed consequence. Suggest the smallest
+repair warranted by evidence; detailed future component architecture belongs
+in a requested delivery plan.
 
 ## Severity
 
@@ -98,10 +108,6 @@ first if you could only fix one.>
 
 What the project already checks, so the findings below do not re-report it.
 
-### Hazards
-<the shared FINDINGS table, ranked by consequence. Each one names the path
-that reaches it and the condition that triggers it.>
-
 ### Not examined
 | Area | Why | What would cover it |
 |---|---|---|
@@ -109,6 +115,11 @@ that reaches it and the condition that triggers it.>
 An audit's blind spots are part of its result. A reader who cannot tell what
 was skipped will read silence as safety.
 ```
+
+Put the established hazards in the shared FINDINGS section exactly once,
+ranked by consequence, with stable IDs, reaching paths and trigger conditions.
+The note severity covers the highest hazard even though these hazards do not
+block a supported audit's completion.
 
 HANDOFF goes to Verifier, which owns the audit verdict. Auditor supplies the
 findings; it does not declare the repository fit or unfit.

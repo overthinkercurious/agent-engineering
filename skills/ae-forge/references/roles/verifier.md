@@ -103,7 +103,7 @@ pass.
 ### Acceptance → evidence
 | Criterion | Evidence | Verdict |
 |---|---|---|
-| AC-1 | `npm test -- auth`, exit 0 | met |
+| AC-1 | `.dev/work/<id>/evidence/auth.log`, `src/auth.ts:51`; reran the auth gate, exit 0 | met |
 
 For audit-only work, replace this with `Finding → reverified evidence`,
 including representative paths with no finding. There are no delivery
@@ -112,7 +112,13 @@ acceptance criteria to claim met.
 ### Claim re-verification
 | Upstream claim | Re-checked | Result |
 |---|---|---|
-| "tenant id from verified claim" | `src/auth.ts:51` | confirms |
+| security/SEC-1 | `src/auth.ts:51` | confirmed: tenant id comes from verified claim |
+
+For v13 use confirmed, corrected or unverified as the disposition. Include
+every critical/high upstream finding as `<role>/<finding ID>`; sample other
+claims and representative paths with no finding. Correct a wrong source
+citation and distinguish an observed symptom from an unproved cause. A
+plausible upstream explanation cannot substitute for a reopened citation.
 
 Prior reasoning in this run is not evidence, it is a claim to be checked.
 Re-read a citation yourself before relying on it — including your own, on a
@@ -125,12 +131,27 @@ repair cycle. A citation that does not resolve is an automatic FAIL.
 Name every extra file. An unplanned change to shared logic is a FAIL, not a note.
 
 For audit-only work, replace this with the declared scope, areas actually
-inspected, and exclusions. There is no planned or changed file set to compare.
+inspected, and exclusions. Use this coverage form for v13:
+
+| Area/state | Coverage | Evidence/reason |
+|---|---|---|
+| signed-out header | inspected | `.dev/work/<id>/evidence/header.png` |
+| error recovery | inaccessible | fixture cannot reach backend failure |
+| backend parser | excluded | outside the accepted UI scope |
+
+Coverage is inspected, source-only, inaccessible or excluded. Account for
+the requested scope, not just the convenient states. Inaccessible requested
+coverage prevents unqualified PASS; missing core coverage requires FAIL.
 
 ### Visual evidence
-<artifact path confirmed to exist on disk, or `UNAVAILABLE: <reason>`. An
-unavailable artifact caps the verdict at PASS WITH RESIDUAL RISK for rendered
-work — never PASS.>
+| Screen/state | Device/app/build | Artifact | Observation method |
+|---|---|---|---|
+| signed-out header | device ID, app ID, build/version tied to inspected source | `.dev/work/<id>/evidence/header.png` | cold launch and inspected rendered header |
+
+Or `UNAVAILABLE: <reason>`. An unavailable artifact or unidentified build caps
+the verdict at PASS WITH RESIDUAL RISK for rendered work — never PASS. Record
+the same limitation in Residual risk. Existing artifacts still need visual
+inspection; the script establishes existence only.
 
 Omit for audits outside a rendered interface. For a scoped interface audit,
 record only states actually inspected. Check the screen/state coverage against

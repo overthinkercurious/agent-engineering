@@ -16,6 +16,9 @@ const expected = {
   frontend: { verdict: 'REVISE', findings: ['keyboard-inoperable'] },
   migration: { verdict: 'REVISE', findings: ['data-loss', 'rolling-version-breakage', 'rollback-data-loss'] },
   routine: { verdict: 'APPROVED', findings: [] },
+  'wrong-citation': { verdict: 'FAIL', findings: ['wrong-source-citation'] },
+  'unsupported-diagnosis': { verdict: 'FAIL', findings: ['unsupported-anr-cause'] },
+  'intentional-variation': { verdict: 'PASS', findings: [] },
 }
 const taxonomy = Object.values(expected).flatMap((item) => item.findings)
   .filter((id, index, all) => all.indexOf(id) === index)
@@ -48,7 +51,7 @@ if (!scoring) {
       readFileSync(join(root, 'request.md'), 'utf8').trim(), '',
       'Inspect the project evidence and use the installed ae-forge method. Do not edit inputs.',
       'Write evaluation-result.json with JSON fields: verdict and findings.',
-      'Verdict is APPROVED, REVISE, DIAGNOSED, or PASS.',
+      'Verdict is APPROVED, REVISE, DIAGNOSED, PASS, or FAIL.',
       'Each finding has id and concrete evidence of at least 20 characters.',
       `Use a finding id only when demonstrated: ${taxonomy.join(', ')}.`,
       'Use findings: [] when no blocker is established.', '',

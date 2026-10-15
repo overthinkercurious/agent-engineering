@@ -1,5 +1,6 @@
 import test from 'node:test'
 import { reviewResult } from './helpers/review-fixtures.mjs'
+import { retainV12 } from './helpers/legacy-contract.mjs'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -48,9 +49,9 @@ function withProject(name, run) {
       args = [...args, '--approval-required', '--approval-reason', 'Fixture requires an explicit user decision']
     }
     if (args[0] === 'start' && !['audit', 'plan', 'diagnose', 'review'].includes(args[args.indexOf('--kind') + 1]) && !args.includes('--approval-required')) args = [...args, '--autonomous', 'Fixture explicitly authorizes execution without approach review']
-    return spawnSync(process.execPath, [file, ...args], {
+    return retainV12(root, args, spawnSync(process.execPath, [file, ...args], {
     cwd: root, encoding: 'utf8', env: { ...process.env, AE_WORKFLOW_DEPTH: 'deep', ...env },
-  })
+  }))
   }
   try { run({ root, put, invoke }) } finally { rmSync(root, { recursive: true, force: true }) }
 }

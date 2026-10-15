@@ -1,7 +1,11 @@
-// Validate review records, not the truth of the evidence they contain.
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+// Validate contribution records and local references, not evidence truth.
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+export const resultSections = ['STATUS', 'OUTCOME', 'EVIDENCE', 'FINDINGS', 'UNKNOWNS', 'HANDOFF']
+export const content = value => String(value ?? '').replace(/<!--[\s\S]*?-->/g, '').trim()
+export const unfinished = value => !content(value) || /^(?:TODO|TBD|_pending\b.*|<[^>]+>)\s*$/mi.test(content(value))
 
 export function bodyAt(text, heading, level = 2) {
   const lines = text.split(/\r?\n/)
@@ -18,9 +22,43 @@ export function tableRows(body) {
     .slice(1)
 }
 
-export function validateReviewResult(role, text, severity) {
+// Only explicit file citations are interpreted as paths. Prose and commands
+// are not guessed; external sources and honest UNAVAILABLE entries stay text.
+export function localReferences(text) {
+  const refs = [...String(text ?? '').matchAll(/`([^`\n]+)`|\]\(<?([^)>]+)>?\)/g)]
+    .map(match => match[1] ?? match[2])
+    .filter(value => !/^(?:https?:|UNAVAILABLE:|N\/A:)/i.test(value)
+      && (!/\s/.test(value) || /\.[a-z0-9]+(?:#.*|:\d+(?:-\d+)?)?$/i.test(value))
+      && (/^(?:file:\/\/|[A-Za-z]:[\\/]|\.?\.?[\\/])/.test(value) || /^[\w@.-]+[\\/]/.test(value)
+        || /^[\w .-]+\.[a-z0-9]+(?:#.*|:\d+(?:-\d+)?)?$/i.test(value)))
+  return [...new Set(refs)]
+}
+
+export function referencePath(root, reference) {
+  const file = reference.replace(/#.*$/, '').replace(/:\d+(?:-\d+)?$/, '')
+  return /^file:\/\//i.test(file) ? fileURLToPath(file) : resolve(root, file)
+}
+
+const cited = value => localReferences(value).length > 0 || /https?:\/\/\S+/i.test(value)
+  || /^UNAVAILABLE:\s*\S/i.test(value)
+
+function referenceErrors(root, text) {
   const errors = []
-  const sections = Object.fromEntries(['STATUS', 'OUTCOME', 'EVIDENCE', 'FINDINGS', 'UNKNOWNS', 'HANDOFF']
+  for (const reference of localReferences(text)) {
+    try {
+      const path = referencePath(root, reference)
+      const rel = relative(realpathSync(root), existsSync(path) ? realpathSync(path) : path)
+      if (rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) errors.push(`evidence reference escapes project: ${reference}`)
+      else if (!existsSync(path)) errors.push(`evidence reference is missing: ${reference}`)
+    } catch { errors.push(`evidence reference cannot be resolved: ${reference}`) }
+  }
+  return errors
+}
+
+export function validateResult(role, text, severity, options = {}) {
+  const errors = []
+  const strict = options.contract >= 13
+  const sections = Object.fromEntries(resultSections
     .map((key) => [key, bodyAt(text, key)]))
   for (const [name, body] of Object.entries(sections)) {
     if (!body || /\bTODO\b|^_pending\b|^<[^>]+>$/m.test(body)) errors.push(`${name} must be filled`)
@@ -55,7 +93,7 @@ export function validateReviewResult(role, text, severity) {
     errors.push('note severity must cover the highest established finding')
   }
   if (passing && blockingUnknown) errors.push('blocking unknowns prevent approval or pass')
-  if (role !== 'verifier') {
+  if (['plan-reviewer', 'plan-challenger'].includes(role)) {
     if (!['APPROVED', 'APPROVED WITH NOTES', 'REVISE'].includes(verdict)) errors.push('invalid plan review verdict')
     if (passing && blockingFinding) errors.push('blocking findings prevent approval')
     if (verdict === 'REVISE' && !blockingFinding && !blockingUnknown) errors.push('REVISE requires an established blocker or blocking unknown')
@@ -75,22 +113,91 @@ export function validateReviewResult(role, text, severity) {
       const log = bodyAt(sections.OUTCOME ?? '', 'Decision challenge log', 3)
       if (!tableRows(log).length && !/^N\/A\s*[:(].+/i.test(log ?? '')) errors.push('Decision challenge log requires tested decisions or N/A with a reason')
     }
-  } else {
+  } else if (role === 'verifier') {
     if (!['PASS', 'PASS WITH RESIDUAL RISK', 'FAIL'].includes(verdict)) errors.push('invalid verification verdict')
     if (!bodyAt(sections.OUTCOME ?? '', 'Gates re-run by me in this pass', 3)) errors.push('verification gate evidence is required')
     if (!bodyAt(sections.OUTCOME ?? '', 'Acceptance → evidence', 3)
       && !bodyAt(sections.OUTCOME ?? '', 'Finding → reverified evidence', 3)) errors.push('acceptance or assessment evidence is required')
   }
+  if (strict) {
+    if (!Object.hasOwn(rank, severity)) errors.push('record an explicit note severity, including none')
+    const ids = findings.map(row => row[0])
+    if (new Set(ids).size !== ids.length) errors.push('finding IDs must be unique within a contribution')
+    for (const [name, body] of Object.entries(sections)) if (unfinished(body)) errors.push(`${name} contains a placeholder`)
+    for (const name of resultSections) if (text.split(/\r?\n/).filter(line => line === `## ${name}`).length !== 1) errors.push(`${name} must occur exactly once`)
+    if (/^none$/i.test(sections.OUTCOME ?? '')) errors.push('OUTCOME must supply the assigned deliverable')
+    if (evidence.some(row => !cited(row[1] ?? ''))) errors.push('EVIDENCE locations require explicit file citations, source URLs or UNAVAILABLE with a reason')
+    if (options.root) errors.push(...referenceErrors(options.root, sections.EVIDENCE))
+    if (role === 'verifier') {
+      const outcome = sections.OUTCOME ?? ''
+      const readonly = ['audit', 'plan', 'diagnose', 'review'].includes(options.kind)
+      const mapping = bodyAt(outcome, options.kind === 'audit' ? 'Finding → reverified evidence' : 'Acceptance → evidence', 3)
+      const mappings = tableRows(mapping)
+      if (!mappings.length || mappings.some(row => row.length !== 3 || row.some(value => !value) || !cited(row[1] ?? ''))) errors.push('verification requires a populated kind-specific evidence table with inspected citations')
+      const log = bodyAt(outcome, 'Claim re-verification', 3)
+      const claims = tableRows(log)
+      if (!claims.length || claims.some(row => row.length !== 3 || row.some(value => !value) || !cited(row[1] ?? '')
+        || !/^(confirmed|corrected|unverified)\b/i.test(row[2]))) errors.push('Claim re-verification requires claim, reopened evidence and confirmed/corrected/unverified result')
+      if (claims.some(row => /^UNAVAILABLE:/i.test(row[1] ?? '') && !/^unverified\b/i.test(row[2] ?? ''))) errors.push('unavailable claim evidence must be marked unverified')
+      for (const item of options.upstream ?? []) {
+        for (const finding of tableRows(bodyAt(item.text, 'FINDINGS'))) {
+          if (/^(critical|high)$/i.test(finding[1]) && !claims.some(row => row[0] === `${item.role}/${finding[0]}`)) {
+            errors.push(`material finding requires re-verification: ${item.role}/${finding[0]}`)
+          }
+        }
+      }
+      const scope = bodyAt(outcome, 'Scope conformance', 3)
+      if (unfinished(scope)) errors.push('Scope conformance must account for inspected areas and exclusions')
+      if (options.kind === 'audit') {
+        const coverage = tableRows(scope)
+        if (!coverage.length || coverage.some(row => row.length !== 3 || row.some(value => !value)
+          || !/^(inspected|source-only|inaccessible|excluded)$/i.test(row[1]))) errors.push('audit scope requires area/state, coverage status and evidence/reason')
+        if (coverage.some(row => /^(inspected|source-only)$/i.test(row[1]) && !cited(row[2] ?? ''))) errors.push('inspected audit coverage requires a source or artifact citation')
+        if (verdict === 'PASS' && coverage.some(row => /^inaccessible$/i.test(row[1]))) errors.push('inaccessible audit coverage prevents unqualified PASS')
+      }
+      const gates = bodyAt(outcome, 'Gates re-run by me in this pass', 3)
+      const gateRows = tableRows(gates)
+      if ((!gateRows.length && !/^N\/A:\s*\S/i.test(gates ?? '')) || gateRows.some(row => row.length !== 4 || row.some(value => !value)
+        || !/^(?:-?\d+|UNVERIFIED)$/i.test(row[2]) || !/^(pass|fail|unverified)$/i.test(row[3])
+        || (/^pass$/i.test(row[3]) && row[2] !== '0'))) errors.push('gate evidence requires consistent command, source, exit and pass/fail/unverified status, or N/A with a reason')
+      if (passing && gateRows.some(row => /^fail$/i.test(row[3]) || (/^-?\d+$/.test(row[2]) && Number(row[2]) !== 0))) errors.push('failed required gates prevent a passing verdict')
+      const residual = bodyAt(outcome, 'Residual risk', 3)
+      if (unfinished(residual) || (verdict === 'PASS WITH RESIDUAL RISK' && /^none$/i.test(residual ?? ''))) errors.push('Residual risk must describe qualified verdict limitations, or none for PASS')
+      if (verdict === 'PASS' && (claims.some(row => /^unverified\b/i.test(row[2]))
+        || mappings.some(row => /^UNAVAILABLE:/i.test(row[1] ?? ''))
+        || gateRows.some(row => /UNVERIFIED/i.test(row.join(' '))) || !/^none$/i.test(residual ?? ''))) errors.push('unverified checks or residual limits prevent unqualified PASS')
+      if (!readonly && passing && blockingFinding) errors.push('critical/high candidate findings prevent a passing delivery verdict')
+      if (options.rendered) {
+        const visual = bodyAt(outcome, 'Visual evidence', 3)
+        const rows = tableRows(visual)
+        if (!rows.length && !/^UNAVAILABLE:\s*\S/i.test(visual ?? '')) errors.push('rendered evidence requires screen/state, device/app/build, artifact and observation method')
+        if (rows.some(row => row.length !== 4 || row.some(value => !value))) errors.push('each visual evidence row needs four populated columns')
+        if (rows.some(row => !cited(row[2] ?? ''))) errors.push('visual evidence requires explicit artifact citations or UNAVAILABLE with a reason')
+        if (verdict === 'PASS' && (!rows.length || rows.some(row => /\b(?:unknown|unavailable|unverified)\b/i.test(row[1] ?? '')
+          || /^UNAVAILABLE:/i.test(row[2] ?? '')))) errors.push('unidentified build or unavailable visual evidence prevents unqualified PASS')
+        if (options.root) errors.push(...referenceErrors(options.root, visual))
+      }
+      if (options.root) errors.push(...referenceErrors(options.root, [mapping, log, scope].join('\n')))
+    }
+  }
   return { ok: errors.length === 0, verdict, blockingUnknown, blockingFinding, findings: findings.length, errors }
+}
+
+// Historic review callers retain their recorded validation bar.
+export function validateReviewResult(role, text, severity) {
+  return validateResult(role, text, severity)
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2)
-  const option = (name) => args[args.indexOf(name) + 1]
+  const option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback
   try {
     const role = option('--role')
-    if (!['plan-reviewer', 'plan-challenger', 'verifier'].includes(role) || !args.includes('--result')) throw new Error('use --role plan-reviewer|plan-challenger|verifier --result <file> --severity <level>')
-    const result = validateReviewResult(role, readFileSync(option('--result'), 'utf8'), option('--severity'))
+    const roles = Object.keys(JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../references/team.json'), 'utf8')).roles)
+    if (!roles.includes(role) || !args.includes('--result')) throw new Error('use --role <selected role> --result <file> --severity <level> [--kind audit] [--root <project>]')
+    const result = validateResult(role, readFileSync(option('--result'), 'utf8'), option('--severity'), {
+      contract: 13, kind: option('--kind', 'feature'), root: option('--root', process.cwd()), rendered: args.includes('--rendered'),
+    })
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
     process.exitCode = result.ok ? 0 : 1
   } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 2 }
